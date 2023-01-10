@@ -1,6 +1,8 @@
 [![hacs_badge](https://img.shields.io/badge/HACS-Default-41BDF5.svg?style=for-the-badge)](https://github.com/hacs/integration)
 
-A custom integration for Carrier Infinity Thermostats. Only supports one zone setups atm.
+A custom integration for Carrier Infinity Thermostats. Only supports one zone setups, but can handle multiple thermostats.
+
+Creates two thermostat entities, one reflects the api and the configurations, the read only reflects the current status of the thermostat which is sometimes outdated due to HVAC cool off periods but will update to match the config in due time.
 
 ## Feature Highlights ##
 - thermostat
