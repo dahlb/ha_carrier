@@ -228,8 +228,8 @@ class ThermostatConfig(CarrierEntity, ClimateEntity):
         fan_mode = FanModes(fan_mode)
         zone = self._updater.carrier_system.config.zones[0]
         manual_activity = zone.find_activity(ActivityNames.MANUAL)
-        heat_set_point = manual_activity.zone.heat_set_point
-        cool_set_point = manual_activity.zone.cool_set_point
+        heat_set_point = manual_activity.heat_set_point
+        cool_set_point = manual_activity.cool_set_point
         manual_activity.fan = fan_mode
 
         self._updater.carrier_system.api_connection.set_config_manual_activity(
