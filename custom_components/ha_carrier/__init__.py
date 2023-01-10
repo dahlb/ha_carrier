@@ -87,6 +87,6 @@ async def async_unload_entry(hass: HomeAssistant, config_entry: ConfigEntry):
         )
     )
     if unload_ok:
-        hass.data[DOMAIN] = None
+        hass.data[DOMAIN][config_entry.entry_id] = None
 
     return unload_ok
