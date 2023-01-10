@@ -13,29 +13,21 @@ from homeassistant.helpers import device_registry as dr, entity_registry as er
 from .const import DOMAIN, DATA_SYSTEMS
 from .carrier_data_update_coordinator import CarrierDataUpdateCoordinator
 
-TO_REDACT = {CONF_USERNAME, CONF_PASSWORD, CONF_UNIQUE_ID, "vehicle_identifier"}
+TO_REDACT = {CONF_USERNAME, CONF_PASSWORD, CONF_UNIQUE_ID}
 TO_REDACT_MAPPED = {
-    "identifier",
-    "vin",
-    "key",
-    "latitude",
-    "longitude",
-    "location_name",
+    "serial",
+    "indoor_serial",
+    "outdoor_serial",
 }
 TO_REDACT_RAW = {
-    "vehicle_identifier",
-    "vinKey",
-    "vin",
-    "meid",
-    "mdn",
-    "iccid",
-    "preferredDealer",
-    "lat",
-    "lon",
-    "invDealerCode",
+    "pin",
+    "serial",
+    "indoorSerial",
+    "outdoorSerial",
+    "routerMac",
 }
 TO_REDACT_DEVICE = {"identifiers"}
-TO_REDACT_ENTITIES = {"latitude", "longitude"}
+TO_REDACT_ENTITIES = {}
 
 _LOGGER = logging.getLogger(__name__)
 
