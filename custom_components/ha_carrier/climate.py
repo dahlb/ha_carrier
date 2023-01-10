@@ -243,10 +243,14 @@ class ThermostatConfig(CarrierEntity, ClimateEntity):
 
         if self._updater.carrier_system.config.mode == SystemModes.COOL.value:
             heat_set_point = self.min_temp
-            cool_set_point = temp | cool_set_point
+            cool_set_point = temp or cool_set_point
         elif self._updater.carrier_system.config.mode == SystemModes.HEAT.value:
-            heat_set_point = temp | heat_set_point
+            heat_set_point = temp or heat_set_point
             cool_set_point = self.max_temp
+
+        if self.temperature_unit == TEMP_FAHRENHEIT:
+            heat_set_point = int(heat_set_point)
+            cool_set_point = int(cool_set_point)
 
         _LOGGER.debug(
             f"set_temperature; heat_set_point:{heat_set_point}, cool_set_point:{cool_set_point}, fan_mode:{fan_mode}"
