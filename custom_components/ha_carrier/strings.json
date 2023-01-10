@@ -1,0 +1,17 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Carrier Auth",
+        "description": "Configure your Credentials.",
+        "data": {
+          "username": "Username",
+          "password": "Password"
+        }
+      }
+    },
+    "error": {
+      "auth": "Login failed. Please use official app to logout and log back in and try again."
+    }
+  }
+}

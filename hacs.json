@@ -1,0 +1,7 @@
+{
+  "name": "Carrier Infinity Thermostat",
+  "render_readme": true,
+  "content_in_root": false,
+  "country": ["US"],
+  "homeassistant": "2022.01.0b0"
+}
