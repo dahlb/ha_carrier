@@ -167,7 +167,6 @@ class ThermostatConfig(CarrierEntity, ClimateEntity):
 
     @property
     def hvac_action(self) -> HVACAction | str | None:
-        self._updater.carrier_system.status.mode_const
         return self._updater.carrier_system.status.mode
 
     @property
@@ -195,7 +194,7 @@ class ThermostatConfig(CarrierEntity, ClimateEntity):
 
     @property
     def fan_mode(self) -> str | None:
-        return self._current_activity().fan
+        return self._current_activity().fan.value
 
     def refresh(self):
         asyncio.run_coroutine_threadsafe(asyncio.sleep(5), self.hass.loop).result()
@@ -216,7 +215,7 @@ class ThermostatConfig(CarrierEntity, ClimateEntity):
         activity_name = ActivityNames(preset_mode.strip().lower())
         zone = self._updater.carrier_system.config.zones[0]
         zone.hold = True
-        zone.hold_activity = activity_name.value
+        zone.hold_activity = activity_name
         self._updater.carrier_system.api_connection.set_config_hold(
             system_serial=self._updater.carrier_system.serial,
             zone_id=zone.api_id,
@@ -228,9 +227,10 @@ class ThermostatConfig(CarrierEntity, ClimateEntity):
         _LOGGER.debug(f"set_fan_mode; fan_mode:{fan_mode}")
         fan_mode = FanModes(fan_mode)
         zone = self._updater.carrier_system.config.zones[0]
-        heat_set_point = zone.heat_set_point
-        cool_set_point = zone.cool_set_point
-        zone.find_activity(ActivityNames.MANUAL.value).fan = fan_mode.value
+        manual_activity = zone.find_activity(ActivityNames.MANUAL)
+        heat_set_point = manual_activity.zone.heat_set_point
+        cool_set_point = manual_activity.zone.cool_set_point
+        manual_activity.fan = fan_mode
 
         self._updater.carrier_system.api_connection.set_config_manual_activity(
             system_serial=self._updater.carrier_system.serial,
@@ -259,8 +259,8 @@ class ThermostatConfig(CarrierEntity, ClimateEntity):
             cool_set_point = int(cool_set_point)
 
         zone = self._updater.carrier_system.config.zones[0]
-        manual_activity = zone.find_activity(ActivityNames.MANUAL.value)
-        fan_mode = FanModes(manual_activity.fan)
+        manual_activity = zone.find_activity(ActivityNames.MANUAL)
+        fan_mode = manual_activity.fan
         manual_activity.cool_set_point = cool_set_point
         manual_activity.heat_set_point = heat_set_point
 
