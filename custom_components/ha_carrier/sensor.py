@@ -67,6 +67,10 @@ class StaticPressureSensor(CarrierEntity, SensorEntity):
     def native_value(self) -> float:
         return self._updater.carrier_system.config.static_pressure
 
+    @property
+    def available(self) -> bool:
+        return self.native_value is not None
+
 
 class FilterUsedSensor(CarrierEntity, SensorEntity):
     _attr_device_class = SensorDeviceClass.POWER
@@ -78,3 +82,7 @@ class FilterUsedSensor(CarrierEntity, SensorEntity):
     @property
     def native_value(self) -> float:
         return self._updater.carrier_system.status.filter_used
+
+    @property
+    def available(self) -> bool:
+        return self.native_value is not None
