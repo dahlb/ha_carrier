@@ -13,5 +13,15 @@
     "error": {
       "auth": "Login failed. Please use official app to logout and log back in and try again."
     }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Carrier Infinity: Configuration",
+        "data": {
+          "scan_interval": "Scan Interval in Minutes"
+        }
+      }
+    }
   }
 }

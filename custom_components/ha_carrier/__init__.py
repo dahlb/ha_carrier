@@ -18,6 +18,8 @@ from .const import (
     DOMAIN,
     PLATFORMS,
     DATA_SYSTEMS,
+    CONF_SCAN_INTERVAL,
+    DEFAULT_SCAN_INTERVAL,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -45,6 +47,9 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry):
     _LOGGER.debug(f"async setup entry: {config_entry.as_dict()}")
     username = config_entry.data[CONF_USERNAME]
     password = config_entry.data[CONF_PASSWORD]
+    interval = config_entry.options.get(
+                        CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL
+                    )
 
     data = {}
 
@@ -55,6 +60,7 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry):
         return CarrierDataUpdateCoordinator(
             hass=hass,
             carrier_system=carrier_system,
+            interval=interval,
         )
 
     data[DATA_SYSTEMS] = list(map(create_updaters, carrier_systems))

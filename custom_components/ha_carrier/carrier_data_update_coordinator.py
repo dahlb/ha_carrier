@@ -13,7 +13,7 @@ _LOGGER = logging.getLogger(__name__)
 
 
 class CarrierDataUpdateCoordinator(DataUpdateCoordinator):
-    def __init__(self, hass: HomeAssistant, carrier_system: System) -> None:
+    def __init__(self, hass: HomeAssistant, carrier_system: System, interval: int) -> None:
         """Initialize the device."""
         self.hass: HomeAssistant = hass
         self.carrier_system: System = carrier_system
@@ -23,7 +23,7 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator):
             hass,
             _LOGGER,
             name=f"{DOMAIN}-{self.carrier_system.name}",
-            update_interval=timedelta(minutes=10),
+            update_interval=timedelta(minutes=interval),
         )
 
     async def _async_update_data(self):
