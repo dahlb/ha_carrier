@@ -73,7 +73,7 @@ class StaticPressureSensor(CarrierEntity, SensorEntity):
 
 
 class FilterUsedSensor(CarrierEntity, SensorEntity):
-    _attr_device_class = SensorDeviceClass.POWER
+    _attr_device_class = SensorDeviceClass.BATTERY
     _attr_native_unit_of_measurement = PERCENTAGE
 
     def __init__(self, updater):
