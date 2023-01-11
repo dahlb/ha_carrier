@@ -12,6 +12,7 @@ Creates two thermostat entities, one reflects the api and the configurations, th
   - mode
   - presets
   - manual high/low temperatures
+  - preset resume will resume the scheduled programming
 - sensors
   - outdoor temperature
   - connectivity

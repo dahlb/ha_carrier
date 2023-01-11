@@ -138,10 +138,11 @@ class ThermostatConfig(CarrierEntity, ClimateEntity):
         )
         self._attr_preset_modes = list(
             map(
-                lambda activity: activity.api_id,
+                lambda activity: activity.api_id.value,
                 self._updater.carrier_system.config.zones[0].activities,
             )
         )
+        self._attr_preset_modes.append('resume')
 
     @property
     def current_humidity(self) -> int | None:
@@ -212,15 +213,21 @@ class ThermostatConfig(CarrierEntity, ClimateEntity):
 
     def set_preset_mode(self, preset_mode: str) -> None:
         _LOGGER.debug(f"set_preset_mode; preset_mode:{preset_mode}")
-        activity_name = ActivityNames(preset_mode.strip().lower())
         zone = self._updater.carrier_system.config.zones[0]
-        zone.hold = True
-        zone.hold_activity = activity_name
-        self._updater.carrier_system.api_connection.set_config_hold(
-            system_serial=self._updater.carrier_system.serial,
-            zone_id=zone.api_id,
-            activity_name=activity_name,
-        )
+        if preset_mode == "resume":
+            self._updater.carrier_system.api_connection.resume_schedule(
+                system_serial=self._updater.carrier_system.serial,
+                zone_id=zone.api_id,
+            )
+        else:
+            activity_name = ActivityNames(preset_mode.strip().lower())
+            zone.hold = True
+            zone.hold_activity = activity_name
+            self._updater.carrier_system.api_connection.set_config_hold(
+                system_serial=self._updater.carrier_system.serial,
+                zone_id=zone.api_id,
+                activity_name=activity_name,
+            )
         self.refresh()
 
     def set_fan_mode(self, fan_mode: str) -> None:
