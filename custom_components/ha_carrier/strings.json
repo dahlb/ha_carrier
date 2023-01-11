@@ -19,7 +19,7 @@
       "init": {
         "title": "Carrier Infinity: Configuration",
         "data": {
-          "scan_interval": "Scan Interval in Minutes"
+          "scan_interval": "Polling Interval in Minutes"
         }
       }
     }
