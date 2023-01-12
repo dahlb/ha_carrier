@@ -28,7 +28,7 @@ from carrier_api import (
     ConfigZoneActivity,
 )
 
-from .const import DOMAIN, DATA_SYSTEMS
+from .const import DOMAIN, DATA_SYSTEMS, CONF_INFINITE_HOLDS, DEFAULT_INFINITE_HOLDS
 from .carrier_data_update_coordinator import CarrierDataUpdateCoordinator
 from .carrier_entity import CarrierEntity
 
@@ -43,6 +43,10 @@ SUPPORT_FLAGS = (
 
 
 async def async_setup_entry(hass, config_entry: ConfigEntry, async_add_entities):
+    _LOGGER.debug(f"setting up climate entry")
+    infinite_hold = config_entry.options.get(
+                        CONF_INFINITE_HOLDS, DEFAULT_INFINITE_HOLDS
+                    )
     updaters: list[CarrierDataUpdateCoordinator] = hass.data[DOMAIN][
         config_entry.entry_id
     ][DATA_SYSTEMS]
@@ -51,7 +55,7 @@ async def async_setup_entry(hass, config_entry: ConfigEntry, async_add_entities)
         entities.extend(
             [
                 ThermostatStatus(updater),
-                ThermostatConfig(updater),
+                ThermostatConfig(updater, infinite_hold=infinite_hold),
             ]
         )
     async_add_entities(entities)
@@ -125,7 +129,9 @@ class ThermostatStatus(CarrierEntity, ClimateEntity):
 class ThermostatConfig(CarrierEntity, ClimateEntity):
     _attr_supported_features = SUPPORT_FLAGS
 
-    def __init__(self, updater):
+    def __init__(self, updater, infinite_hold):
+        _LOGGER.debug(f"infinite_hold:{infinite_hold}")
+        self.infinite_hold: bool = infinite_hold
         self.entity_description = ClimateEntityDescription(
             key=f"#{updater.carrier_system.serial}-climate-config",
         )
@@ -221,12 +227,18 @@ class ThermostatConfig(CarrierEntity, ClimateEntity):
             )
         else:
             activity_name = ActivityNames(preset_mode.strip().lower())
+            if self.infinite_hold:
+                hold_until = None
+            else:
+                hold_until = zone.next_activity_time()
+            _LOGGER.debug(f"infinite_hold:{self.infinite_hold}; holding until:'{hold_until}'")
             zone.hold = True
             zone.hold_activity = activity_name
             self._updater.carrier_system.api_connection.set_config_hold(
                 system_serial=self._updater.carrier_system.serial,
                 zone_id=zone.api_id,
                 activity_name=activity_name,
+                hold_until=hold_until,
             )
         self.refresh()
 

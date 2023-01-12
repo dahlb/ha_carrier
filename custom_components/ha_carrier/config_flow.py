@@ -2,6 +2,7 @@ import logging
 from typing import Dict, Optional, Any
 
 import voluptuous as vol
+import homeassistant.helpers.config_validation as cv
 from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant import config_entries
 from homeassistant.core import callback
@@ -15,6 +16,8 @@ from .const import (
     CONFIG_FLOW_VERSION,
     CONF_SCAN_INTERVAL,
     DEFAULT_SCAN_INTERVAL,
+    CONF_INFINITE_HOLDS,
+    DEFAULT_INFINITE_HOLDS,
 )
 
 from carrier_api import ApiConnection
@@ -33,6 +36,12 @@ class OptionFlowHandler(config_entries.OptionsFlow):
                         CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL
                     ),
                 ): vol.All(vol.Coerce(int), vol.Range(min=5, max=20)),
+                vol.Required(
+                    CONF_INFINITE_HOLDS,
+                    default=self.config_entry.options.get(
+                        CONF_INFINITE_HOLDS, DEFAULT_INFINITE_HOLDS
+                    ),
+                ): cv.boolean,
             }
         )
 
