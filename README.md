@@ -4,6 +4,7 @@ A custom integration for Carrier Infinity Thermostats. Only supports one zone se
 
 Creates two thermostat entities, one reflects the api and the configurations, the read only reflects the current status of the thermostat which is sometimes outdated due to HVAC cool off periods but will update to match the config in due time.
 
+
 ## Feature Highlights ##
 - thermostat
   - adjust fan speed, turn off/on
