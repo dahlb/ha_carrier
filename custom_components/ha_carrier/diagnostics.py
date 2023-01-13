@@ -25,6 +25,8 @@ TO_REDACT_RAW = {
     "indoorSerial",
     "outdoorSerial",
     "routerMac",
+    "href",
+    "weatherPostalCode",
 }
 TO_REDACT_DEVICE = {"identifiers"}
 TO_REDACT_ENTITIES = {}
