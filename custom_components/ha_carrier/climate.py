@@ -1,6 +1,10 @@
 from __future__ import annotations
+
 import logging
 import asyncio
+
+from collections.abc import Mapping
+from typing import Any
 
 from homeassistant.components.climate import (
     ClimateEntity,
@@ -129,7 +133,6 @@ class Thermostat(CarrierEntity, ClimateEntity):
             return HVACAction.IDLE
         else:
             return HVACAction.FAN
-        return
 
     def _current_activity(self) -> ConfigZoneActivity:
         return self._updater.carrier_system.config.zones[0].current_activity()
@@ -144,7 +147,7 @@ class Thermostat(CarrierEntity, ClimateEntity):
 
     @property
     def preset_mode(self) -> str | None:
-        return self._current_activity().api_id
+        return self._current_activity().api_id.value
 
     @property
     def fan_mode(self) -> str | None:
@@ -244,3 +247,9 @@ class Thermostat(CarrierEntity, ClimateEntity):
             fan_mode=fan_mode,
         )
         self.refresh()
+
+    @property
+    def extra_state_attributes(self) -> Mapping[str, Any] | None:
+        return {
+            "airflow_cfm": self._updater.carrier_system.status.airflow_cfm,
+        }
