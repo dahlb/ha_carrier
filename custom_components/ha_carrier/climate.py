@@ -199,9 +199,11 @@ class Thermostat(CarrierEntity, ClimateEntity):
         _LOGGER.debug(f"set_fan_mode; fan_mode:{fan_mode}")
         fan_mode = FanModes(fan_mode)
         zone = self._updater.carrier_system.config.zones[0]
+        heat_set_point = self._current_activity().heat_set_point
+        cool_set_point = self._current_activity().cool_set_point
         manual_activity = zone.find_activity(ActivityNames.MANUAL)
-        heat_set_point = manual_activity.heat_set_point
-        cool_set_point = manual_activity.cool_set_point
+        manual_activity.heat_set_point = heat_set_point
+        manual_activity.cool_set_point = cool_set_point
         manual_activity.fan = fan_mode
 
         self._updater.carrier_system.api_connection.set_config_manual_activity(
@@ -217,13 +219,13 @@ class Thermostat(CarrierEntity, ClimateEntity):
         _LOGGER.debug(f"set_temperature; kwargs:{kwargs}")
         heat_set_point = kwargs.get(ATTR_TARGET_TEMP_LOW)
         cool_set_point = kwargs.get(ATTR_TARGET_TEMP_HIGH)
-        temp = kwargs.get(ATTR_TEMPERATURE)
+        temperature = kwargs.get(ATTR_TEMPERATURE)
 
         if self._updater.carrier_system.config.mode == SystemModes.COOL.value:
             heat_set_point = self.min_temp
-            cool_set_point = temp or cool_set_point
+            cool_set_point = temperature or cool_set_point
         elif self._updater.carrier_system.config.mode == SystemModes.HEAT.value:
-            heat_set_point = temp or heat_set_point
+            heat_set_point = temperature or heat_set_point
             cool_set_point = self.max_temp
 
         if self.temperature_unit == TEMP_FAHRENHEIT:
