@@ -28,7 +28,7 @@ from carrier_api import (
     ConfigZoneActivity,
 )
 
-from .const import DOMAIN, DATA_SYSTEMS, CONF_INFINITE_HOLDS, DEFAULT_INFINITE_HOLDS
+from .const import DOMAIN, DATA_SYSTEMS, CONF_INFINITE_HOLDS, DEFAULT_INFINITE_HOLDS, FAN_AUTO
 from .carrier_data_update_coordinator import CarrierDataUpdateCoordinator
 from .carrier_entity import CarrierEntity
 
@@ -150,7 +150,8 @@ class ThermostatConfig(CarrierEntity, ThermostatBase):
         super().__init__("Climate Config", updater)
         self._attr_max_temp = self._updater.carrier_system.config.limit_max
         self._attr_min_temp = self._updater.carrier_system.config.limit_min
-        self._attr_fan_modes = list(map(lambda fan_mode: fan_mode.value, FanModes))
+        self._attr_fan_modes = list(map(lambda fan_mode: fan_mode.value, [FanModes.LOW, FanModes.MED, FanModes.HIGH]))
+        self._attr_fan_modes.append(FAN_AUTO)
         self._attr_hvac_modes = list(
             map(lambda hvac_mode: hvac_mode.value, SystemModes)
         )
@@ -179,7 +180,10 @@ class ThermostatConfig(CarrierEntity, ThermostatBase):
 
     @property
     def fan_mode(self) -> str | None:
-        return self._current_activity().fan.value
+        if self._current_activity().fan == FanModes.OFF:
+            return FAN_AUTO
+        else:
+            return self._current_activity().fan.value
 
     def refresh(self):
         asyncio.run_coroutine_threadsafe(asyncio.sleep(5), self.hass.loop).result()
