@@ -61,23 +61,16 @@ async def async_setup_entry(hass, config_entry: ConfigEntry, async_add_entities)
     async_add_entities(entities)
 
 
-class ThermostatStatus(CarrierEntity, ClimateEntity):
+class ThermostatBase(ClimateEntity):
     _attr_supported_features = SUPPORT_FLAGS
-    _attr_hvac_modes = []
-    _attr_fan_modes = []
-    _attr_preset_modes = []
-
-    def __init__(self, updater):
-        self.entity_description = ClimateEntityDescription(
-            key=f"#{updater.carrier_system.serial}-climate-status",
-        )
-        super().__init__("Climate Status (read only)", updater)
-        self._attr_max_temp = self._updater.carrier_system.config.limit_max
-        self._attr_min_temp = self._updater.carrier_system.config.limit_min
 
     @property
     def current_humidity(self) -> int | None:
         return self._updater.carrier_system.status.zones[0].humidity
+
+    @property
+    def current_temperature(self) -> float | None:
+        return self._updater.carrier_system.status.zones[0].temperature
 
     @property
     def temperature_unit(self) -> str:
@@ -90,8 +83,12 @@ class ThermostatStatus(CarrierEntity, ClimateEntity):
             return TEMP_CELSIUS
 
     @property
-    def current_temperature(self) -> float | None:
-        return self._updater.carrier_system.status.zones[0].temperature
+    def target_temperature(self) -> float | None:
+        if self.hvac_mode == SystemModes.HEAT:
+            return self.target_temperature_low
+        if self.hvac_mode == SystemModes.COOL:
+            return self.target_temperature_high
+        return None
 
     @property
     def hvac_mode(self) -> HVACMode | str | None:
@@ -99,15 +96,32 @@ class ThermostatStatus(CarrierEntity, ClimateEntity):
 
     @property
     def hvac_action(self) -> HVACAction | str | None:
-        return self._updater.carrier_system.status.mode
+        if self.hvac_mode == HVACMode.OFF:
+            return HVACAction.OFF
+        elif self._updater.carrier_system.status.zones[0].conditioning == "idle":
+            return HVACAction.IDLE
+        elif "heat" in self._updater.carrier_system.status.zones[0].conditioning:
+            return HVACAction.HEATING
+        elif "cool" in self._updater.carrier_system.status.zones[0].conditioning:
+            return HVACAction.COOLING
+        elif self._updater.carrier_system.status.zones[0].fan == FanModes.OFF:
+            return HVACAction.IDLE
+        else:
+            return HVACAction.FAN
+        return
 
-    @property
-    def target_temperature(self) -> float | None:
-        if self.hvac_mode == SystemModes.HEAT:
-            return self.target_temperature_low
-        if self.hvac_mode == SystemModes.COOL:
-            return self.target_temperature_high
-        return None
+class ThermostatStatus(CarrierEntity, ThermostatBase):
+    _attr_hvac_modes = []
+    _attr_fan_modes = []
+    _attr_preset_modes = []
+
+    def __init__(self, updater):
+        self.entity_description = ClimateEntityDescription(
+            key=f"#{updater.carrier_system.serial}-climate-status",
+        )
+        super().__init__("Climate Status (read only)", updater)
+        self._attr_max_temp = self._updater.carrier_system.config.limit_max
+        self._attr_min_temp = self._updater.carrier_system.config.limit_min
 
     @property
     def target_temperature_high(self) -> float | None:
@@ -126,9 +140,7 @@ class ThermostatStatus(CarrierEntity, ClimateEntity):
         return self._updater.carrier_system.status.zones[0].fan
 
 
-class ThermostatConfig(CarrierEntity, ClimateEntity):
-    _attr_supported_features = SUPPORT_FLAGS
-
+class ThermostatConfig(CarrierEntity, ThermostatBase):
     def __init__(self, updater, infinite_hold):
         _LOGGER.debug(f"infinite_hold:{infinite_hold}")
         self.infinite_hold: bool = infinite_hold
@@ -149,40 +161,6 @@ class ThermostatConfig(CarrierEntity, ClimateEntity):
             )
         )
         self._attr_preset_modes.append('resume')
-
-    @property
-    def current_humidity(self) -> int | None:
-        return self._updater.carrier_system.status.zones[0].humidity
-
-    @property
-    def temperature_unit(self) -> str:
-        if (
-            self._updater.carrier_system.status.temperature_unit
-            == TemperatureUnits.FAHRENHEIT
-        ):
-            return TEMP_FAHRENHEIT
-        else:
-            return TEMP_CELSIUS
-
-    @property
-    def current_temperature(self) -> float | None:
-        return self._updater.carrier_system.status.zones[0].temperature
-
-    @property
-    def hvac_mode(self) -> HVACMode | str | None:
-        return self._updater.carrier_system.config.mode
-
-    @property
-    def hvac_action(self) -> HVACAction | str | None:
-        return self._updater.carrier_system.status.mode
-
-    @property
-    def target_temperature(self) -> float | None:
-        if self.hvac_mode == SystemModes.HEAT:
-            return self.target_temperature_low
-        if self.hvac_mode == SystemModes.COOL:
-            return self.target_temperature_high
-        return None
 
     def _current_activity(self) -> ConfigZoneActivity:
         return self._updater.carrier_system.config.zones[0].current_activity()
