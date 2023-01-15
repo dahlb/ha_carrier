@@ -78,9 +78,7 @@ class Thermostat(CarrierEntity, ClimateEntity):
         self._attr_min_temp = self._updater.carrier_system.config.limit_min
         self._attr_fan_modes = list(map(lambda fan_mode: fan_mode.value, [FanModes.LOW, FanModes.MED, FanModes.HIGH]))
         self._attr_fan_modes.append(FAN_AUTO)
-        self._attr_hvac_modes = list(
-            map(lambda hvac_mode: hvac_mode.value, SystemModes)
-        )
+        self._attr_hvac_modes = [HVACMode.OFF, HVACMode.FAN_ONLY, HVACMode.HEAT_COOL, HVACMode.HEAT, HVACMode.COOL]
         self._attr_preset_modes = list(
             map(
                 lambda activity: activity.api_id.value,
@@ -117,7 +115,17 @@ class Thermostat(CarrierEntity, ClimateEntity):
 
     @property
     def hvac_mode(self) -> HVACMode | str | None:
-        return self._updater.carrier_system.config.mode
+        match self._updater.carrier_system.config.mode:
+            case SystemModes.COOL:
+                return HVACMode.COOL
+            case SystemModes.HEAT:
+                return HVACMode.HEAT
+            case SystemModes.OFF:
+                return HVACMode.OFF
+            case SystemModes.AUTO:
+                return HVACMode.HEAT_COOL
+            case SystemModes.FAN_ONLY:
+                return HVACMode.FAN_ONLY
 
     @property
     def hvac_action(self) -> HVACAction | str | None:
@@ -164,9 +172,22 @@ class Thermostat(CarrierEntity, ClimateEntity):
 
     def set_hvac_mode(self, hvac_mode: HVACMode) -> None:
         _LOGGER.debug(f"set_hvac_mode; hvac_mode:{hvac_mode}")
-        self._updater.carrier_system.config.mode = hvac_mode.value
+        if hvac_mode in [HVACMode.DRY, HVACMode.AUTO]:
+            return
+        match hvac_mode:
+            case HVACMode.COOL:
+                mode = SystemModes.COOL
+            case HVACMode.HEAT:
+                mode = SystemModes.HEAT
+            case HVACMode.OFF:
+                mode = SystemModes.OFF
+            case HVACMode.HEAT_COOL:
+                mode = SystemModes.AUTO
+            case HVACMode.FAN_ONLY:
+                mode = SystemModes.FAN_ONLY
+        self._updater.carrier_system.config.mode = mode.value
         self._updater.carrier_system.api_connection.set_config_mode(
-            system_serial=self._updater.carrier_system.serial, mode=hvac_mode.value
+            system_serial=self._updater.carrier_system.serial, mode=mode.value
         )
         self.refresh()
 
