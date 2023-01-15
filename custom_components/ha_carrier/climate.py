@@ -115,17 +115,20 @@ class Thermostat(CarrierEntity, ClimateEntity):
 
     @property
     def hvac_mode(self) -> HVACMode | str | None:
+        ha_mode = None
         match self._updater.carrier_system.config.mode:
-            case SystemModes.COOL:
-                return HVACMode.COOL
-            case SystemModes.HEAT:
-                return HVACMode.HEAT
-            case SystemModes.OFF:
-                return HVACMode.OFF
-            case SystemModes.AUTO:
-                return HVACMode.HEAT_COOL
-            case SystemModes.FAN_ONLY:
-                return HVACMode.FAN_ONLY
+            case SystemModes.COOL.value:
+                ha_mode = HVACMode.COOL
+            case SystemModes.HEAT.value:
+                ha_mode = HVACMode.HEAT
+            case SystemModes.OFF.value:
+                ha_mode = HVACMode.OFF
+            case SystemModes.AUTO.value:
+                ha_mode = HVACMode.HEAT_COOL
+            case SystemModes.FAN_ONLY.value:
+                ha_mode = HVACMode.FAN_ONLY
+        _LOGGER.debug(f"carrier mode:{self._updater.carrier_system.config.mode};ha_mode:{ha_mode}")
+        return ha_mode
 
     @property
     def hvac_action(self) -> HVACAction | str | None:
