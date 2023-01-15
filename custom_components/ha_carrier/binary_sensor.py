@@ -4,6 +4,7 @@ import logging
 from homeassistant.components.binary_sensor import (
     BinarySensorDeviceClass,
     BinarySensorEntity,
+    BinarySensorEntityDescription,
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.helpers.entity import EntityDescription
@@ -24,6 +25,7 @@ async def async_setup_entry(hass, config_entry: ConfigEntry, async_add_entities)
         entities.extend(
             [
                 OnlineSensor(updater),
+                OccupancySensor(updater),
             ]
         )
     async_add_entities(entities)
@@ -33,7 +35,7 @@ class OnlineSensor(CarrierEntity, BinarySensorEntity):
     _attr_icon = "mdi:wifi-check"
 
     def __init__(self, updater):
-        self.entity_description = EntityDescription(
+        self.entity_description = BinarySensorEntityDescription(
             key=f"#{updater.carrier_system.serial}-online",
             device_class=BinarySensorDeviceClass.CONNECTIVITY,
         )
@@ -50,3 +52,14 @@ class OnlineSensor(CarrierEntity, BinarySensorEntity):
             return self._attr_icon
         else:
             return "mdi:wifi-strength-outline"
+
+
+class OccupancySensor(CarrierEntity, BinarySensorEntity):
+    _attr_device_class = BinarySensorDeviceClass.MOTION
+
+    def __init__(self, updater):
+        super().__init__("Occupancy", updater)
+
+    @property
+    def is_on(self) -> bool | None:
+        return self._updater.carrier_system.status.zones[0].occupancy
