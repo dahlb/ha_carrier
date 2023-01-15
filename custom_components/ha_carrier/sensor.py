@@ -77,11 +77,12 @@ class FilterUsedSensor(CarrierEntity, SensorEntity):
     _attr_native_unit_of_measurement = PERCENTAGE
 
     def __init__(self, updater):
-        super().__init__("Filter Used", updater)
+        super().__init__("Filter Remaining", updater)
 
     @property
     def native_value(self) -> float:
-        return self._updater.carrier_system.status.filter_used
+        if self._updater.carrier_system.status.filter_used is not None:
+            return 100 - self._updater.carrier_system.status.filter_used
 
     @property
     def available(self) -> bool:
