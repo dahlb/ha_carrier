@@ -107,9 +107,9 @@ class Thermostat(CarrierEntity, ClimateEntity):
 
     @property
     def target_temperature(self) -> float | None:
-        if self.hvac_mode == SystemModes.HEAT:
+        if self.hvac_mode == HVACMode.HEAT:
             return self.target_temperature_low
-        if self.hvac_mode == SystemModes.COOL:
+        if self.hvac_mode == HVACMode.COOL:
             return self.target_temperature_high
         return None
 
