@@ -2,6 +2,8 @@
 
 A custom integration for Carrier Infinity Thermostats. Only supports one zone setups, but can handle multiple thermostats.
 
+This integration utilizes the Carrier Api, if you would prefer a fully local integration for carrier thermostats use [infinitude](https://github.com/MizterB/homeassistant-infinitude)
+
 Creates two thermostat entities, one reflects the api and the configurations, the read only reflects the current status of the thermostat which is sometimes outdated due to HVAC cool off periods but will update to match the config in due time.
 
 
