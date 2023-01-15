@@ -4,6 +4,8 @@ A custom integration for Carrier Infinity Thermostats. Only supports one zone se
 
 This integration utilizes the Carrier Api, if you would prefer a fully local integration for carrier thermostats use [infinitude](https://github.com/MizterB/homeassistant-infinitude)
 
+tested initially on SYSTXCCWIC01-B fw 4.31
+
 ## Feature Highlights ##
 - thermostat
   - adjust fan speed, turn off/on
