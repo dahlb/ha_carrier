@@ -15,4 +15,4 @@ CONF_INFINITE_HOLDS: str = "infinite_holds"
 DEFAULT_SCAN_INTERVAL: int = 10
 DEFAULT_INFINITE_HOLDS: bool = True
 
-FAN_AUTO = "Auto"
+FAN_AUTO = "auto"

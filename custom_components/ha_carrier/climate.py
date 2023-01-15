@@ -54,15 +54,36 @@ async def async_setup_entry(hass, config_entry: ConfigEntry, async_add_entities)
     for updater in updaters:
         entities.extend(
             [
-                ThermostatStatus(updater),
-                ThermostatConfig(updater, infinite_hold=infinite_hold),
+                Thermostat(updater, infinite_hold=infinite_hold),
             ]
         )
     async_add_entities(entities)
 
 
-class ThermostatBase(ClimateEntity):
+class Thermostat(CarrierEntity, ClimateEntity):
     _attr_supported_features = SUPPORT_FLAGS
+
+    def __init__(self, updater, infinite_hold):
+        _LOGGER.debug(f"infinite_hold:{infinite_hold}")
+        self.infinite_hold: bool = infinite_hold
+        self.entity_description = ClimateEntityDescription(
+            key=f"#{updater.carrier_system.serial}-climate",
+        )
+        super().__init__("Climate", updater)
+        self._attr_max_temp = self._updater.carrier_system.config.limit_max
+        self._attr_min_temp = self._updater.carrier_system.config.limit_min
+        self._attr_fan_modes = list(map(lambda fan_mode: fan_mode.value, [FanModes.LOW, FanModes.MED, FanModes.HIGH]))
+        self._attr_fan_modes.append(FAN_AUTO)
+        self._attr_hvac_modes = list(
+            map(lambda hvac_mode: hvac_mode.value, SystemModes)
+        )
+        self._attr_preset_modes = list(
+            map(
+                lambda activity: activity.api_id.value,
+                self._updater.carrier_system.config.zones[0].activities,
+            )
+        )
+        self._attr_preset_modes.append('resume')
 
     @property
     def current_humidity(self) -> int | None:
@@ -109,59 +130,6 @@ class ThermostatBase(ClimateEntity):
         else:
             return HVACAction.FAN
         return
-
-class ThermostatStatus(CarrierEntity, ThermostatBase):
-    _attr_hvac_modes = []
-    _attr_fan_modes = []
-    _attr_preset_modes = []
-
-    def __init__(self, updater):
-        self.entity_description = ClimateEntityDescription(
-            key=f"#{updater.carrier_system.serial}-climate-status",
-        )
-        super().__init__("Climate Status (read only)", updater)
-        self._attr_max_temp = self._updater.carrier_system.config.limit_max
-        self._attr_min_temp = self._updater.carrier_system.config.limit_min
-
-    @property
-    def target_temperature_high(self) -> float | None:
-        return self._updater.carrier_system.status.zones[0].cool_set_point
-
-    @property
-    def target_temperature_low(self) -> float | None:
-        return self._updater.carrier_system.status.zones[0].heat_set_point
-
-    @property
-    def preset_mode(self) -> str | None:
-        return self._updater.carrier_system.status.zones[0].current_activity
-
-    @property
-    def fan_mode(self) -> str | None:
-        return self._updater.carrier_system.status.zones[0].fan
-
-
-class ThermostatConfig(CarrierEntity, ThermostatBase):
-    def __init__(self, updater, infinite_hold):
-        _LOGGER.debug(f"infinite_hold:{infinite_hold}")
-        self.infinite_hold: bool = infinite_hold
-        self.entity_description = ClimateEntityDescription(
-            key=f"#{updater.carrier_system.serial}-climate-config",
-        )
-        super().__init__("Climate Config", updater)
-        self._attr_max_temp = self._updater.carrier_system.config.limit_max
-        self._attr_min_temp = self._updater.carrier_system.config.limit_min
-        self._attr_fan_modes = list(map(lambda fan_mode: fan_mode.value, [FanModes.LOW, FanModes.MED, FanModes.HIGH]))
-        self._attr_fan_modes.append(FAN_AUTO)
-        self._attr_hvac_modes = list(
-            map(lambda hvac_mode: hvac_mode.value, SystemModes)
-        )
-        self._attr_preset_modes = list(
-            map(
-                lambda activity: activity.api_id.value,
-                self._updater.carrier_system.config.zones[0].activities,
-            )
-        )
-        self._attr_preset_modes.append('resume')
 
     def _current_activity(self) -> ConfigZoneActivity:
         return self._updater.carrier_system.config.zones[0].current_activity()
