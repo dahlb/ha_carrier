@@ -29,6 +29,8 @@ from carrier_api import (
     SystemModes,
     TemperatureUnits,
     ActivityNames,
+    StatusZone,
+    ConfigZone,
     ConfigZoneActivity,
 )
 
@@ -56,24 +58,27 @@ async def async_setup_entry(hass, config_entry: ConfigEntry, async_add_entities)
     ][DATA_SYSTEMS]
     entities = []
     for updater in updaters:
-        entities.extend(
-            [
-                Thermostat(updater, infinite_hold=infinite_hold),
-            ]
-        )
+        for zone in updater.carrier_system.config.zones:
+            entities.extend(
+                [
+                    Thermostat(updater, infinite_hold=infinite_hold, zone_api_id=zone.api_id),
+                ]
+            )
     async_add_entities(entities)
 
 
 class Thermostat(CarrierEntity, ClimateEntity):
     _attr_supported_features = SUPPORT_FLAGS
 
-    def __init__(self, updater, infinite_hold):
+    def __init__(self, updater, infinite_hold: bool, zone_api_id: str):
         _LOGGER.debug(f"infinite_hold:{infinite_hold}")
         self.infinite_hold: bool = infinite_hold
+        self.zone_api_id: str = zone_api_id
+        self._updater = updater
         self.entity_description = ClimateEntityDescription(
-            key=f"#{updater.carrier_system.serial}-climate",
+            key=f"#{updater.carrier_system.serial}-zone{self.zone_api_id}-climate",
         )
-        super().__init__("Climate", updater)
+        super().__init__(f"{self._status_zone.name}", updater)
         self._attr_max_temp = self._updater.carrier_system.config.limit_max
         self._attr_min_temp = self._updater.carrier_system.config.limit_min
         self._attr_fan_modes = list(map(lambda fan_mode: fan_mode.value, [FanModes.LOW, FanModes.MED, FanModes.HIGH]))
@@ -82,18 +87,30 @@ class Thermostat(CarrierEntity, ClimateEntity):
         self._attr_preset_modes = list(
             map(
                 lambda activity: activity.api_id.value,
-                self._updater.carrier_system.config.zones[0].activities,
+                self._config_zone.activities,
             )
         )
         self._attr_preset_modes.append('resume')
 
     @property
+    def _status_zone(self) -> StatusZone:
+        for zone in self._updater.carrier_system.status.zones:
+            if zone.api_id == self.zone_api_id:
+                return zone
+
+    @property
+    def _config_zone(self) -> ConfigZone:
+        for zone in self._updater.carrier_system.config.zones:
+            if zone.api_id == self.zone_api_id:
+                return zone
+
+    @property
     def current_humidity(self) -> int | None:
-        return self._updater.carrier_system.status.zones[0].humidity
+        return self._status_zone.humidity
 
     @property
     def current_temperature(self) -> float | None:
-        return self._updater.carrier_system.status.zones[0].temperature
+        return self._status_zone.temperature
 
     @property
     def temperature_unit(self) -> str:
@@ -134,19 +151,19 @@ class Thermostat(CarrierEntity, ClimateEntity):
     def hvac_action(self) -> HVACAction | str | None:
         if self.hvac_mode == HVACMode.OFF:
             return HVACAction.OFF
-        elif self._updater.carrier_system.status.zones[0].conditioning == "idle":
+        elif self._status_zone.conditioning == "idle":
             return HVACAction.IDLE
-        elif "heat" in self._updater.carrier_system.status.zones[0].conditioning:
+        elif "heat" in self._status_zone.conditioning:
             return HVACAction.HEATING
-        elif "cool" in self._updater.carrier_system.status.zones[0].conditioning:
+        elif "cool" in self._status_zone.conditioning:
             return HVACAction.COOLING
-        elif self._updater.carrier_system.status.zones[0].fan == FanModes.OFF:
+        elif self._status_zone.fan == FanModes.OFF:
             return HVACAction.IDLE
         else:
             return HVACAction.FAN
 
     def _current_activity(self) -> ConfigZoneActivity:
-        return self._updater.carrier_system.config.zones[0].current_activity()
+        return self._config_zone.current_activity()
 
     @property
     def target_temperature_high(self) -> float | None:
@@ -196,24 +213,23 @@ class Thermostat(CarrierEntity, ClimateEntity):
 
     def set_preset_mode(self, preset_mode: str) -> None:
         _LOGGER.debug(f"set_preset_mode; preset_mode:{preset_mode}")
-        zone = self._updater.carrier_system.config.zones[0]
         if preset_mode == "resume":
             self._updater.carrier_system.api_connection.resume_schedule(
                 system_serial=self._updater.carrier_system.serial,
-                zone_id=zone.api_id,
+                zone_id=self.zone_api_id,
             )
         else:
             activity_name = ActivityNames(preset_mode.strip().lower())
             if self.infinite_hold:
                 hold_until = None
             else:
-                hold_until = zone.next_activity_time()
+                hold_until = self._config_zone.next_activity_time()
             _LOGGER.debug(f"infinite_hold:{self.infinite_hold}; holding until:'{hold_until}'")
-            zone.hold = True
-            zone.hold_activity = activity_name
+            self._config_zone.hold = True
+            self._config_zone.hold_activity = activity_name
             self._updater.carrier_system.api_connection.set_config_hold(
                 system_serial=self._updater.carrier_system.serial,
-                zone_id=zone.api_id,
+                zone_id=self.zone_api_id,
                 activity_name=activity_name,
                 hold_until=hold_until,
             )
@@ -222,17 +238,16 @@ class Thermostat(CarrierEntity, ClimateEntity):
     def set_fan_mode(self, fan_mode: str) -> None:
         _LOGGER.debug(f"set_fan_mode; fan_mode:{fan_mode}")
         fan_mode = FanModes(fan_mode)
-        zone = self._updater.carrier_system.config.zones[0]
         heat_set_point = self._current_activity().heat_set_point
         cool_set_point = self._current_activity().cool_set_point
-        manual_activity = zone.find_activity(ActivityNames.MANUAL)
+        manual_activity = self._config_zone.find_activity(ActivityNames.MANUAL)
         manual_activity.heat_set_point = heat_set_point
         manual_activity.cool_set_point = cool_set_point
         manual_activity.fan = fan_mode
 
         self._updater.carrier_system.api_connection.set_config_manual_activity(
             system_serial=self._updater.carrier_system.serial,
-            zone_id=zone.api_id,
+            zone_id=self.zone_api_id,
             heat_set_point=heat_set_point,
             cool_set_point=cool_set_point,
             fan_mode=fan_mode,
@@ -256,8 +271,7 @@ class Thermostat(CarrierEntity, ClimateEntity):
             heat_set_point = int(heat_set_point)
             cool_set_point = int(cool_set_point)
 
-        zone = self._updater.carrier_system.config.zones[0]
-        manual_activity = zone.find_activity(ActivityNames.MANUAL)
+        manual_activity = self._config_zone.find_activity(ActivityNames.MANUAL)
         fan_mode = manual_activity.fan
         manual_activity.cool_set_point = cool_set_point
         manual_activity.heat_set_point = heat_set_point
@@ -267,7 +281,7 @@ class Thermostat(CarrierEntity, ClimateEntity):
         )
         self._updater.carrier_system.api_connection.set_config_manual_activity(
             system_serial=self._updater.carrier_system.serial,
-            zone_id=self._updater.carrier_system.status.zones[0].api_id,
+            zone_id=self.zone_api_id,
             heat_set_point=heat_set_point,
             cool_set_point=cool_set_point,
             fan_mode=fan_mode,
