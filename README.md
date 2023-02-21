@@ -1,6 +1,6 @@
 [![hacs_badge](https://img.shields.io/badge/HACS-Default-41BDF5.svg?style=for-the-badge)](https://github.com/hacs/integration)
 
-A custom integration for Carrier Infinity Thermostats. Only supports one zone setups, but can handle multiple thermostats.
+A custom integration for Carrier Infinity Thermostats.
 
 This integration utilizes the Carrier Api, if you would prefer a fully local integration for carrier thermostats use [infinitude](https://github.com/MizterB/homeassistant-infinitude)
 
