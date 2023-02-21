@@ -1,7 +1,6 @@
 import logging
 
 import voluptuous as vol
-import asyncio
 from homeassistant.core import HomeAssistant
 from homeassistant.const import (
     CONF_USERNAME,
