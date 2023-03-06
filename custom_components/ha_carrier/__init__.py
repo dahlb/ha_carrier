@@ -9,6 +9,7 @@ from homeassistant.const import (
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.helpers.typing import ConfigType
 import homeassistant.helpers.config_validation as cv
+from homeassistant.exceptions import PlatformNotReady
 
 from carrier_api import ApiConnection
 
@@ -52,8 +53,11 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry):
 
     data = {}
 
-    api_connection = ApiConnection(username=username, password=password)
-    carrier_systems = await hass.async_add_executor_job(api_connection.get_systems)
+    try:
+        api_connection = ApiConnection(username=username, password=password)
+        carrier_systems = await hass.async_add_executor_job(api_connection.get_systems)
+    except Exception as error:
+        raise PlatformNotReady(error) from error
 
     def create_updaters(carrier_system):
         return CarrierDataUpdateCoordinator(
