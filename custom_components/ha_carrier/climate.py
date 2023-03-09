@@ -144,7 +144,6 @@ class Thermostat(CarrierEntity, ClimateEntity):
                 ha_mode = HVACMode.HEAT_COOL
             case SystemModes.FAN_ONLY.value:
                 ha_mode = HVACMode.FAN_ONLY
-        _LOGGER.debug(f"carrier mode:{self._updater.carrier_system.config.mode};ha_mode:{ha_mode}")
         return ha_mode
 
     @property
