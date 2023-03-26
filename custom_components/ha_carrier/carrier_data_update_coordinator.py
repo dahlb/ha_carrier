@@ -28,6 +28,7 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator):
 
     async def _async_update_data(self):
         try:
+            await self.hass.async_add_executor_job(self.api_connection.activate)
             await self.hass.async_add_executor_job(self.carrier_system.status.refresh)
             await self.hass.async_add_executor_job(self.carrier_system.config.refresh)
             _LOGGER.debug(self.carrier_system)
