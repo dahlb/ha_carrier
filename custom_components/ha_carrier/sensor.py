@@ -7,8 +7,10 @@ from homeassistant.const import (
     TEMP_FAHRENHEIT,
     PERCENTAGE,
     UnitOfPressure,
+    UnitOfTime,
 )
 from homeassistant.config_entries import ConfigEntry
+from datetime import datetime
 from carrier_api import TemperatureUnits
 
 
@@ -30,6 +32,7 @@ async def async_setup_entry(hass, config_entry: ConfigEntry, async_add_entities)
                 TemperatureSensor(updater),
                 StaticPressureSensor(updater),
                 FilterUsedSensor(updater),
+                StatusAgeSensor(updater),
             ]
         )
     async_add_entities(entities)
@@ -82,6 +85,29 @@ class FilterUsedSensor(CarrierEntity, SensorEntity):
     @property
     def native_value(self) -> float:
         if self._updater.carrier_system.status.filter_used is not None:
+            return 100 - self._updater.carrier_system.status.filter_used
+
+    @property
+    def available(self) -> bool:
+        return self.native_value is not None
+
+
+class StatusAgeSensor(CarrierEntity, SensorEntity):
+    _attr_device_class = SensorDeviceClass.DURATION
+    _attr_native_unit_of_measurement = UnitOfTime.MINUTES
+    _attr_suggested_display_precision = 0
+
+    def __init__(self, updater):
+        super().__init__("Status Minutes Since Updating", updater)
+
+    @property
+    def native_value(self) -> float:
+        if self._updater.carrier_system.status.time_stamp is not None:
+            age_of_last_sync = (
+                datetime.now().astimezone() - self._updater.carrier_system.status.time_stamp
+            )
+            return int(age_of_last_sync.total_seconds() / 60)
+
             return 100 - self._updater.carrier_system.status.filter_used
 
     @property
