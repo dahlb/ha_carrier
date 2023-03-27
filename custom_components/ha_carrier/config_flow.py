@@ -35,7 +35,7 @@ class OptionFlowHandler(config_entries.OptionsFlow):
                     default=self.config_entry.options.get(
                         CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL
                     ),
-                ): vol.All(vol.Coerce(int), vol.Range(min=5, max=20)),
+                ): vol.All(vol.Coerce(int), vol.Range(min=1, max=20)),
                 vol.Required(
                     CONF_INFINITE_HOLDS,
                     default=self.config_entry.options.get(
