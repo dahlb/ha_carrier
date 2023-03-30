@@ -30,6 +30,7 @@ async def async_setup_entry(hass, config_entry: ConfigEntry, async_add_entities)
         entities.extend(
             [
                 TemperatureSensor(updater),
+                AirFlowSensor(updater),
                 StaticPressureSensor(updater),
                 FilterUsedSensor(updater),
                 StatusAgeSensor(updater),
@@ -57,6 +58,18 @@ class TemperatureSensor(CarrierEntity, SensorEntity):
     @property
     def native_value(self) -> float:
         return self._updater.carrier_system.status.outdoor_temperature
+
+
+class AirFlowSensor(CarrierEntity, SensorEntity):
+    _attr_device_class = SensorDeviceClass.WIND_SPEED
+    _attr_native_unit_of_measurement = "cfm"
+
+    def __init__(self, updater):
+        super().__init__("AirFlow", updater)
+
+    @property
+    def native_value(self) -> float:
+        return self._updater.carrier_system.status.airflow_cfm
 
 
 class StaticPressureSensor(CarrierEntity, SensorEntity):
