@@ -1,3 +1,5 @@
+"""Create constants for reference."""
+
 from homeassistant.const import Platform
 
 # Configuration Constants

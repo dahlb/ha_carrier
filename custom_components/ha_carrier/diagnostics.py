@@ -1,8 +1,10 @@
+"""Create diagnostics."""
+
 from __future__ import annotations
 from typing import Any
 
 import attr
-import logging
+from logging import Logger, getLogger
 
 from homeassistant.components.diagnostics import async_redact_data
 from homeassistant.config_entries import ConfigEntry
@@ -31,7 +33,7 @@ TO_REDACT_RAW = {
 TO_REDACT_DEVICE = {"identifiers"}
 TO_REDACT_ENTITIES = {}
 
-_LOGGER = logging.getLogger(__name__)
+LOGGER: Logger = getLogger(__package__)
 
 
 async def async_get_config_entry_diagnostics(

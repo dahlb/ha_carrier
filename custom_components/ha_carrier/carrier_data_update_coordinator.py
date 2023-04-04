@@ -1,4 +1,6 @@
-import logging
+"""Update data from carrier api."""
+
+from logging import Logger, getLogger
 from datetime import timedelta
 
 
@@ -9,10 +11,12 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 
 from .const import DOMAIN
 
-_LOGGER = logging.getLogger(__name__)
+LOGGER: Logger = getLogger(__package__)
 
 
 class CarrierDataUpdateCoordinator(DataUpdateCoordinator):
+    """Update data from carrier api."""
+
     def __init__(
         self, hass: HomeAssistant, carrier_system: System, interval: int
     ) -> None:
@@ -23,7 +27,7 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator):
 
         super().__init__(
             hass,
-            _LOGGER,
+            LOGGER,
             name=f"{DOMAIN}-{self.carrier_system.name}",
             update_interval=timedelta(minutes=interval),
         )
@@ -33,7 +37,7 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator):
             await self.hass.async_add_executor_job(self.api_connection.activate)
             await self.hass.async_add_executor_job(self.carrier_system.status.refresh)
             await self.hass.async_add_executor_job(self.carrier_system.config.refresh)
-            _LOGGER.debug(self.carrier_system)
+            LOGGER.debug(self.carrier_system)
             return None
         except Exception as error:
             raise UpdateFailed(error) from error

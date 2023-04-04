@@ -1,5 +1,7 @@
+"""Create binary sensors."""
+
 from __future__ import annotations
-import logging
+from logging import Logger, getLogger
 
 from homeassistant.components.binary_sensor import (
     BinarySensorDeviceClass,
@@ -12,10 +14,11 @@ from .const import DOMAIN, DATA_SYSTEMS
 from .carrier_data_update_coordinator import CarrierDataUpdateCoordinator
 from .carrier_entity import CarrierEntity
 
-_LOGGER = logging.getLogger(__name__)
+LOGGER: Logger = getLogger(__package__)
 
 
 async def async_setup_entry(hass, config_entry: ConfigEntry, async_add_entities):
+    """Create instances of binary sensors."""
     updaters: list[CarrierDataUpdateCoordinator] = hass.data[DOMAIN][
         config_entry.entry_id
     ][DATA_SYSTEMS]
@@ -36,9 +39,12 @@ async def async_setup_entry(hass, config_entry: ConfigEntry, async_add_entities)
 
 
 class OnlineSensor(CarrierEntity, BinarySensorEntity):
+    """Indicates if thermostat is online."""
+
     _attr_icon = "mdi:wifi-check"
 
     def __init__(self, updater):
+        """Declare device class and identifiers."""
         self.entity_description = BinarySensorEntityDescription(
             key=f"#{updater.carrier_system.serial}-online",
             device_class=BinarySensorDeviceClass.CONNECTIVITY,
@@ -52,6 +58,7 @@ class OnlineSensor(CarrierEntity, BinarySensorEntity):
 
     @property
     def icon(self) -> str | None:
+        """Picks icon."""
         if self.is_on:
             return self._attr_icon
         else:
@@ -59,9 +66,12 @@ class OnlineSensor(CarrierEntity, BinarySensorEntity):
 
 
 class OccupancySensor(CarrierEntity, BinarySensorEntity):
+    """Displays occupancy state."""
+
     _attr_device_class = BinarySensorDeviceClass.MOTION
 
     def __init__(self, updater, zone_api_id: str):
+        """Create identifiers."""
         self.zone_api_id: str = zone_api_id
         self._updater = updater
         super().__init__(f"{self._status_zone.name} Occupancy", updater)
@@ -74,4 +84,5 @@ class OccupancySensor(CarrierEntity, BinarySensorEntity):
 
     @property
     def is_on(self) -> bool | None:
+        """Return true if occupied."""
         return self._status_zone.occupancy

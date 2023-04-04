@@ -1,5 +1,7 @@
-import logging
-from typing import Dict, Optional, Any
+"""Add and configure integration from UI."""
+
+from logging import Logger, getLogger
+from typing import Optional, Any
 
 import voluptuous as vol
 import homeassistant.helpers.config_validation as cv
@@ -22,11 +24,14 @@ from .const import (
 
 from carrier_api import ApiConnection
 
-_LOGGER = logging.getLogger(__name__)
+LOGGER: Logger = getLogger(__package__)
 
 
 class OptionFlowHandler(config_entries.OptionsFlow):
+    """Display preferences UI."""
+
     def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
+        """Display preferences UI."""
         self.config_entry = config_entry
         self.schema = vol.Schema(
             {
@@ -45,9 +50,10 @@ class OptionFlowHandler(config_entries.OptionsFlow):
             }
         )
 
-    async def async_step_init(self, user_input: Optional[Dict[str, Any]] = None):
+    async def async_step_init(self, user_input: Optional[dict[str, Any]] = None):
+        """Display preferences UI."""
         if user_input is not None:
-            _LOGGER.debug(f"user input in option flow : %s", user_input)
+            LOGGER.debug("user input in option flow : %s", user_input)
             return self.async_create_entry(title="", data=user_input)
 
         return self.async_show_form(step_id="init", data_schema=self.schema)
@@ -55,26 +61,30 @@ class OptionFlowHandler(config_entries.OptionsFlow):
 
 @config_entries.HANDLERS.register(DOMAIN)
 class ConfigFlowHandler(config_entries.ConfigFlow):
+    """Create instance of integration through UI."""
 
     VERSION = CONFIG_FLOW_VERSION
     CONNECTION_CLASS = config_entries.CONN_CLASS_CLOUD_POLL
 
-    data: Optional[Dict[str, Any]] = {}
+    data: Optional[dict[str, Any]] = {}
 
     @staticmethod
     @callback
     def async_get_options_flow(config_entry):
+        """Return preferences handler."""
         return OptionFlowHandler(config_entry)
 
     def __init__(self):
+        """Create instance of integration through UI."""
         pass
 
-    async def async_step_user(self, user_input: Optional[Dict[str, Any]] = None):
+    async def async_step_user(self, user_input: Optional[dict[str, Any]] = None):
+        """Display auth interface."""
         data_schema = {
             vol.Required(CONF_USERNAME): str,
             vol.Required(CONF_PASSWORD): str,
         }
-        errors: Dict[str, str] = {}
+        errors: dict[str, str] = {}
 
         if user_input is not None:
             username = user_input[CONF_USERNAME]

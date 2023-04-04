@@ -1,6 +1,7 @@
-import logging
+"""Setup integration ha_carrier."""
 
 import voluptuous as vol
+from logging import Logger, getLogger
 from homeassistant.core import HomeAssistant
 from homeassistant.const import (
     CONF_USERNAME,
@@ -22,7 +23,7 @@ from .const import (
     DEFAULT_SCAN_INTERVAL,
 )
 
-_LOGGER = logging.getLogger(__name__)
+LOGGER: Logger = getLogger(__package__)
 
 CONFIG_SCHEMA = vol.Schema(
     {
@@ -38,13 +39,15 @@ CONFIG_SCHEMA = vol.Schema(
 
 
 async def async_setup(hass: HomeAssistant, config_entry: ConfigType) -> bool:
+    """Create global variables for integration."""
     hass.data.setdefault(DOMAIN, {})
-    _LOGGER.debug(f"async setup")
+    LOGGER.debug("async setup")
     return True
 
 
 async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry):
-    _LOGGER.debug(f"async setup entry: {config_entry.as_dict()}")
+    """Create instance of integration."""
+    LOGGER.debug(f"async setup entry: {config_entry.as_dict()}")
     username = config_entry.data[CONF_USERNAME]
     password = config_entry.data[CONF_PASSWORD]
     interval = config_entry.options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
@@ -80,11 +83,13 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry):
 
 
 async def async_update_options(hass: HomeAssistant, config_entry: ConfigEntry):
+    """Update preferences for integration instance."""
     await hass.config_entries.async_reload(config_entry.entry_id)
 
 
 async def async_unload_entry(hass: HomeAssistant, config_entry: ConfigEntry):
-    _LOGGER.debug(f"unload entry")
+    """Cleanup instance of integration."""
+    LOGGER.debug("unload entry")
     unload_ok = await hass.config_entries.async_unload_platforms(
         config_entry, PLATFORMS
     )

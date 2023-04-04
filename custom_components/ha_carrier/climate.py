@@ -1,6 +1,8 @@
+"""Create climate platform."""
+
 from __future__ import annotations
 
-import logging
+from logging import Logger, getLogger
 import asyncio
 
 from collections.abc import Mapping
@@ -44,7 +46,7 @@ from .const import (
 from .carrier_data_update_coordinator import CarrierDataUpdateCoordinator
 from .carrier_entity import CarrierEntity
 
-_LOGGER = logging.getLogger(__name__)
+LOGGER: Logger = getLogger(__package__)
 
 SUPPORT_FLAGS = (
     ClimateEntityFeature.TARGET_TEMPERATURE
@@ -55,7 +57,8 @@ SUPPORT_FLAGS = (
 
 
 async def async_setup_entry(hass, config_entry: ConfigEntry, async_add_entities):
-    _LOGGER.debug(f"setting up climate entry")
+    """Create climate platform."""
+    LOGGER.debug("setting up climate entry")
     infinite_hold = config_entry.options.get(
         CONF_INFINITE_HOLDS, DEFAULT_INFINITE_HOLDS
     )
@@ -76,10 +79,13 @@ async def async_setup_entry(hass, config_entry: ConfigEntry, async_add_entities)
 
 
 class Thermostat(CarrierEntity, ClimateEntity):
+    """Create thermostat."""
+
     _attr_supported_features = SUPPORT_FLAGS
 
     def __init__(self, updater, infinite_hold: bool, zone_api_id: str):
-        _LOGGER.debug(f"infinite_hold:{infinite_hold}")
+        """Create thermostat."""
+        LOGGER.debug(f"infinite_hold:{infinite_hold}")
         self.infinite_hold: bool = infinite_hold
         self.zone_api_id: str = zone_api_id
         self._updater = updater
@@ -89,12 +95,7 @@ class Thermostat(CarrierEntity, ClimateEntity):
         super().__init__(f"{self._status_zone.name}", updater)
         self._attr_max_temp = self._updater.carrier_system.config.limit_max
         self._attr_min_temp = self._updater.carrier_system.config.limit_min
-        self._attr_fan_modes = list(
-            map(
-                lambda fan_mode: fan_mode.value,
-                [FanModes.LOW, FanModes.MED, FanModes.HIGH],
-            )
-        )
+        self._attr_fan_modes = [fan_mode.value for fan_mode in [FanModes.LOW, FanModes.MED, FanModes.HIGH]]
         self._attr_fan_modes.append(FAN_AUTO)
         self._attr_hvac_modes = [
             HVACMode.OFF,
@@ -103,12 +104,7 @@ class Thermostat(CarrierEntity, ClimateEntity):
             HVACMode.HEAT,
             HVACMode.COOL,
         ]
-        self._attr_preset_modes = list(
-            map(
-                lambda activity: activity.api_id.value,
-                self._config_zone.activities,
-            )
-        )
+        self._attr_preset_modes = [activity.api_id.value for activity in self._config_zone.activities]
         self._attr_preset_modes.append("resume")
 
     @property
@@ -125,14 +121,17 @@ class Thermostat(CarrierEntity, ClimateEntity):
 
     @property
     def current_humidity(self) -> int | None:
+        """Return current humidity."""
         return self._status_zone.humidity
 
     @property
     def current_temperature(self) -> float | None:
+        """Return current temperature."""
         return self._status_zone.temperature
 
     @property
     def temperature_unit(self) -> str:
+        """Return temperature unit constant."""
         if (
             self._updater.carrier_system.status.temperature_unit
             == TemperatureUnits.FAHRENHEIT
@@ -143,6 +142,7 @@ class Thermostat(CarrierEntity, ClimateEntity):
 
     @property
     def target_temperature(self) -> float | None:
+        """Return target temperature."""
         if self.hvac_mode == HVACMode.HEAT:
             return self.target_temperature_low
         if self.hvac_mode == HVACMode.COOL:
@@ -151,6 +151,7 @@ class Thermostat(CarrierEntity, ClimateEntity):
 
     @property
     def hvac_mode(self) -> HVACMode | str | None:
+        """Return hvac mode."""
         ha_mode = None
         match self._updater.carrier_system.config.mode:
             case SystemModes.COOL.value:
@@ -167,6 +168,7 @@ class Thermostat(CarrierEntity, ClimateEntity):
 
     @property
     def hvac_action(self) -> HVACAction | str | None:
+        """Return hvac action."""
         if self.hvac_mode == HVACMode.OFF:
             return HVACAction.OFF
         elif self._status_zone.conditioning == "idle":
@@ -185,31 +187,37 @@ class Thermostat(CarrierEntity, ClimateEntity):
 
     @property
     def target_temperature_high(self) -> float | None:
+        """Return target temperature high."""
         return self._current_activity().cool_set_point
 
     @property
     def target_temperature_low(self) -> float | None:
+        """Return target temperature low."""
         return self._current_activity().heat_set_point
 
     @property
     def preset_mode(self) -> str | None:
+        """Return preset mode."""
         return self._current_activity().api_id.value
 
     @property
     def fan_mode(self) -> str | None:
+        """Return fan mode."""
         if self._current_activity().fan == FanModes.OFF:
             return FAN_AUTO
         else:
             return self._current_activity().fan.value
 
     def refresh(self):
+        """Invoke api update."""
         asyncio.run_coroutine_threadsafe(asyncio.sleep(5), self.hass.loop).result()
         asyncio.run_coroutine_threadsafe(
             self._updater.async_request_refresh(), self.hass.loop
         ).result()
 
     def set_hvac_mode(self, hvac_mode: HVACMode) -> None:
-        _LOGGER.debug(f"set_hvac_mode; hvac_mode:{hvac_mode}")
+        """Update hvac mode."""
+        LOGGER.debug(f"set_hvac_mode; hvac_mode:{hvac_mode}")
         if hvac_mode in [HVACMode.DRY, HVACMode.AUTO]:
             return
         match hvac_mode:
@@ -230,7 +238,8 @@ class Thermostat(CarrierEntity, ClimateEntity):
         self.refresh()
 
     def set_preset_mode(self, preset_mode: str) -> None:
-        _LOGGER.debug(f"set_preset_mode; preset_mode:{preset_mode}")
+        """Set preset mode."""
+        LOGGER.debug(f"set_preset_mode; preset_mode:{preset_mode}")
         if preset_mode == "resume":
             self._updater.carrier_system.api_connection.resume_schedule(
                 system_serial=self._updater.carrier_system.serial,
@@ -242,7 +251,7 @@ class Thermostat(CarrierEntity, ClimateEntity):
                 hold_until = None
             else:
                 hold_until = self._config_zone.next_activity_time()
-            _LOGGER.debug(
+            LOGGER.debug(
                 f"infinite_hold:{self.infinite_hold}; holding until:'{hold_until}'"
             )
             self._config_zone.hold = True
@@ -256,7 +265,8 @@ class Thermostat(CarrierEntity, ClimateEntity):
         self.refresh()
 
     def set_fan_mode(self, fan_mode: str) -> None:
-        _LOGGER.debug(f"set_fan_mode; fan_mode:{fan_mode}")
+        """Set fan mode."""
+        LOGGER.debug(f"set_fan_mode; fan_mode:{fan_mode}")
         fan_mode = FanModes(fan_mode)
         heat_set_point = self._current_activity().heat_set_point
         cool_set_point = self._current_activity().cool_set_point
@@ -275,7 +285,8 @@ class Thermostat(CarrierEntity, ClimateEntity):
         self.refresh()
 
     def set_temperature(self, **kwargs) -> None:
-        _LOGGER.debug(f"set_temperature; kwargs:{kwargs}")
+        """Set temperatures."""
+        LOGGER.debug(f"set_temperature; kwargs:{kwargs}")
         heat_set_point = kwargs.get(ATTR_TARGET_TEMP_LOW)
         cool_set_point = kwargs.get(ATTR_TARGET_TEMP_HIGH)
         temperature = kwargs.get(ATTR_TEMPERATURE)
@@ -296,7 +307,7 @@ class Thermostat(CarrierEntity, ClimateEntity):
         manual_activity.cool_set_point = cool_set_point
         manual_activity.heat_set_point = heat_set_point
 
-        _LOGGER.debug(
+        LOGGER.debug(
             f"set_temperature; heat_set_point:{heat_set_point}, cool_set_point:{cool_set_point}, fan_mode:{fan_mode}"
         )
         self._updater.carrier_system.api_connection.set_config_manual_activity(
@@ -310,6 +321,7 @@ class Thermostat(CarrierEntity, ClimateEntity):
 
     @property
     def extra_state_attributes(self) -> Mapping[str, Any] | None:
+        """Return extra state attributes."""
         return {
             "airflow_cfm": self._updater.carrier_system.status.airflow_cfm,
             "status_mode": self._updater.carrier_system.status.mode,

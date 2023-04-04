@@ -1,3 +1,5 @@
+"""Base entity for carrier devices."""
+
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.update_coordinator import (
     CoordinatorEntity,
@@ -8,6 +10,8 @@ from .carrier_data_update_coordinator import CarrierDataUpdateCoordinator
 
 
 class CarrierEntity(CoordinatorEntity):
+    """Base entity for carrier devices."""
+
     _attr_force_update = False
     _attr_should_poll = False
 
@@ -17,6 +21,7 @@ class CarrierEntity(CoordinatorEntity):
         updater: CarrierDataUpdateCoordinator,
         **kwargs,
     ) -> None:
+        """Create unique_id and access to api data."""
         super().__init__(updater)
         self._updater: CarrierDataUpdateCoordinator = updater
         self._attr_name = f"{self._updater.carrier_system.name} {entity_type}"
@@ -24,6 +29,7 @@ class CarrierEntity(CoordinatorEntity):
 
     @property
     def device_info(self) -> DeviceInfo:
+        """Return device info."""
         return DeviceInfo(
             identifiers={(DOMAIN, self._updater.carrier_system.serial)},
             manufacturer="Carrier",
