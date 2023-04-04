@@ -1,5 +1,5 @@
 {
-    "name": "dahlb/ha_sense",
+    "name": "dahlb/ha_carrier",
     "image": "mcr.microsoft.com/vscode/devcontainers/python:0-3.10-bullseye",
     "postCreateCommand": "scripts/setup",
     "forwardPorts": [

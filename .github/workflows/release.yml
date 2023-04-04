@@ -17,7 +17,7 @@ jobs:
         if: ${{steps.semantic_release_info.outputs.version != ''}}
         run: |
           echo "Version: ${{steps.semantic_release_info.outputs.version}}"
-          sed -i "s/\"version\": \".*\"/\"version\": \"${{steps.semantic_release_info.outputs.version}}\"/g" custom_components/ha_sense/manifest.json 
+          sed -i "s/\"version\": \".*\"/\"version\": \"${{steps.semantic_release_info.outputs.version}}\"/g" custom_components/ha_carrier/manifest.json 
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
           git diff
