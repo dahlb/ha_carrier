@@ -47,9 +47,7 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry):
     _LOGGER.debug(f"async setup entry: {config_entry.as_dict()}")
     username = config_entry.data[CONF_USERNAME]
     password = config_entry.data[CONF_PASSWORD]
-    interval = config_entry.options.get(
-                        CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL
-                    )
+    interval = config_entry.options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
 
     data = {}
 

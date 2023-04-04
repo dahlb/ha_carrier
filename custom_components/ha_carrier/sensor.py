@@ -105,7 +105,8 @@ class StatusAgeSensor(CarrierEntity, SensorEntity):
     def native_value(self) -> float:
         if self._updater.carrier_system.status.time_stamp is not None:
             age_of_last_sync = (
-                datetime.now().astimezone() - self._updater.carrier_system.status.time_stamp
+                datetime.now().astimezone()
+                - self._updater.carrier_system.status.time_stamp
             )
             return int(age_of_last_sync.total_seconds() / 60)
 

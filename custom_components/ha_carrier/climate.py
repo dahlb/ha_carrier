@@ -34,7 +34,13 @@ from carrier_api import (
     ConfigZoneActivity,
 )
 
-from .const import DOMAIN, DATA_SYSTEMS, CONF_INFINITE_HOLDS, DEFAULT_INFINITE_HOLDS, FAN_AUTO
+from .const import (
+    DOMAIN,
+    DATA_SYSTEMS,
+    CONF_INFINITE_HOLDS,
+    DEFAULT_INFINITE_HOLDS,
+    FAN_AUTO,
+)
 from .carrier_data_update_coordinator import CarrierDataUpdateCoordinator
 from .carrier_entity import CarrierEntity
 
@@ -51,8 +57,8 @@ SUPPORT_FLAGS = (
 async def async_setup_entry(hass, config_entry: ConfigEntry, async_add_entities):
     _LOGGER.debug(f"setting up climate entry")
     infinite_hold = config_entry.options.get(
-                        CONF_INFINITE_HOLDS, DEFAULT_INFINITE_HOLDS
-                    )
+        CONF_INFINITE_HOLDS, DEFAULT_INFINITE_HOLDS
+    )
     updaters: list[CarrierDataUpdateCoordinator] = hass.data[DOMAIN][
         config_entry.entry_id
     ][DATA_SYSTEMS]
@@ -61,7 +67,9 @@ async def async_setup_entry(hass, config_entry: ConfigEntry, async_add_entities)
         for zone in updater.carrier_system.config.zones:
             entities.extend(
                 [
-                    Thermostat(updater, infinite_hold=infinite_hold, zone_api_id=zone.api_id),
+                    Thermostat(
+                        updater, infinite_hold=infinite_hold, zone_api_id=zone.api_id
+                    ),
                 ]
             )
     async_add_entities(entities)
@@ -81,16 +89,27 @@ class Thermostat(CarrierEntity, ClimateEntity):
         super().__init__(f"{self._status_zone.name}", updater)
         self._attr_max_temp = self._updater.carrier_system.config.limit_max
         self._attr_min_temp = self._updater.carrier_system.config.limit_min
-        self._attr_fan_modes = list(map(lambda fan_mode: fan_mode.value, [FanModes.LOW, FanModes.MED, FanModes.HIGH]))
+        self._attr_fan_modes = list(
+            map(
+                lambda fan_mode: fan_mode.value,
+                [FanModes.LOW, FanModes.MED, FanModes.HIGH],
+            )
+        )
         self._attr_fan_modes.append(FAN_AUTO)
-        self._attr_hvac_modes = [HVACMode.OFF, HVACMode.FAN_ONLY, HVACMode.HEAT_COOL, HVACMode.HEAT, HVACMode.COOL]
+        self._attr_hvac_modes = [
+            HVACMode.OFF,
+            HVACMode.FAN_ONLY,
+            HVACMode.HEAT_COOL,
+            HVACMode.HEAT,
+            HVACMode.COOL,
+        ]
         self._attr_preset_modes = list(
             map(
                 lambda activity: activity.api_id.value,
                 self._config_zone.activities,
             )
         )
-        self._attr_preset_modes.append('resume')
+        self._attr_preset_modes.append("resume")
 
     @property
     def _status_zone(self) -> StatusZone:
@@ -223,7 +242,9 @@ class Thermostat(CarrierEntity, ClimateEntity):
                 hold_until = None
             else:
                 hold_until = self._config_zone.next_activity_time()
-            _LOGGER.debug(f"infinite_hold:{self.infinite_hold}; holding until:'{hold_until}'")
+            _LOGGER.debug(
+                f"infinite_hold:{self.infinite_hold}; holding until:'{hold_until}'"
+            )
             self._config_zone.hold = True
             self._config_zone.hold_activity = activity_name
             self._updater.carrier_system.api_connection.set_config_hold(
