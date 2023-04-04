@@ -60,18 +60,6 @@ class TemperatureSensor(CarrierEntity, SensorEntity):
         return self._updater.carrier_system.status.outdoor_temperature
 
 
-class AirFlowSensor(CarrierEntity, SensorEntity):
-    _attr_device_class = SensorDeviceClass.WIND_SPEED
-    _attr_native_unit_of_measurement = "cfm"
-
-    def __init__(self, updater):
-        super().__init__("AirFlow", updater)
-
-    @property
-    def native_value(self) -> float:
-        return self._updater.carrier_system.status.airflow_cfm
-
-
 class StaticPressureSensor(CarrierEntity, SensorEntity):
     _attr_device_class = SensorDeviceClass.PRESSURE
     _attr_native_unit_of_measurement = UnitOfPressure.INHG
