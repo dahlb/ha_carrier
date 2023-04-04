@@ -6,9 +6,6 @@
 ![Project Maintenance][maintenance-shield]
 [![BuyMeCoffee][buymecoffeebadge]][buymecoffee]
 
-
-[![hacs_badge](https://img.shields.io/badge/HACS-Default-41BDF5.svg?style=for-the-badge)](https://github.com/hacs/integration)
-
 A custom integration for Carrier Infinity Thermostats.
 
 This integration utilizes the Carrier Api, if you would prefer a fully local integration for carrier thermostats use [infinitude](https://github.com/MizterB/homeassistant-infinitude)
@@ -48,7 +45,7 @@ logger:
 [commits-shield]: https://img.shields.io/github/commit-activity/y/dahlb/ha_carrier.svg?style=for-the-badge
 [commits]: https://github.com/dahlb/ha_carrier/commits/main
 [hacs]: https://github.com/hacs/integration
-[hacsbadge]: https://img.shields.io/badge/HACS-Custom-orange.svg?style=for-the-badge
+[hacsbadge]: https://img.shields.io/badge/HACS-Default-41BDF5.svg?style=for-the-badge
 [forum]: https://community.home-assistant.io/
 [license-shield]: https://img.shields.io/github/license/dahlb/ha_carrier.svg?style=for-the-badge
 [maintenance-shield]: https://img.shields.io/badge/maintainer-Bren%20Dahl%20%40dahlb-blue.svg?style=for-the-badge
