@@ -6,7 +6,6 @@ select = [
     "B007", # Loop control variable {name} not used within loop body
     "B014", # Exception handler with duplicate exception
     "C",  # complexity
-    "D",  # docstrings
     "E",  # pycodestyle
     "F",  # pyflakes/autoflake
     "ICN001", # import concentions; {name} should be imported as {asname}
@@ -27,6 +26,7 @@ select = [
 ]
 
 ignore = [
+    "D",  # docstrings
     "D202",  # No blank lines allowed after function docstring
     "D203",  # 1 blank line required before class docstring
     "D213",  # Multi-line docstring summary should start at the second line
