@@ -2,4 +2,4 @@ colorlog==6.7.0
 homeassistant==2023.3.0
 pip>=8.0.3,<23.1
 ruff==0.0.261
-carrier-api==1.9.1
+carrier-api==1.9.2
