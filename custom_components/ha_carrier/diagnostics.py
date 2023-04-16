@@ -8,30 +8,19 @@ from logging import Logger, getLogger
 
 from homeassistant.components.diagnostics import async_redact_data
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import CONF_UNIQUE_ID, CONF_USERNAME, CONF_PASSWORD
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr, entity_registry as er
 
-from .const import DOMAIN, DATA_SYSTEMS
+from .const import (
+    DOMAIN,
+    DATA_SYSTEMS,
+    TO_REDACT,
+    TO_REDACT_MAPPED,
+    TO_REDACT_RAW,
+    TO_REDACT_DEVICE,
+    TO_REDACT_ENTITIES,
+)
 from .carrier_data_update_coordinator import CarrierDataUpdateCoordinator
-
-TO_REDACT = {CONF_USERNAME, CONF_PASSWORD, CONF_UNIQUE_ID}
-TO_REDACT_MAPPED = {
-    "serial",
-    "indoor_serial",
-    "outdoor_serial",
-}
-TO_REDACT_RAW = {
-    "pin",
-    "serial",
-    "indoorSerial",
-    "outdoorSerial",
-    "routerMac",
-    "href",
-    "weatherPostalCode",
-}
-TO_REDACT_DEVICE = {"identifiers"}
-TO_REDACT_ENTITIES = {}
 
 LOGGER: Logger = getLogger(__package__)
 

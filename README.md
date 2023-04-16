@@ -36,7 +36,6 @@ logger:
   default: warning
   logs:
     custom_components.ha_carrier: debug
-    carrier_api: debug
 ```
 
 ***

@@ -9,7 +9,8 @@ from carrier_api import System, ApiConnection
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
-from .const import DOMAIN
+from .const import DOMAIN, TO_REDACT_MAPPED
+from .util import async_redact_data
 
 LOGGER: Logger = getLogger(__package__)
 
@@ -37,7 +38,9 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator):
             await self.hass.async_add_executor_job(self.api_connection.activate)
             await self.hass.async_add_executor_job(self.carrier_system.status.refresh)
             await self.hass.async_add_executor_job(self.carrier_system.config.refresh)
-            LOGGER.debug(self.carrier_system)
+            LOGGER.debug(
+                async_redact_data(self.carrier_system.__repr__(), TO_REDACT_MAPPED)
+            )
             return None
         except Exception as error:
             raise UpdateFailed(error) from error

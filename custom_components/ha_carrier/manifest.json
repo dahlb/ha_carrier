@@ -4,8 +4,10 @@
   "codeowners": ["@dahlb"],
   "config_flow": true,
   "documentation": "https://github.com/dahlb/ha_carrier",
+  "integration_type": "hub",
   "iot_class": "cloud_polling",
   "issue_tracker": "https://github.com/dahlb/ha_carrier/issues",
+  "loggers": ["carrier_api"],
   "requirements": ["carrier-api==1.9.3"],
   "version": "1.18.3"
 }

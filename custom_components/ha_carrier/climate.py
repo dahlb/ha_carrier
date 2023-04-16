@@ -95,7 +95,9 @@ class Thermostat(CarrierEntity, ClimateEntity):
         super().__init__(f"{self._status_zone.name}", updater)
         self._attr_max_temp = self._updater.carrier_system.config.limit_max
         self._attr_min_temp = self._updater.carrier_system.config.limit_min
-        self._attr_fan_modes = [fan_mode.value for fan_mode in [FanModes.LOW, FanModes.MED, FanModes.HIGH]]
+        self._attr_fan_modes = [
+            fan_mode.value for fan_mode in [FanModes.LOW, FanModes.MED, FanModes.HIGH]
+        ]
         self._attr_fan_modes.append(FAN_AUTO)
         self._attr_hvac_modes = [
             HVACMode.OFF,
@@ -104,7 +106,9 @@ class Thermostat(CarrierEntity, ClimateEntity):
             HVACMode.HEAT,
             HVACMode.COOL,
         ]
-        self._attr_preset_modes = [activity.api_id.value for activity in self._config_zone.activities]
+        self._attr_preset_modes = [
+            activity.api_id.value for activity in self._config_zone.activities
+        ]
         self._attr_preset_modes.append("resume")
 
     @property

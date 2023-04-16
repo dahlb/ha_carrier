@@ -1,4 +1,5 @@
 """Setup integration ha_carrier."""
+import logging
 
 import voluptuous as vol
 from logging import Logger, getLogger
@@ -21,7 +22,9 @@ from .const import (
     DATA_SYSTEMS,
     CONF_SCAN_INTERVAL,
     DEFAULT_SCAN_INTERVAL,
+    TO_REDACT,
 )
+from .util import async_redact_data
 
 LOGGER: Logger = getLogger(__package__)
 
@@ -42,12 +45,13 @@ async def async_setup(hass: HomeAssistant, config_entry: ConfigType) -> bool:
     """Create global variables for integration."""
     hass.data.setdefault(DOMAIN, {})
     LOGGER.debug("async setup")
+    getLogger('carrier_api').setLevel(LOGGER.level)
     return True
 
 
 async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry):
     """Create instance of integration."""
-    LOGGER.debug(f"async setup entry: {config_entry.as_dict()}")
+    LOGGER.debug(f"async setup entry: {async_redact_data(config_entry.as_dict(), TO_REDACT)}")
     username = config_entry.data[CONF_USERNAME]
     password = config_entry.data[CONF_PASSWORD]
     interval = config_entry.options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
