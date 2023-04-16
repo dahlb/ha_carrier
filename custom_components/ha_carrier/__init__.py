@@ -1,5 +1,4 @@
 """Setup integration ha_carrier."""
-import logging
 
 import voluptuous as vol
 from logging import Logger, getLogger
