@@ -32,16 +32,80 @@ async def async_setup_entry(hass, config_entry: ConfigEntry, async_add_entities)
     for updater in updaters:
         entities.extend(
             [
-                TemperatureSensor(updater),
+                OutdoorTemperatureSensor(updater),
                 StaticPressureSensor(updater),
                 FilterUsedSensor(updater),
                 StatusAgeSensor(updater),
             ]
         )
+        for zone in updater.carrier_system.config.zones:
+            entities.extend(
+                [
+                    ZoneTemperatureSensor(updater, zone_api_id=zone.api_id),
+                    ZoneHumiditySensor(updater, zone_api_id=zone.api_id),
+                ]
+            )
     async_add_entities(entities)
 
 
-class TemperatureSensor(CarrierEntity, SensorEntity):
+class ZoneHumiditySensor(CarrierEntity, SensorEntity):
+    """Displays humidity at zone."""
+
+    _attr_device_class = SensorDeviceClass.HUMIDITY
+
+    def __init__(self, updater, zone_api_id: str):
+        """Create identifiers."""
+        self.zone_api_id: str = zone_api_id
+        self._updater = updater
+        super().__init__(f"{self._status_zone.name} Humidity", updater)
+
+    @property
+    def _status_zone(self):
+        for zone in self._updater.carrier_system.status.zones:
+            if zone.api_id == self.zone_api_id:
+                return zone
+
+    @property
+    def native_value(self) -> float:
+        """Returns temperature."""
+        return self._status_zone.humidity
+
+
+class ZoneTemperatureSensor(CarrierEntity, SensorEntity):
+    """Displays temperature at zone."""
+
+    _attr_device_class = SensorDeviceClass.TEMPERATURE
+
+    def __init__(self, updater, zone_api_id: str):
+        """Create identifiers."""
+        self.zone_api_id: str = zone_api_id
+        self._updater = updater
+        super().__init__(f"{self._status_zone.name} Temperature", updater)
+
+    @property
+    def _status_zone(self):
+        for zone in self._updater.carrier_system.status.zones:
+            if zone.api_id == self.zone_api_id:
+                return zone
+
+    @property
+    def native_unit_of_measurement(self) -> str | None:
+        """Returns unit of temperature."""
+        if (
+            self._updater.carrier_system.status.temperature_unit
+            == TemperatureUnits.FAHRENHEIT
+        ):
+            return TEMP_FAHRENHEIT
+        else:
+            return TEMP_CELSIUS
+
+    @property
+    def native_value(self) -> float:
+        """Returns temperature."""
+        return self._status_zone.temperature
+
+
+class OutdoorTemperatureSensor(CarrierEntity, SensorEntity):
     """Temperature sensor."""
 
     _attr_device_class = SensorDeviceClass.TEMPERATURE
