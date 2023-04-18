@@ -18,6 +18,8 @@ from homeassistant.components.climate import (
 from homeassistant.const import (
     ATTR_TEMPERATURE,
     TEMP_CELSIUS,
+    PRECISION_HALVES,
+    PRECISION_WHOLE,
     TEMP_FAHRENHEIT,
 )
 from homeassistant.components.climate.const import (
@@ -145,15 +147,6 @@ class Thermostat(CarrierEntity, ClimateEntity):
             return TEMP_CELSIUS
 
     @property
-    def target_temperature(self) -> float | None:
-        """Return target temperature."""
-        if self.hvac_mode == HVACMode.HEAT:
-            return self.target_temperature_low
-        if self.hvac_mode == HVACMode.COOL:
-            return self.target_temperature_high
-        return None
-
-    @property
     def hvac_mode(self) -> HVACMode | str | None:
         """Return hvac mode."""
         ha_mode = None
@@ -190,14 +183,34 @@ class Thermostat(CarrierEntity, ClimateEntity):
         return self._config_zone.current_activity()
 
     @property
+    def target_temperature_step(self) -> float:
+        if self.temperature_unit == TEMP_CELSIUS:
+            return PRECISION_HALVES
+        else:
+            return PRECISION_WHOLE
+
+    @property
+    def target_temperature(self) -> float | None:
+        """Return target temperature."""
+        if self.hvac_mode == HVACMode.HEAT:
+            return self._current_activity().heat_set_point
+        if self.hvac_mode == HVACMode.COOL:
+            return self._current_activity().cool_set_point
+        return None
+
+    @property
     def target_temperature_high(self) -> float | None:
         """Return target temperature high."""
-        return self._current_activity().cool_set_point
+        if self.hvac_mode == HVACMode.HEAT_COOL:
+            return self._current_activity().cool_set_point
+        return None
 
     @property
     def target_temperature_low(self) -> float | None:
         """Return target temperature low."""
-        return self._current_activity().heat_set_point
+        if self.hvac_mode == HVACMode.HEAT_COOL:
+            return self._current_activity().heat_set_point
+        return None
 
     @property
     def preset_mode(self) -> str | None:
