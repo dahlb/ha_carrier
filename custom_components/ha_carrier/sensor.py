@@ -52,6 +52,7 @@ class ZoneHumiditySensor(CarrierEntity, SensorEntity):
     """Displays humidity at zone."""
 
     _attr_device_class = SensorDeviceClass.HUMIDITY
+    _attr_native_unit_of_measurement = PERCENTAGE
 
     def __init__(self, updater, zone_api_id: str):
         """Create identifiers."""
