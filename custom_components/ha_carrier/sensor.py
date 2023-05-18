@@ -158,6 +158,7 @@ class FilterUsedSensor(CarrierEntity, SensorEntity):
 
     _attr_device_class = SensorDeviceClass.BATTERY
     _attr_native_unit_of_measurement = PERCENTAGE
+    _attr_icon = "mdi:air-filter"
 
     def __init__(self, updater):
         """Filter used sensor."""
