@@ -118,13 +118,7 @@ class OutdoorTemperatureSensor(CarrierEntity, SensorEntity):
     @property
     def native_unit_of_measurement(self) -> str | None:
         """Returns unit of temperature."""
-        if (
-            self._updater.carrier_system.status.temperature_unit
-            == TemperatureUnits.FAHRENHEIT
-        ):
-            return TEMP_FAHRENHEIT
-        else:
-            return TEMP_CELSIUS
+        return TEMP_FAHRENHEIT
 
     @property
     def native_value(self) -> float:
