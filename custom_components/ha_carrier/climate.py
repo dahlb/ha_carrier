@@ -284,7 +284,10 @@ class Thermostat(CarrierEntity, ClimateEntity):
     def set_fan_mode(self, fan_mode: str) -> None:
         """Set fan mode."""
         LOGGER.debug(f"set_fan_mode; fan_mode:{fan_mode}")
-        fan_mode = FanModes(fan_mode)
+        if fan_mode == FAN_AUTO:
+            fan_mode = FanModes.OFF
+        else:
+            fan_mode = FanModes(fan_mode)
         heat_set_point = self._current_activity().heat_set_point
         cool_set_point = self._current_activity().cool_set_point
         manual_activity = self._config_zone.find_activity(ActivityNames.MANUAL)
