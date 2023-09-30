@@ -180,7 +180,7 @@ class Thermostat(CarrierEntity, ClimateEntity):
             return HVACAction.FAN
 
     def _current_activity(self) -> ConfigZoneActivity:
-        return self._config_zone.current_activity()
+        return self._config_zone.find_activity(self._status_zone.current_activity)
 
     @property
     def target_temperature_step(self) -> float:
