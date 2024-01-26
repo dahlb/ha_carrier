@@ -102,4 +102,4 @@ class HumidifierSensor(CarrierEntity, BinarySensorEntity):
     @property
     def is_on(self) -> bool | None:
         if self._updater.carrier_system.status.humidifier_on is not None:
-            return self._updater.carrier_system.status.filter_used
+            return self._updater.carrier_system.status.humidifier_on
