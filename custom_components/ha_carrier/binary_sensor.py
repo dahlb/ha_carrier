@@ -27,6 +27,7 @@ async def async_setup_entry(hass, config_entry: ConfigEntry, async_add_entities)
         entities.extend(
             [
                 OnlineSensor(updater),
+                HumidifierSensor(updater),
             ]
         )
         for zone in updater.carrier_system.config.zones:
@@ -86,3 +87,19 @@ class OccupancySensor(CarrierEntity, BinarySensorEntity):
     def is_on(self) -> bool | None:
         """Return true if occupied."""
         return self._status_zone.occupancy
+
+
+class HumidifierSensor(CarrierEntity, BinarySensorEntity):
+    """Displays occupancy state."""
+
+    _attr_device_class = BinarySensorDeviceClass.MOISTURE
+
+    def __init__(self, updater):
+        """Create identifiers."""
+        self._updater = updater
+        super().__init__(f"Humidifier Running", updater)
+
+    @property
+    def is_on(self) -> bool | None:
+        if self._updater.carrier_system.status.humidifier_on is not None:
+            return self._updater.carrier_system.status.filter_used
