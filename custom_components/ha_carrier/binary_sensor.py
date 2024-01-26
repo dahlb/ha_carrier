@@ -97,7 +97,7 @@ class HumidifierSensor(CarrierEntity, BinarySensorEntity):
     def __init__(self, updater):
         """Create identifiers."""
         self._updater = updater
-        super().__init__(f"Humidifier Running", updater)
+        super().__init__("Humidifier Running", updater)
 
     @property
     def is_on(self) -> bool | None:
