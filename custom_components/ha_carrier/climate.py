@@ -17,10 +17,9 @@ from homeassistant.components.climate import (
 )
 from homeassistant.const import (
     ATTR_TEMPERATURE,
-    TEMP_CELSIUS,
+    UnitOfTemperature,
     PRECISION_HALVES,
     PRECISION_WHOLE,
-    TEMP_FAHRENHEIT,
 )
 from homeassistant.components.climate.const import (
     ATTR_TARGET_TEMP_HIGH,
@@ -142,9 +141,9 @@ class Thermostat(CarrierEntity, ClimateEntity):
             self._updater.carrier_system.status.temperature_unit
             == TemperatureUnits.FAHRENHEIT
         ):
-            return TEMP_FAHRENHEIT
+            return UnitOfTemperature.FAHRENHEIT
         else:
-            return TEMP_CELSIUS
+            return UnitOfTemperature.CELSIUS
 
     @property
     def hvac_mode(self) -> HVACMode | str | None:
@@ -184,7 +183,7 @@ class Thermostat(CarrierEntity, ClimateEntity):
 
     @property
     def target_temperature_step(self) -> float:
-        if self.temperature_unit == TEMP_CELSIUS:
+        if self.temperature_unit == UnitOfTemperature.CELSIUS:
             return PRECISION_HALVES
         else:
             return PRECISION_WHOLE
@@ -318,7 +317,7 @@ class Thermostat(CarrierEntity, ClimateEntity):
             heat_set_point = temperature or heat_set_point
             cool_set_point = self.max_temp
 
-        if self.temperature_unit == TEMP_FAHRENHEIT:
+        if self.temperature_unit == UnitOfTemperature.FAHRENHEIT:
             heat_set_point = int(heat_set_point)
             cool_set_point = int(cool_set_point)
 

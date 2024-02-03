@@ -5,8 +5,7 @@ from logging import Logger, getLogger
 
 from homeassistant.components.sensor import SensorEntity, SensorDeviceClass
 from homeassistant.const import (
-    TEMP_CELSIUS,
-    TEMP_FAHRENHEIT,
+    UnitOfTemperature,
     PERCENTAGE,
     UnitOfPressure,
     UnitOfTime,
@@ -96,9 +95,9 @@ class ZoneTemperatureSensor(CarrierEntity, SensorEntity):
             self._updater.carrier_system.status.temperature_unit
             == TemperatureUnits.FAHRENHEIT
         ):
-            return TEMP_FAHRENHEIT
+            return UnitOfTemperature.FAHRENHEIT
         else:
-            return TEMP_CELSIUS
+            return UnitOfTemperature.CELSIUS
 
     @property
     def native_value(self) -> float:
@@ -118,7 +117,7 @@ class OutdoorTemperatureSensor(CarrierEntity, SensorEntity):
     @property
     def native_unit_of_measurement(self) -> str | None:
         """Returns unit of temperature."""
-        return TEMP_FAHRENHEIT
+        return UnitOfTemperature.FAHRENHEIT
 
     @property
     def native_value(self) -> float:
