@@ -50,12 +50,12 @@ from .carrier_entity import CarrierEntity
 LOGGER: Logger = getLogger(__package__)
 
 SUPPORT_FLAGS = (
-    ClimateEntityFeature.TARGET_TEMPERATURE
+    ClimateEntityFeature.TURN_ON
+    | ClimateEntityFeature.TURN_OFF
+    | ClimateEntityFeature.TARGET_TEMPERATURE
     | ClimateEntityFeature.TARGET_TEMPERATURE_RANGE
     | ClimateEntityFeature.FAN_MODE
     | ClimateEntityFeature.PRESET_MODE
-    | ClimateEntityFeature.TURN_OFF
-    | ClimateEntityFeature.TURN_ON
 )
 
 
@@ -85,6 +85,7 @@ class Thermostat(CarrierEntity, ClimateEntity):
     """Create thermostat."""
 
     _attr_supported_features = SUPPORT_FLAGS
+    _enable_turn_on_off_backwards_compatibility = False
 
     def __init__(self, updater, infinite_hold: bool, zone_api_id: str):
         """Create thermostat."""
