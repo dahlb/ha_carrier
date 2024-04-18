@@ -129,7 +129,7 @@ class StaticPressureSensor(CarrierEntity, SensorEntity):
     """Static Pressure sensor."""
 
     _attr_device_class = SensorDeviceClass.PRESSURE
-    _attr_native_unit_of_measurement = UnitOfPressure.INHG
+    _attr_native_unit_of_measurement = UnitOfPressure.PSI
 
     def __init__(self, updater):
         """Create static pressure sensor."""
