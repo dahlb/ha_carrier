@@ -9,6 +9,7 @@ from homeassistant.const import (
     PERCENTAGE,
     UnitOfPressure,
     UnitOfTime,
+    UnitOfVolumeFlowRate,
 )
 from homeassistant.config_entries import ConfigEntry
 from datetime import datetime
@@ -35,6 +36,9 @@ async def async_setup_entry(hass, config_entry: ConfigEntry, async_add_entities)
                 StaticPressureSensor(updater),
                 FilterUsedSensor(updater),
                 StatusAgeSensor(updater),
+                AirflowSensor(updater),
+                OutdoorUnitOperationalStatusSensor(updater),
+                IndoorUnitOperationalStatusSensor(updater),
             ]
         )
         for zone in updater.carrier_system.config.zones:
@@ -191,6 +195,73 @@ class StatusAgeSensor(CarrierEntity, SensorEntity):
             return int(age_of_last_sync.total_seconds() / 60)
 
             return 100 - self._updater.carrier_system.status.filter_used
+
+    @property
+    def available(self) -> bool:
+        """Return true if sensor is ready for display."""
+        return self.native_value is not None
+
+
+class AirflowSensor(CarrierEntity, SensorEntity):
+    """Airflow sensor."""
+
+    _attr_device_class = SensorDeviceClass.VOLUME_FLOW_RATE
+    _attr_native_unit_of_measurement = UnitOfVolumeFlowRate.CUBIC_FEET_PER_MINUTE
+    _attr_icon = "mdi:fan"
+
+    def __init__(self, updater):
+        """Airflow sensor."""
+        super().__init__("Airflow", updater)
+
+    @property
+    def native_value(self) -> float:
+        """Return airflow in cfm."""
+        if self._updater.carrier_system.status.airflow_cfm is not None:
+            return int(self._updater.carrier_system.status.airflow_cfm)
+
+    @property
+    def available(self) -> bool:
+        """Return true if sensor is ready for display."""
+        return self.native_value is not None
+
+
+class OutdoorUnitOperationalStatusSensor(CarrierEntity, SensorEntity):
+    """Outdoor unit operational status sensor."""
+
+    _attr_device_class = SensorDeviceClass.ENUM
+    _attr_icon = "mdi:hvac"
+
+    def __init__(self, updater):
+        """Creates outdoor unit operational status sensor."""
+        super().__init__("ODU Status", updater)
+
+    @property
+    def native_value(self) -> float:
+        """Return outdoor unit operational status."""
+        if self._updater.carrier_system.status.outdoor_unit_operational_status is not None:
+            return self._updater.carrier_system.status.outdoor_unit_operational_status
+
+    @property
+    def available(self) -> bool:
+        """Return true if sensor is ready for display."""
+        return self.native_value is not None
+
+
+class IndoorUnitOperationalStatusSensor(CarrierEntity, SensorEntity):
+    """Indoor unit operational status sensor."""
+
+    _attr_device_class = SensorDeviceClass.ENUM
+    _attr_icon = "mdi:hvac"
+
+    def __init__(self, updater):
+        """Creates indoor unit operational status sensor."""
+        super().__init__("IDU Status", updater)
+
+    @property
+    def native_value(self) -> float:
+        """Return indoor unit operational status."""
+        if self._updater.carrier_system.status.indoor_unit_operational_status is not None:
+            return self._updater.carrier_system.status.indoor_unit_operational_status
 
     @property
     def available(self) -> bool:
