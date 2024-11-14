@@ -256,6 +256,14 @@ class Thermostat(CarrierEntity, ClimateEntity):
         )
         self.refresh()
 
+    @property
+    def _hold_until(self):
+        LOGGER.debug(
+            f"infinite_hold:{self.infinite_hold}; holding until:'{self._config_zone.next_activity_time()}'"
+        )
+        if not self.infinite_hold:
+            return self._config_zone.next_activity_time()
+
     def set_preset_mode(self, preset_mode: str) -> None:
         """Set preset mode."""
         LOGGER.debug(f"set_preset_mode; preset_mode:{preset_mode}")
@@ -266,20 +274,13 @@ class Thermostat(CarrierEntity, ClimateEntity):
             )
         else:
             activity_name = ActivityNames(preset_mode.strip().lower())
-            if self.infinite_hold:
-                hold_until = None
-            else:
-                hold_until = self._config_zone.next_activity_time()
-            LOGGER.debug(
-                f"infinite_hold:{self.infinite_hold}; holding until:'{hold_until}'"
-            )
             self._config_zone.hold = True
             self._config_zone.hold_activity = activity_name
             self._updater.carrier_system.api_connection.set_config_hold(
                 system_serial=self._updater.carrier_system.serial,
                 zone_id=self.zone_api_id,
                 activity_name=activity_name,
-                hold_until=hold_until,
+                hold_until=self._hold_until,
             )
         self.refresh()
 
@@ -303,6 +304,7 @@ class Thermostat(CarrierEntity, ClimateEntity):
             heat_set_point=heat_set_point,
             cool_set_point=cool_set_point,
             fan_mode=fan_mode,
+            hold_until=self._hold_until,
         )
         self.refresh()
 
@@ -338,6 +340,7 @@ class Thermostat(CarrierEntity, ClimateEntity):
             heat_set_point=heat_set_point,
             cool_set_point=cool_set_point,
             fan_mode=fan_mode,
+            hold_until=self._hold_until,
         )
         self.refresh()
 
