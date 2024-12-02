@@ -1,4 +1,4 @@
 colorlog==6.9.0
 homeassistant==2024.11.1
-ruff==0.8.0
+ruff==0.8.1
 carrier-api===1.13.0
