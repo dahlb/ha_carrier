@@ -97,8 +97,6 @@ class Thermostat(CarrierEntity, ClimateEntity):
             key=f"#{updater.carrier_system.serial}-zone{self.zone_api_id}-climate",
         )
         super().__init__(f"{self._status_zone.name}", updater)
-        self._attr_max_temp = self._updater.carrier_system.config.limit_max
-        self._attr_min_temp = self._updater.carrier_system.config.limit_min
         self._attr_fan_modes = [
             fan_mode.value for fan_mode in [FanModes.LOW, FanModes.MED, FanModes.HIGH]
         ]
@@ -314,19 +312,19 @@ class Thermostat(CarrierEntity, ClimateEntity):
         heat_set_point = kwargs.get(ATTR_TARGET_TEMP_LOW)
         cool_set_point = kwargs.get(ATTR_TARGET_TEMP_HIGH)
         temperature = kwargs.get(ATTR_TEMPERATURE)
+        manual_activity = self._config_zone.find_activity(ActivityNames.MANUAL)
 
         if self._updater.carrier_system.config.mode == SystemModes.COOL.value:
-            heat_set_point = self.min_temp
+            heat_set_point = manual_activity.heat_set_point
             cool_set_point = temperature or cool_set_point
         elif self._updater.carrier_system.config.mode == SystemModes.HEAT.value:
             heat_set_point = temperature or heat_set_point
-            cool_set_point = self.max_temp
+            cool_set_point = manual_activity.cool_set_point
 
         if self.temperature_unit == UnitOfTemperature.FAHRENHEIT:
             heat_set_point = int(heat_set_point)
             cool_set_point = int(cool_set_point)
 
-        manual_activity = self._config_zone.find_activity(ActivityNames.MANUAL)
         fan_mode = manual_activity.fan
         manual_activity.cool_set_point = cool_set_point
         manual_activity.heat_set_point = heat_set_point

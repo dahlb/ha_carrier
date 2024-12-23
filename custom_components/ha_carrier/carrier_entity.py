@@ -11,10 +11,6 @@ from .carrier_data_update_coordinator import CarrierDataUpdateCoordinator
 
 class CarrierEntity(CoordinatorEntity):
     """Base entity for carrier devices."""
-
-    _attr_force_update = False
-    _attr_should_poll = False
-
     def __init__(
         self,
         entity_type: str,
