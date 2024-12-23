@@ -346,6 +346,7 @@ class Thermostat(CarrierEntity, ClimateEntity):
     def extra_state_attributes(self) -> Mapping[str, Any] | None:
         """Return extra state attributes."""
         return {
+            "heat_source": self._updater.carrier_system.config.heat_source,
             "conditioning": self._updater.carrier_system.status.conditioning,
             "airflow_cfm": self._updater.carrier_system.status.airflow_cfm,
             "status_mode": self._updater.carrier_system.status.mode,
