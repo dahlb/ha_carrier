@@ -347,7 +347,7 @@ class Thermostat(CarrierEntity, ClimateEntity):
         """Return extra state attributes."""
         return {
             "heat_source": self._updater.carrier_system.config.heat_source,
-            "conditioning": self._updater.carrier_system.status.conditioning,
+            "conditioning": self._status_zone.conditioning,
             "airflow_cfm": self._updater.carrier_system.status.airflow_cfm,
             "status_mode": self._updater.carrier_system.status.mode,
             "outdoor_unit_operational_status": self._updater.carrier_system.status.outdoor_unit_operational_status,
