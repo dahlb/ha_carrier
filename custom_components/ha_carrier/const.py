@@ -8,7 +8,12 @@ DOMAIN: str = "ha_carrier"
 
 # Integration Setting Constants
 CONFIG_FLOW_VERSION: int = 1
-PLATFORMS = [Platform.BINARY_SENSOR, Platform.SENSOR, Platform.CLIMATE]
+PLATFORMS = [
+    Platform.BINARY_SENSOR,
+    Platform.SENSOR,
+    Platform.CLIMATE,
+    Platform.SELECT,
+]
 
 # Home Assistant Data Storage Constants
 DATA_SYSTEMS: str = "systems"
@@ -37,3 +42,7 @@ TO_REDACT_RAW = {
 }
 TO_REDACT_DEVICE = {"identifiers"}
 TO_REDACT_ENTITIES = {}
+
+HEAT_SOURCE_IDU_ONLY_LABEL = "gas heat only"
+HEAT_SOURCE_ODU_ONLY_LABEL = "heat pump only"
+HEAT_SOURCE_SYSTEM_LABEL = "system in control"

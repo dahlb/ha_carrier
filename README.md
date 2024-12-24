@@ -12,6 +12,10 @@ This integration utilizes the Carrier Api, if you would prefer a fully local int
 
 tested initially on SYSTXCCWIC01-B fw 4.31
 
+## WARNING ##
+
+If you don't have a heat pump, do not select heat pump only for your heat source
+
 ## Feature Highlights ##
 - thermostat
   - adjust fan speed, turn off/on
