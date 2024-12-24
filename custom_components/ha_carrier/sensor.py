@@ -35,7 +35,7 @@ async def async_setup_entry(hass, config_entry: ConfigEntry, async_add_entities)
                 OutdoorTemperatureSensor(updater),
                 StaticPressureSensor(updater),
                 FilterUsedSensor(updater),
-                HumidifierUsedSensor(updater),
+                HumidifierRemainingSensor(updater),
                 StatusAgeSensor(updater),
                 AirflowSensor(updater),
                 OutdoorUnitOperationalStatusSensor(updater),
@@ -174,8 +174,8 @@ class FilterUsedSensor(CarrierEntity, SensorEntity):
         return self.native_value is not None
 
 
-class HumidifierUsedSensor(CarrierEntity, SensorEntity):
-    """Humidifier used sensor, mimics battery for easy testing."""
+class HumidifierRemainingSensor(CarrierEntity, SensorEntity):
+    """Humidifier remaining sensor, mimics battery for easy testing."""
 
     _attr_device_class = SensorDeviceClass.BATTERY
     _attr_native_unit_of_measurement = PERCENTAGE
@@ -183,12 +183,13 @@ class HumidifierUsedSensor(CarrierEntity, SensorEntity):
 
     def __init__(self, updater):
         """Humidifier used sensor."""
-        super().__init__("Humidifier Serviceable Parts Used", updater)
+        super().__init__("Humidifier Remaining", updater)
 
     @property
     def native_value(self) -> float:
         """Return percentage remaining."""
-        return self._updater.carrier_system.status.humidity_level
+        if self._updater.carrier_system.status.humidity_level is not None:
+            return 100 - self._updater.carrier_system.status.humidity_level
 
     @property
     def available(self) -> bool:
