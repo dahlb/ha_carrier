@@ -49,22 +49,24 @@ class HeatSourceSelect(CarrierEntity, SelectEntity):
 
     def __init__(self, updater):
         """Declare device class and identifiers."""
+        super().__init__("Heat Source", updater)
         if updater.carrier_system.profile.outdoor_unit_type == "varcaphp":
-            options = [HEAT_SOURCE_IDU_ONLY_LABEL, HEAT_SOURCE_ODU_ONLY_LABEL, HEAT_SOURCE_SYSTEM_LABEL]
+            options = [self.idu_only_label(), HEAT_SOURCE_ODU_ONLY_LABEL, HEAT_SOURCE_SYSTEM_LABEL]
         else:
-            options = [HEAT_SOURCE_IDU_ONLY_LABEL, HEAT_SOURCE_SYSTEM_LABEL]
+            options = [self.idu_only_label(), HEAT_SOURCE_SYSTEM_LABEL]
         self.entity_description = SelectEntityDescription(
             key=f"#{updater.carrier_system.serial}-heat_source",
-            device_class=BinarySensorDeviceClass.CONNECTIVITY,
             options=options
         )
-        super().__init__("Heat Source", updater)
+
+    def idu_only_label(self) -> str | None:
+        return HEAT_SOURCE_IDU_ONLY_LABEL.replace("gas", self._updater.carrier_system.profile.indoor_unit_source)
 
     @property
     def current_option(self) -> str| None:
         """Return true if the binary sensor is on."""
         return {
-            HeatSourceTypes.IDU_ONLY.value: HEAT_SOURCE_IDU_ONLY_LABEL,
+            HeatSourceTypes.IDU_ONLY.value: self.idu_only_label(),
             HeatSourceTypes.ODU_ONLY.value: HEAT_SOURCE_ODU_ONLY_LABEL,
             HeatSourceTypes.SYSTEM.value: HEAT_SOURCE_SYSTEM_LABEL,
         }.get(self._updater.carrier_system.config.heat_source, None)
@@ -72,7 +74,7 @@ class HeatSourceSelect(CarrierEntity, SelectEntity):
     def select_option(self, option: str) -> None:
         """Change the selected option."""
         new_heat_source: HeatSourceTypes = {
-            HEAT_SOURCE_IDU_ONLY_LABEL: HeatSourceTypes.IDU_ONLY,
+            self.idu_only_label(): HeatSourceTypes.IDU_ONLY,
             HEAT_SOURCE_ODU_ONLY_LABEL: HeatSourceTypes.ODU_ONLY,
             HEAT_SOURCE_SYSTEM_LABEL: HeatSourceTypes.SYSTEM,
         }.get(option, HeatSourceTypes.SYSTEM)

@@ -8,6 +8,6 @@
   "iot_class": "cloud_polling",
   "issue_tracker": "https://github.com/dahlb/ha_carrier/issues",
   "loggers": ["carrier_api"],
-  "requirements": ["carrier-api==1.15.0"],
+  "requirements": ["carrier-api==1.16.0"],
   "version": "1.27.1"
 }
