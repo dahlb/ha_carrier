@@ -49,10 +49,14 @@ class HeatSourceSelect(CarrierEntity, SelectEntity):
 
     def __init__(self, updater):
         """Declare device class and identifiers."""
+        if updater.carrier_system.profile.outdoor_unit_type == "varcaphp":
+            options = [HEAT_SOURCE_IDU_ONLY_LABEL, HEAT_SOURCE_ODU_ONLY_LABEL, HEAT_SOURCE_SYSTEM_LABEL]
+        else:
+            options = [HEAT_SOURCE_IDU_ONLY_LABEL, HEAT_SOURCE_SYSTEM_LABEL]
         self.entity_description = SelectEntityDescription(
             key=f"#{updater.carrier_system.serial}-heat_source",
             device_class=BinarySensorDeviceClass.CONNECTIVITY,
-            options=[HEAT_SOURCE_IDU_ONLY_LABEL, HEAT_SOURCE_ODU_ONLY_LABEL, HEAT_SOURCE_SYSTEM_LABEL]
+            options=options
         )
         super().__init__("Heat Source", updater)
 
