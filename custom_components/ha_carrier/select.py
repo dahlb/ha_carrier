@@ -5,9 +5,6 @@ from logging import Logger, getLogger
 import asyncio
 
 from carrier_api.const import HeatSourceTypes
-from homeassistant.components.binary_sensor import (
-    BinarySensorDeviceClass,
-)
 from homeassistant.components.select import (
     SelectEntity,
     SelectEntityDescription,
