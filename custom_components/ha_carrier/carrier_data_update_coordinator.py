@@ -31,6 +31,7 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator):
             LOGGER,
             name=f"{DOMAIN}-{self.carrier_system.name}",
             update_interval=timedelta(minutes=interval),
+            always_update=False
         )
 
     async def _async_update_data(self):
@@ -41,6 +42,6 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator):
             LOGGER.debug(
                 async_redact_data(self.carrier_system.__repr__(), TO_REDACT_MAPPED)
             )
-            return None
+            return self.carrier_system.__repr__()
         except Exception as error:
             raise UpdateFailed(error) from error
