@@ -32,18 +32,17 @@ class OptionFlowHandler(config_entries.OptionsFlow):
 
     def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
         """Display preferences UI."""
-        self.config_entry = config_entry
         self.schema = vol.Schema(
             {
                 vol.Required(
                     CONF_SCAN_INTERVAL,
-                    default=self.config_entry.options.get(
+                    default=config_entry.options.get(
                         CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL
                     ),
                 ): vol.All(vol.Coerce(int), vol.Range(min=1, max=20)),
                 vol.Required(
                     CONF_INFINITE_HOLDS,
-                    default=self.config_entry.options.get(
+                    default=config_entry.options.get(
                         CONF_INFINITE_HOLDS, DEFAULT_INFINITE_HOLDS
                     ),
                 ): cv.boolean,
