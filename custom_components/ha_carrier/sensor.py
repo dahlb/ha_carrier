@@ -218,8 +218,6 @@ class StatusAgeSensor(CarrierEntity, SensorEntity):
             )
             return int(age_of_last_sync.total_seconds() / 60)
 
-            return 100 - self._updater.carrier_system.status.filter_used
-
     @property
     def available(self) -> bool:
         """Return true if sensor is ready for display."""
