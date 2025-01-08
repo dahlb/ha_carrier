@@ -7,7 +7,7 @@
   "integration_type": "hub",
   "iot_class": "cloud_polling",
   "issue_tracker": "https://github.com/dahlb/ha_carrier/issues",
-  "loggers": ["ha_carrier", "carrier_api"],
+  "loggers": ["ha_carrier", "carrier_api", "urllib3"],
   "requirements": ["carrier-api==1.16.2"],
   "version": "1.28.4"
 }
