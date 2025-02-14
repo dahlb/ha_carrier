@@ -8,7 +8,9 @@ from homeassistant.const import (
     UnitOfTemperature,
     PERCENTAGE,
     UnitOfTime,
-    UnitOfVolumeFlowRate, UnitOfEnergy,
+    UnitOfVolumeFlowRate,
+    UnitOfEnergy,
+    UnitOfVolume,
 )
 from homeassistant.config_entries import ConfigEntry
 from datetime import datetime
@@ -84,7 +86,7 @@ class GasMeasurementSensor(CarrierEntity, SensorEntity):
             key=metric,
             device_class=SensorDeviceClass.GAS,
             state_class=SensorStateClass.TOTAL,
-            native_unit_of_measurement=UnitOfVolumeFlowRate.CUBIC_METERS_PER_HOUR,
+            native_unit_of_measurement=UnitOfVolume.CUBIC_METERS,
             suggested_display_precision=2,
             last_reset=datetime(year=datetime.now().year, month=1, day=1)
         )
@@ -93,7 +95,7 @@ class GasMeasurementSensor(CarrierEntity, SensorEntity):
 
     @property
     def native_value(self) -> float:
-        return getattr(self._updater.carrier_system.energy.current_year_measurements(), self.entity_description.key) / 100 * 2.8328611898017 # /100 to thermos then * to convert from therms to cubic meters per hour
+        return getattr(self._updater.carrier_system.energy.current_year_measurements(), self.entity_description.key) / 100 * 2.8328611898017 # /100 to thermos then * to convert from therms to cubic meters
 
 
 class EnergyMeasurementSensor(CarrierEntity, SensorEntity):
