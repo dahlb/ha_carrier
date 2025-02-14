@@ -39,6 +39,7 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator):
             await self.hass.async_add_executor_job(self.api_connection.activate)
             await self.hass.async_add_executor_job(self.carrier_system.status.refresh)
             await self.hass.async_add_executor_job(self.carrier_system.config.refresh)
+            await self.hass.async_add_executor_job(self.carrier_system.energy.refresh)
             LOGGER.debug(
                 async_redact_data(self.carrier_system.__repr__(), TO_REDACT_MAPPED)
             )

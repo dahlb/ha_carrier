@@ -3,13 +3,13 @@
 from __future__ import annotations
 from logging import Logger, getLogger
 
-from homeassistant.components.sensor import SensorEntity, SensorDeviceClass
+from homeassistant.components.sensor import SensorEntity, SensorDeviceClass, SensorEntityDescription, SensorStateClass
 from homeassistant.const import (
     UnitOfTemperature,
     PERCENTAGE,
     UnitOfPressure,
     UnitOfTime,
-    UnitOfVolumeFlowRate,
+    UnitOfVolumeFlowRate, UnitOfEnergy,
 )
 from homeassistant.config_entries import ConfigEntry
 from datetime import datetime
@@ -33,7 +33,6 @@ async def async_setup_entry(hass, config_entry: ConfigEntry, async_add_entities)
         entities.extend(
             [
                 OutdoorTemperatureSensor(updater),
-                StaticPressureSensor(updater),
                 FilterUsedSensor(updater),
                 HumidifierRemainingSensor(updater),
                 StatusAgeSensor(updater),
@@ -42,6 +41,11 @@ async def async_setup_entry(hass, config_entry: ConfigEntry, async_add_entities)
                 IndoorUnitOperationalStatusSensor(updater),
             ]
         )
+        for electric_metric in ["cooling", "hp_heat", "fan", "electric_heat", "reheat", "fan_gas", "loop_pump"]:
+            if getattr(updater.carrier_system.energy, electric_metric):
+                entities.append(EnergyMeasurementSensor(updater, electric_metric))
+        if updater.carrier_system.energy.gas:
+            entities.append(GasMeasurementSensor(updater, "gas"))
         for zone in updater.carrier_system.config.zones:
             entities.extend(
                 [
@@ -74,6 +78,41 @@ class ZoneHumiditySensor(CarrierEntity, SensorEntity):
     def native_value(self) -> float:
         """Returns temperature."""
         return self._status_zone.humidity
+
+class GasMeasurementSensor(CarrierEntity, SensorEntity):
+    def __init__(self, updater, metric: str):
+        self.entity_description = SensorEntityDescription(
+            key=metric,
+            device_class=SensorDeviceClass.GAS,
+            state_class=SensorStateClass.TOTAL,
+            native_unit_of_measurement=UnitOfVolumeFlowRate.CUBIC_METERS_PER_HOUR,
+            suggested_display_precision=2,
+            last_reset=datetime(year=datetime.now().year, month=1, day=1)
+        )
+        self._updater = updater
+        super().__init__(f"{self.entity_description.key} Year To Date", updater)
+
+    @property
+    def native_value(self) -> float:
+        return getattr(self._updater.carrier_system.energy.current_year_measurements(), self.entity_description.key) / 100 * 2.8328611898017 # /100 to thermos then * to convert from therms to cubic meters per hour
+
+
+class EnergyMeasurementSensor(CarrierEntity, SensorEntity):
+    def __init__(self, updater, metric: str):
+        self.entity_description = SensorEntityDescription(
+            key=metric,
+            device_class=SensorDeviceClass.ENERGY,
+            state_class=SensorStateClass.TOTAL,
+            native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+            suggested_display_precision=0,
+            last_reset=datetime(year=datetime.now().year, month=1, day=1)
+        )
+        self._updater = updater
+        super().__init__(f"{self.entity_description.key} Energy Year To Date", updater)
+
+    @property
+    def native_value(self) -> float:
+        return getattr(self._updater.carrier_system.energy.current_year_measurements(), self.entity_description.key)
 
 
 class ZoneTemperatureSensor(CarrierEntity, SensorEntity):
@@ -128,27 +167,6 @@ class OutdoorTemperatureSensor(CarrierEntity, SensorEntity):
     def native_value(self) -> float:
         """Returns temperature."""
         return self._updater.carrier_system.status.outdoor_temperature
-
-
-class StaticPressureSensor(CarrierEntity, SensorEntity):
-    """Static Pressure sensor."""
-
-    _attr_device_class = SensorDeviceClass.PRESSURE
-    _attr_native_unit_of_measurement = UnitOfPressure.PSI
-
-    def __init__(self, updater):
-        """Create static pressure sensor."""
-        super().__init__("Static Pressure", updater)
-
-    @property
-    def native_value(self) -> float:
-        """Returns static pressure value."""
-        return self._updater.carrier_system.config.static_pressure
-
-    @property
-    def available(self) -> bool:
-        """Returns if sensor is ready to be displayed."""
-        return self.native_value is not None
 
 
 class FilterUsedSensor(CarrierEntity, SensorEntity):
