@@ -89,7 +89,7 @@ class GasMeasurementSensor(CarrierEntity, SensorEntity):
             last_reset=datetime(year=datetime.now().year, month=1, day=1)
         )
         self._updater = updater
-        super().__init__(f"{self.entity_description.key} Year To Date", updater)
+        super().__init__(f"{self.entity_description.key} Yearly", updater)
 
     @property
     def native_value(self) -> float:
@@ -107,7 +107,7 @@ class EnergyMeasurementSensor(CarrierEntity, SensorEntity):
             last_reset=datetime(year=datetime.now().year, month=1, day=1)
         )
         self._updater = updater
-        super().__init__(f"{self.entity_description.key} Energy Year To Date", updater)
+        super().__init__(f"{self.entity_description.key} Energy Yearly", updater)
 
     @property
     def native_value(self) -> float:
