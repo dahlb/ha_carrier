@@ -7,7 +7,6 @@ from homeassistant.components.sensor import SensorEntity, SensorDeviceClass, Sen
 from homeassistant.const import (
     UnitOfTemperature,
     PERCENTAGE,
-    UnitOfPressure,
     UnitOfTime,
     UnitOfVolumeFlowRate, UnitOfEnergy,
 )
