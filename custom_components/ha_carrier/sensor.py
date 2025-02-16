@@ -88,12 +88,17 @@ class GasMeasurementSensor(CarrierEntity, SensorEntity):
             suggested_display_precision=2,
             last_reset=datetime(year=datetime.now().year, month=1, day=1)
         )
-        super().__init__(f"{self.entity_description.key} Yearly", updater, system_serial)
+        self.fuel_type = updater.system(system_serial=system_serial).config.fuel_type
+        super().__init__(f"{self.fuel_type.capitalize()} Yearly", updater, system_serial)
 
     @property
     def native_value(self) -> float:
-        return getattr(self.carrier_system.energy.current_year_measurements(), self.entity_description.key) / 100 * 2.8328611898017 # /100 to thermos then * to convert from therms to cubic meters
-
+        value = self.carrier_system.energy.current_year_measurements().gas
+        if self.carrier_system.config.gas_unit == "gallons":
+            value = value / 264.2 # convert gallons of propane to cubic meters
+        if self.carrier_system.config.gas_unit == "therms":
+            value = value / 100 * 2.8328611898017 # /100 to thermos then * to convert from therms to cubic meters
+        return value
 
 class EnergyMeasurementSensor(CarrierEntity, SensorEntity):
     def __init__(self, updater: CarrierDataUpdateCoordinator, system_serial: str, metric: str):
