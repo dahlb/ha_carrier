@@ -166,7 +166,7 @@ class Thermostat(CarrierEntity, ClimateEntity):
         """Return hvac action."""
         if self.hvac_mode == HVACMode.OFF:
             return HVACAction.OFF
-        elif self._status_zone.conditioning is None:
+        elif self._status_zone.conditioning == "idle":
             return HVACAction.IDLE
         elif "heat" in self._status_zone.conditioning:
             return HVACAction.HEATING
