@@ -22,9 +22,9 @@ from .const import (
     DEFAULT_INFINITE_HOLDS,
 )
 
-from carrier_api import ApiConnection
+from carrier_api import ApiConnectionGraphql
 
-LOGGER: Logger = getLogger(__package__)
+_LOGGER: Logger = getLogger(__package__)
 
 
 class OptionFlowHandler(config_entries.OptionsFlow):
@@ -52,7 +52,7 @@ class OptionFlowHandler(config_entries.OptionsFlow):
     async def async_step_init(self, user_input: dict[str, Any] | None = None):
         """Display preferences UI."""
         if user_input is not None:
-            LOGGER.debug("user input in option flow : %s", user_input)
+            _LOGGER.debug("user input in option flow : %s", user_input)
             return self.async_create_entry(title="", data=user_input)
 
         return self.async_show_form(step_id="init", data_schema=self.schema)
@@ -90,8 +90,8 @@ class ConfigFlowHandler(config_entries.ConfigFlow):
             password = user_input[CONF_PASSWORD]
 
             try:
-                api_connection = ApiConnection(username=username, password=password)
-                await self.hass.async_add_executor_job(api_connection.get_systems)
+                api_connection = ApiConnectionGraphql(username=username, password=password)
+                await api_connection.load_data()
                 self.data.update(user_input)
                 return self.async_create_entry(
                     title=username,

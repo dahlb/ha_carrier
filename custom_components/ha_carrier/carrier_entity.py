@@ -9,37 +9,31 @@ from .const import DOMAIN
 from .carrier_data_update_coordinator import CarrierDataUpdateCoordinator
 
 
-class CarrierEntity(CoordinatorEntity):
+class CarrierEntity(CoordinatorEntity[CarrierDataUpdateCoordinator]):
     """Base entity for carrier devices."""
     def __init__(
-        self,
-        entity_type: str,
-        updater: CarrierDataUpdateCoordinator,
-        **kwargs,
+            self,
+            entity_type: str,
+            updater: CarrierDataUpdateCoordinator,
+            context: str,
+            **kwargs,
     ) -> None:
         """Create unique_id and access to api data."""
-        super().__init__(updater)
-        self._updater: CarrierDataUpdateCoordinator = updater
-        self._attr_name = f"{self._updater.carrier_system.name} {entity_type}"
-        self._attr_unique_id = f"{self._updater.carrier_system.serial}_{entity_type}"
+        super().__init__(updater, context)
+        self._attr_name = f"{self.carrier_system.profile.name} {entity_type}"
+        self._attr_unique_id = f"{self.carrier_system.profile.serial}_{entity_type}"
+
+    @property
+    def carrier_system(self):
+        return self.coordinator.system(system_serial=self.coordinator_context)
 
     @property
     def device_info(self) -> DeviceInfo:
         """Return device info."""
         return DeviceInfo(
-            identifiers={(DOMAIN, self._updater.carrier_system.serial)},
-            manufacturer="Carrier",
-            model=self._updater.carrier_system.profile.model,
-            sw_version=self._updater.carrier_system.profile.firmware,
-            name=self._updater.carrier_system.name,
-        )
-
-    async def async_update(self):
-        """Update Blueair entity."""
-        await self._updater.async_request_refresh()
-
-    async def async_added_to_hass(self):
-        """When entity is added to hass."""
-        self.async_on_remove(
-            self._updater.async_add_listener(self.async_write_ha_state)
+            identifiers={(DOMAIN, self.carrier_system.profile.serial)},
+            manufacturer=self.carrier_system.profile.brand,
+            model=self.carrier_system.profile.model,
+            sw_version=self.carrier_system.profile.firmware,
+            name=self.carrier_system.profile.name,
         )

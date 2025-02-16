@@ -10,7 +10,7 @@ from homeassistant.components.binary_sensor import (
 )
 from homeassistant.config_entries import ConfigEntry
 
-from .const import DOMAIN, DATA_SYSTEMS
+from .const import DOMAIN, DATA_UPDATE_COORDINATOR
 from .carrier_data_update_coordinator import CarrierDataUpdateCoordinator
 from .carrier_entity import CarrierEntity
 
@@ -19,21 +19,21 @@ LOGGER: Logger = getLogger(__package__)
 
 async def async_setup_entry(hass, config_entry: ConfigEntry, async_add_entities):
     """Create instances of binary sensors."""
-    updaters: list[CarrierDataUpdateCoordinator] = hass.data[DOMAIN][
+    updater: CarrierDataUpdateCoordinator = hass.data[DOMAIN][
         config_entry.entry_id
-    ][DATA_SYSTEMS]
+    ][DATA_UPDATE_COORDINATOR]
     entities = []
-    for updater in updaters:
+    for carrier_system in updater.systems:
         entities.extend(
             [
-                OnlineSensor(updater),
-                HumidifierSensor(updater),
+                OnlineSensor(updater, carrier_system.profile.serial),
+                HumidifierSensor(updater, carrier_system.profile.serial),
             ]
         )
-        for zone in updater.carrier_system.config.zones:
+        for zone in carrier_system.config.zones:
             entities.extend(
                 [
-                    OccupancySensor(updater, zone_api_id=zone.api_id),
+                    OccupancySensor(updater, carrier_system.profile.serial, zone_api_id=zone.api_id),
                 ]
             )
     async_add_entities(entities)
@@ -41,45 +41,41 @@ async def async_setup_entry(hass, config_entry: ConfigEntry, async_add_entities)
 
 class OnlineSensor(CarrierEntity, BinarySensorEntity):
     """Indicates if thermostat is online."""
-
-    _attr_icon = "mdi:wifi-check"
-
-    def __init__(self, updater):
+    def __init__(self, updater: CarrierDataUpdateCoordinator, system_serial: str):
         """Declare device class and identifiers."""
+        super().__init__("Online", updater, system_serial)
         self.entity_description = BinarySensorEntityDescription(
-            key=f"#{updater.carrier_system.serial}-online",
+            key=f"#{self.carrier_system.profile.serial}-online",
             device_class=BinarySensorDeviceClass.CONNECTIVITY,
+            icon="mdi:wifi-check",
         )
-        super().__init__("Online", updater)
 
     @property
     def is_on(self) -> bool | None:
         """Return true if the binary sensor is on."""
-        return not self._updater.carrier_system.status.is_disconnected
+        return not self.carrier_system.status.is_disconnected
 
     @property
     def icon(self) -> str | None:
         """Picks icon."""
         if self.is_on:
-            return self._attr_icon
+            return self.entity_description.icon
         else:
             return "mdi:wifi-strength-outline"
 
 
 class OccupancySensor(CarrierEntity, BinarySensorEntity):
     """Displays occupancy state."""
-
     _attr_device_class = BinarySensorDeviceClass.MOTION
 
-    def __init__(self, updater, zone_api_id: str):
+    def __init__(self, updater: CarrierDataUpdateCoordinator, system_serial: str, zone_api_id: str):
         """Create identifiers."""
+        super().__init__(f"ZONE {zone_api_id} Occupancy", updater, system_serial)
         self.zone_api_id: str = zone_api_id
-        self._updater = updater
-        super().__init__(f"{self._status_zone.name} Occupancy", updater)
 
     @property
     def _status_zone(self):
-        for zone in self._updater.carrier_system.status.zones:
+        for zone in self.carrier_system.status.zones:
             if zone.api_id == self.zone_api_id:
                 return zone
 
@@ -91,15 +87,12 @@ class OccupancySensor(CarrierEntity, BinarySensorEntity):
 
 class HumidifierSensor(CarrierEntity, BinarySensorEntity):
     """Displays occupancy state."""
-
     _attr_device_class = BinarySensorDeviceClass.MOISTURE
 
-    def __init__(self, updater):
-        """Create identifiers."""
-        self._updater = updater
-        super().__init__("Humidifier Running", updater)
+    def __init__(self, updater: CarrierDataUpdateCoordinator, system_serial: str):
+        super().__init__("Humidifier Running", updater, system_serial)
 
     @property
     def is_on(self) -> bool | None:
-        if self._updater.carrier_system.status.humidifier_on is not None:
-            return self._updater.carrier_system.status.humidifier_on
+        if self.carrier_system.status.humidifier_on is not None:
+            return self.carrier_system.status.humidifier_on

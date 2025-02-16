@@ -4,7 +4,7 @@ from logging import Logger, getLogger
 from datetime import timedelta
 
 
-from carrier_api import System, ApiConnection
+from carrier_api import ApiConnectionGraphql, System
 
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
@@ -12,37 +12,40 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 from .const import DOMAIN, TO_REDACT_MAPPED
 from .util import async_redact_data
 
-LOGGER: Logger = getLogger(__package__)
+_LOGGER: Logger = getLogger(__package__)
 
 
 class CarrierDataUpdateCoordinator(DataUpdateCoordinator):
     """Update data from carrier api."""
 
     def __init__(
-        self, hass: HomeAssistant, carrier_system: System, interval: int
+        self, hass: HomeAssistant, api_connection: ApiConnectionGraphql, interval: int
     ) -> None:
         """Initialize the device."""
         self.hass: HomeAssistant = hass
-        self.carrier_system: System = carrier_system
-        self.api_connection: ApiConnection = carrier_system.api_connection
+        self.api_connection: ApiConnectionGraphql = api_connection
 
         super().__init__(
             hass,
-            LOGGER,
-            name=f"{DOMAIN}-{self.carrier_system.name}",
+            _LOGGER,
+            name=f"{DOMAIN}-{self.api_connection.username}",
             update_interval=timedelta(minutes=interval),
             always_update=False
         )
 
     async def _async_update_data(self):
         try:
-            await self.hass.async_add_executor_job(self.api_connection.activate)
-            await self.hass.async_add_executor_job(self.carrier_system.status.refresh)
-            await self.hass.async_add_executor_job(self.carrier_system.config.refresh)
-            await self.hass.async_add_executor_job(self.carrier_system.energy.refresh)
-            LOGGER.debug(
-                async_redact_data(self.carrier_system.__repr__(), TO_REDACT_MAPPED)
-            )
-            return self.carrier_system.__repr__()
+            self.systems: list[System] = await self.api_connection.load_data()
+            for system in self.systems:
+                _LOGGER.debug(
+                    async_redact_data(system.__repr__(), TO_REDACT_MAPPED)
+                )
+            return [system.__repr__() for system in self.systems]
         except Exception as error:
+            _LOGGER.exception(error)
             raise UpdateFailed(error) from error
+
+    def system(self, system_serial: str) -> System:
+        for system in self.systems:
+            if system.profile.serial == system_serial:
+                return system

@@ -8,24 +8,23 @@ from homeassistant.const import (
     CONF_PASSWORD,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.helpers.typing import ConfigType
 import homeassistant.helpers.config_validation as cv
 from homeassistant.exceptions import ConfigEntryNotReady
 
-from carrier_api import ApiConnection
+from carrier_api import ApiConnectionGraphql
 
 from .carrier_data_update_coordinator import CarrierDataUpdateCoordinator
 from .const import (
     DOMAIN,
     PLATFORMS,
-    DATA_SYSTEMS,
     CONF_SCAN_INTERVAL,
     DEFAULT_SCAN_INTERVAL,
     TO_REDACT,
+    DATA_UPDATE_COORDINATOR,
 )
 from .util import async_redact_data
 
-LOGGER: Logger = getLogger(__package__)
+_LOGGER: Logger = getLogger(__package__)
 
 CONFIG_SCHEMA = vol.Schema(
     {
@@ -40,17 +39,16 @@ CONFIG_SCHEMA = vol.Schema(
 )
 
 
-async def async_setup(hass: HomeAssistant, config_entry: ConfigType) -> bool:
+async def async_setup(hass: HomeAssistant, config_entry: ConfigEntry) -> bool:
     """Create global variables for integration."""
     hass.data.setdefault(DOMAIN, {})
-    LOGGER.debug("async setup")
-    getLogger('carrier_api').setLevel(LOGGER.level)
+    _LOGGER.debug("async setup")
     return True
 
 
 async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry):
     """Create instance of integration."""
-    LOGGER.debug(f"async setup entry: {async_redact_data(config_entry.as_dict(), TO_REDACT)}")
+    _LOGGER.debug(f"async setup entry: {async_redact_data(config_entry.as_dict(), TO_REDACT)}")
     username = config_entry.data[CONF_USERNAME]
     password = config_entry.data[CONF_PASSWORD]
     interval = config_entry.options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
@@ -58,22 +56,16 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry):
     data = {}
 
     try:
-        api_connection = ApiConnection(username=username, password=password)
-        carrier_systems = await hass.async_add_executor_job(api_connection.get_systems)
-    except Exception as error:
-        raise ConfigEntryNotReady(error) from error
-
-    def create_updaters(carrier_system):
-        return CarrierDataUpdateCoordinator(
+        api_connection = ApiConnectionGraphql(username=username, password=password)
+        data[DATA_UPDATE_COORDINATOR] = CarrierDataUpdateCoordinator(
             hass=hass,
-            carrier_system=carrier_system,
+            api_connection=api_connection,
             interval=interval,
         )
-
-    data[DATA_SYSTEMS] = list(map(create_updaters, carrier_systems))
-
-    for updater in data[DATA_SYSTEMS]:
-        await updater.async_config_entry_first_refresh()
+        await data[DATA_UPDATE_COORDINATOR].async_config_entry_first_refresh()
+    except Exception as error:
+        _LOGGER.exception(error)
+        raise ConfigEntryNotReady(error) from error
 
     hass.data[DOMAIN][config_entry.entry_id] = data
 
@@ -92,7 +84,7 @@ async def async_update_options(hass: HomeAssistant, config_entry: ConfigEntry):
 
 async def async_unload_entry(hass: HomeAssistant, config_entry: ConfigEntry):
     """Cleanup instance of integration."""
-    LOGGER.debug("unload entry")
+    _LOGGER.debug("unload entry")
     unload_ok = await hass.config_entries.async_unload_platforms(
         config_entry, PLATFORMS
     )

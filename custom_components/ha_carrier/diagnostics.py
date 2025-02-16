@@ -13,7 +13,7 @@ from homeassistant.helpers import device_registry as dr, entity_registry as er
 
 from .const import (
     DOMAIN,
-    DATA_SYSTEMS,
+    DATA_UPDATE_COORDINATOR,
     TO_REDACT,
     TO_REDACT_MAPPED,
     TO_REDACT_RAW,
@@ -29,33 +29,36 @@ async def async_get_config_entry_diagnostics(
     hass: HomeAssistant, config_entry: ConfigEntry
 ) -> dict[str, dict[str, Any]]:
     """Return diagnostics for a config entry."""
-    updaters: list[CarrierDataUpdateCoordinator] = hass.data[DOMAIN][
+    updater: CarrierDataUpdateCoordinator = hass.data[DOMAIN][
         config_entry.entry_id
-    ][DATA_SYSTEMS]
+    ][DATA_UPDATE_COORDINATOR]
     data = {
         "entry": async_redact_data(config_entry.as_dict(), TO_REDACT),
     }
-    for updater in updaters:
+    for carrier_system in updater.systems:
         system_data = {
             "mapped_data": async_redact_data(
-                updater.carrier_system.__repr__(), TO_REDACT_MAPPED
+                carrier_system.__repr__(), TO_REDACT_MAPPED
             ),
             "profile_raw": async_redact_data(
-                updater.carrier_system.profile.raw_profile_json, TO_REDACT_RAW
+                carrier_system.profile.raw, TO_REDACT_RAW
             ),
             "status_raw": async_redact_data(
-                updater.carrier_system.status.raw_status_json, TO_REDACT_RAW
+                carrier_system.status.raw, TO_REDACT_RAW
             ),
             "config_raw": async_redact_data(
-                updater.carrier_system.config.raw_config_json, TO_REDACT_RAW
+                carrier_system.config.raw, TO_REDACT_RAW
+            ),
+            "energy_raw": async_redact_data(
+                carrier_system.energy.raw, TO_REDACT_RAW
             ),
         }
-        data[updater.carrier_system.serial] = system_data
+        data[carrier_system.profile.serial] = system_data
 
         device_registry = dr.async_get(hass)
         entity_registry = er.async_get(hass)
         hass_device = device_registry.async_get_device(
-            identifiers={(DOMAIN, str(updater.carrier_system.serial))}
+            identifiers={(DOMAIN, str(carrier_system.profile.serial))}
         )
         if hass_device is not None:
             system_data["device"] = {
