@@ -91,10 +91,12 @@ class Thermostat(CarrierEntity, ClimateEntity):
         _LOGGER.debug(f"infinite_hold:{infinite_hold}")
         self.infinite_hold: bool = infinite_hold
         self.zone_api_id: str = zone_api_id
+        self.coordinator = updater
+        self.coordinator_context = system_serial
         self.entity_description = ClimateEntityDescription(
             key=f"#{system_serial}-zone{self.zone_api_id}-climate",
         )
-        super().__init__(f"ZONE {self.zone_api_id}", updater, system_serial)
+        super().__init__(f"{self._config_zone.name}", updater, system_serial)
         self._attr_fan_modes = [
             fan_mode.value for fan_mode in [FanModes.LOW, FanModes.MED, FanModes.HIGH]
         ]
@@ -110,18 +112,6 @@ class Thermostat(CarrierEntity, ClimateEntity):
             activity.type.value for activity in self._config_zone.activities
         ]
         self._attr_preset_modes.append("resume")
-
-    @property
-    def _status_zone(self) -> StatusZone:
-        for zone in self.carrier_system.status.zones:
-            if zone.api_id == self.zone_api_id:
-                return zone
-
-    @property
-    def _config_zone(self) -> ConfigZone:
-        for zone in self.carrier_system.config.zones:
-            if zone.api_id == self.zone_api_id:
-                return zone
 
     @property
     def current_humidity(self) -> int | None:

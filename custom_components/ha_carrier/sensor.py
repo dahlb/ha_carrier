@@ -64,14 +64,10 @@ class ZoneHumiditySensor(CarrierEntity, SensorEntity):
 
     def __init__(self, updater: CarrierDataUpdateCoordinator, system_serial: str, zone_api_id: str):
         """Create identifiers."""
-        super().__init__(f"ZONE {zone_api_id} Humidity", updater, system_serial)
         self.zone_api_id: str = zone_api_id
-
-    @property
-    def _status_zone(self):
-        for zone in self.carrier_system.status.zones:
-            if zone.api_id == self.zone_api_id:
-                return zone
+        self.coordinator = updater
+        self.coordinator_context = system_serial
+        super().__init__(f"{self._config_zone.name} Humidity", updater, system_serial)
 
     @property
     def native_value(self) -> float:
@@ -126,14 +122,10 @@ class ZoneTemperatureSensor(CarrierEntity, SensorEntity):
 
     def __init__(self, updater: CarrierDataUpdateCoordinator, system_serial: str, zone_api_id: str):
         """Create identifiers."""
-        super().__init__(f"ZONE {zone_api_id} Temperature", updater, system_serial)
         self.zone_api_id: str = zone_api_id
-
-    @property
-    def _status_zone(self):
-        for zone in self.carrier_system.status.zones:
-            if zone.api_id == self.zone_api_id:
-                return zone
+        self.coordinator = updater
+        self.coordinator_context = system_serial
+        super().__init__(f"{self._config_zone.name} Temperature", updater, system_serial)
 
     @property
     def native_unit_of_measurement(self) -> str | None:

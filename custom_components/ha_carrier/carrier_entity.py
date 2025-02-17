@@ -1,5 +1,5 @@
 """Base entity for carrier devices."""
-
+from carrier_api import StatusZone, ConfigZone
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.update_coordinator import (
     CoordinatorEntity,
@@ -26,6 +26,20 @@ class CarrierEntity(CoordinatorEntity[CarrierDataUpdateCoordinator]):
     @property
     def carrier_system(self):
         return self.coordinator.system(system_serial=self.coordinator_context)
+
+    @property
+    def _status_zone(self) -> StatusZone:
+        if getattr(self, "zone_api_id", None) is not None:
+            for zone in self.carrier_system.status.zones:
+                if zone.api_id == self.zone_api_id:
+                    return zone
+
+    @property
+    def _config_zone(self) -> ConfigZone:
+        if getattr(self, "zone_api_id", None) is not None:
+            for zone in self.carrier_system.config.zones:
+                if zone.api_id == self.zone_api_id:
+                    return zone
 
     @property
     def device_info(self) -> DeviceInfo:
