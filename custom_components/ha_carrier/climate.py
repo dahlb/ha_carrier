@@ -32,8 +32,6 @@ from carrier_api import (
     SystemModes,
     TemperatureUnits,
     ActivityTypes,
-    StatusZone,
-    ConfigZone,
     ConfigZoneActivity,
 )
 
