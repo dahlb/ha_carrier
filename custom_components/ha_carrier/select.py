@@ -56,6 +56,8 @@ class HeatSourceSelect(CarrierEntity, SelectEntity):
         )
 
     def idu_only_label(self) -> str | None:
+        if self.carrier_system.profile.indoor_unit_source is None:
+            return HEAT_SOURCE_IDU_ONLY_LABEL
         return HEAT_SOURCE_IDU_ONLY_LABEL.replace("gas", self.carrier_system.profile.indoor_unit_source)
 
     @property
