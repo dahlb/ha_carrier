@@ -35,13 +35,16 @@ async def async_setup_entry(hass, config_entry: ConfigEntry, async_add_entities)
             [
                 OutdoorTemperatureSensor(updater, carrier_system.profile.serial),
                 FilterUsedSensor(updater, carrier_system.profile.serial),
-                HumidifierRemainingSensor(updater, carrier_system.profile.serial),
                 StatusAgeSensor(updater, carrier_system.profile.serial),
                 AirflowSensor(updater, carrier_system.profile.serial),
                 OutdoorUnitOperationalStatusSensor(updater, carrier_system.profile.serial),
                 IndoorUnitOperationalStatusSensor(updater, carrier_system.profile.serial),
             ]
         )
+        if carrier_system.config.humidifier_enabled:
+            entities.append(HumidifierRemainingSensor(updater, carrier_system.profile.serial))
+        if carrier_system.config.uv_enabled:
+            entities.append(UVLampRemainingSensor(updater, carrier_system.profile.serial))
         for electric_metric in ["cooling", "hp_heat", "fan", "electric_heat", "reheat", "fan_gas", "loop_pump"]:
             if getattr(carrier_system.energy, electric_metric):
                 entities.append(EnergyMeasurementSensor(updater, carrier_system.profile.serial, electric_metric))
@@ -200,6 +203,28 @@ class HumidifierRemainingSensor(CarrierEntity, SensorEntity):
         """Return percentage remaining."""
         if self.carrier_system.status.humidity_level is not None:
             return 100 - self.carrier_system.status.humidity_level
+
+    @property
+    def available(self) -> bool:
+        """Return true if sensor is ready for display."""
+        return self.native_value is not None
+
+
+class UVLampRemainingSensor(CarrierEntity, SensorEntity):
+    """UV Lamp remaining sensor, mimics battery for easy testing."""
+    _attr_device_class = SensorDeviceClass.BATTERY
+    _attr_native_unit_of_measurement = PERCENTAGE
+    _attr_icon = "mdi:lightbulb-fluorescent-tube-outline"
+
+    def __init__(self, updater: CarrierDataUpdateCoordinator, system_serial: str):
+        """UV Lamp used sensor."""
+        super().__init__("UV Lamp Remaining", updater, system_serial)
+
+    @property
+    def native_value(self) -> float:
+        """Return percentage remaining."""
+        if self.carrier_system.status.uv_lamp_level is not None:
+            return 100 - self.carrier_system.status.uv_lamp_level
 
     @property
     def available(self) -> bool:
