@@ -9,5 +9,5 @@
   "issue_tracker": "https://github.com/dahlb/ha_carrier/issues",
   "loggers": ["ha_carrier", "carrier_api"],
   "requirements": ["carrier-api==2.3.3"],
-  "version": "2.2.1"
+  "version": "2.3.0"
 }
