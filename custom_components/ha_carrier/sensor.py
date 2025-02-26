@@ -96,10 +96,13 @@ class GasMeasurementSensor(CarrierEntity, SensorEntity):
     @property
     def native_value(self) -> float:
         value = self.carrier_system.energy.current_year_measurements().gas
-        if self.carrier_system.config.gas_unit == "gallon":
-            value = value / 91.5 # convert based on math in https://github.com/dahlb/ha_carrier/issues/192
-        if self.carrier_system.config.gas_unit == "therm":
-            value = value / 100 * 2.8328611898017 # /100 to therms then * to convert from therms to cubic meters
+        match self.carrier_system.config.gas_unit:
+            case "gallons":
+                value = value / 91.5 # convert based on math in https://github.com/dahlb/ha_carrier/issues/192
+            case "therm":
+                value = value / 100 * 2.8328611898017 # /100 to therms then * to convert from therms to cubic meters
+            case "gjoule":
+                value = value / 100 * 25.5  # /100 to gjoules (because carrier keeps it an integer in the api response even though it is a float) then * to convert from gjoules to cubic meters
         return value
 
 class EnergyMeasurementSensor(CarrierEntity, SensorEntity):
