@@ -1,7 +1,6 @@
 """Update data from carrier api."""
 
 from logging import Logger, getLogger
-from datetime import timedelta
 
 
 from carrier_api import ApiConnectionGraphql, System
