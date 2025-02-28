@@ -18,9 +18,7 @@ PLATFORMS = [
 # Home Assistant Data Storage Constants
 DATA_UPDATE_COORDINATOR: str = "update_coordinator"
 
-CONF_SCAN_INTERVAL: str = "scan_interval"
 CONF_INFINITE_HOLDS: str = "infinite_holds"
-DEFAULT_SCAN_INTERVAL: int = 10
 DEFAULT_INFINITE_HOLDS: bool = True
 
 FAN_AUTO = "auto"

@@ -16,8 +16,6 @@ from homeassistant.const import (
 from .const import (
     DOMAIN,
     CONFIG_FLOW_VERSION,
-    CONF_SCAN_INTERVAL,
-    DEFAULT_SCAN_INTERVAL,
     CONF_INFINITE_HOLDS,
     DEFAULT_INFINITE_HOLDS,
 )
@@ -34,12 +32,6 @@ class OptionFlowHandler(config_entries.OptionsFlow):
         """Display preferences UI."""
         self.schema = vol.Schema(
             {
-                vol.Required(
-                    CONF_SCAN_INTERVAL,
-                    default=config_entry.options.get(
-                        CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL
-                    ),
-                ): vol.All(vol.Coerce(int), vol.Range(min=1, max=20)),
                 vol.Required(
                     CONF_INFINITE_HOLDS,
                     default=config_entry.options.get(

@@ -19,7 +19,6 @@
       "init": {
         "title": "Carrier Infinity: Configuration",
         "data": {
-          "scan_interval": "Polling Interval in Minutes",
           "infinite_holds": "Holds are infinite, when off holds are until next scheduled activity"
         }
       }

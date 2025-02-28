@@ -17,8 +17,6 @@ from .carrier_data_update_coordinator import CarrierDataUpdateCoordinator
 from .const import (
     DOMAIN,
     PLATFORMS,
-    CONF_SCAN_INTERVAL,
-    DEFAULT_SCAN_INTERVAL,
     TO_REDACT,
     DATA_UPDATE_COORDINATOR,
 )
@@ -51,7 +49,6 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry):
     _LOGGER.debug(f"async setup entry: {async_redact_data(config_entry.as_dict(), TO_REDACT)}")
     username = config_entry.data[CONF_USERNAME]
     password = config_entry.data[CONF_PASSWORD]
-    interval = config_entry.options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
 
     data = {}
 
@@ -60,9 +57,15 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry):
         data[DATA_UPDATE_COORDINATOR] = CarrierDataUpdateCoordinator(
             hass=hass,
             api_connection=api_connection,
-            interval=interval,
         )
         await data[DATA_UPDATE_COORDINATOR].async_config_entry_first_refresh()
+        async def updates():
+            async def listener_callback(ws_message):
+                _LOGGER.debug(f"websocket update message: {ws_message}")
+                await data[DATA_UPDATE_COORDINATOR].async_request_refresh()
+            await data[DATA_UPDATE_COORDINATOR].api_connection.ws_listener(listener_callback)
+            _LOGGER.debug("websocket task ending")
+        hass.async_create_background_task(updates(), "ha_carrier_ws")
     except Exception as error:
         _LOGGER.exception(error)
         raise ConfigEntryNotReady(error) from error

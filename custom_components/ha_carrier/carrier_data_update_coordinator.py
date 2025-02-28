@@ -7,7 +7,9 @@ from datetime import timedelta
 from carrier_api import ApiConnectionGraphql, System
 
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
+from homeassistant.helpers.debounce import Debouncer
+from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed, \
+    REQUEST_REFRESH_DEFAULT_COOLDOWN
 
 from .const import DOMAIN, TO_REDACT_MAPPED
 from .util import async_redact_data
@@ -19,7 +21,9 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator):
     """Update data from carrier api."""
 
     def __init__(
-        self, hass: HomeAssistant, api_connection: ApiConnectionGraphql, interval: int
+            self,
+            hass: HomeAssistant,
+            api_connection: ApiConnectionGraphql,
     ) -> None:
         """Initialize the device."""
         self.hass: HomeAssistant = hass
@@ -29,8 +33,15 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator):
             hass,
             _LOGGER,
             name=f"{DOMAIN}-{self.api_connection.username}",
-            update_interval=timedelta(minutes=interval),
-            always_update=False
+            update_interval=None,
+            always_update=False,
+            request_refresh_debouncer=Debouncer(
+                hass,
+                _LOGGER,
+                cooldown=REQUEST_REFRESH_DEFAULT_COOLDOWN,
+                immediate=False,
+                function=self.async_refresh,
+            )
         )
 
     async def _async_update_data(self):

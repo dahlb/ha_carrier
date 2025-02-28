@@ -325,4 +325,6 @@ class Thermostat(CarrierEntity, ClimateEntity):
         return {
             "conditioning": self._status_zone.conditioning,
             "status_mode": self.carrier_system.status.mode,
+            "blower_rpm": self.carrier_system.status.blower_rpm,
+            "static_pressure": self.carrier_system.status.static_pressure,
         }
