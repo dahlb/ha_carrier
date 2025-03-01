@@ -81,12 +81,14 @@ class ZoneHumiditySensor(CarrierEntity, SensorEntity):
 class GasMeasurementSensor(CarrierEntity, SensorEntity):
     def __init__(self, updater: CarrierDataUpdateCoordinator, system_serial: str, metric: str):
         self.fuel_type = updater.system(system_serial=system_serial).config.fuel_type
+        device_class = SensorDeviceClass.GAS
         unit_of_measurement = UnitOfVolume.CUBIC_METERS # for therms
         if self.fuel_type == "propane":
             unit_of_measurement = UnitOfVolume.GALLONS
+            device_class = SensorDeviceClass.VOLUME
         self.entity_description = SensorEntityDescription(
             key=metric,
-            device_class=SensorDeviceClass.GAS,
+            device_class=device_class,
             state_class=SensorStateClass.TOTAL,
             native_unit_of_measurement=unit_of_measurement,
             suggested_display_precision=2,
