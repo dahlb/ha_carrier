@@ -118,7 +118,7 @@ class PropaneMeasurementSensor(CarrierEntity, SensorEntity):
             suggested_display_precision=2,
             last_reset=datetime(year=datetime.now().year, month=1, day=1)
         )
-        super().__init__(f"Propane Yearly Gallons", updater, system_serial)
+        super().__init__("Propane Yearly Gallons", updater, system_serial)
 
     @property
     def native_value(self) -> float:
