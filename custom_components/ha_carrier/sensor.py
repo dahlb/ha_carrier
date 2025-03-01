@@ -37,6 +37,7 @@ async def async_setup_entry(hass, config_entry: ConfigEntry, async_add_entities)
                 FilterUsedSensor(updater, carrier_system.profile.serial),
                 StatusAgeSensor(updater, carrier_system.profile.serial),
                 AirflowSensor(updater, carrier_system.profile.serial),
+                StaticPressureSensor(updater, carrier_system.profile.serial),
                 OutdoorUnitOperationalStatusSensor(updater, carrier_system.profile.serial),
                 IndoorUnitOperationalStatusSensor(updater, carrier_system.profile.serial),
             ]
@@ -276,6 +277,27 @@ class AirflowSensor(CarrierEntity, SensorEntity):
         """Return airflow in cfm."""
         if self.carrier_system.status.airflow_cfm is not None:
             return int(self.carrier_system.status.airflow_cfm)
+
+    @property
+    def available(self) -> bool:
+        """Return true if sensor is ready for display."""
+        return self.native_value is not None
+
+
+class StaticPressureSensor(CarrierEntity, SensorEntity):
+    """Static Pressure sensor."""
+    _attr_device_class = SensorDeviceClass.PRESSURE
+    _attr_native_unit_of_measurement = "psi"
+    _attr_icon = "mdi:air-filter"
+
+    def __init__(self, updater: CarrierDataUpdateCoordinator, system_serial: str):
+        """Static Pressure sensor."""
+        super().__init__("Static Pressure", updater, system_serial)
+
+    @property
+    def native_value(self) -> float:
+        """Return Static Pressure in psi."""
+        return self.carrier_system.status.static_pressure
 
     @property
     def available(self) -> bool:

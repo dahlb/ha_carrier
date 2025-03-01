@@ -92,3 +92,11 @@ class HumidifierSensor(CarrierEntity, BinarySensorEntity):
     def is_on(self) -> bool | None:
         if self.carrier_system.status.humidifier_on is not None:
             return self.carrier_system.status.humidifier_on
+
+    @property
+    def icon(self) -> str | None:
+        """Picks icon."""
+        if self.is_on:
+            return "mdi:air-humidifier"
+        else:
+            return "mdi:air-humidifier-off"
