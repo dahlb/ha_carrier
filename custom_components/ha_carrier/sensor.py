@@ -97,7 +97,7 @@ class GasMeasurementSensor(CarrierEntity, SensorEntity):
     def native_value(self) -> float:
         value = self.carrier_system.energy.current_year_measurements().gas
         match self.carrier_system.config.gas_unit:
-            case "gallons":
+            case "gallon":
                 value = value / 91.5 # convert based on math in https://github.com/dahlb/ha_carrier/issues/192
             case "therm":
                 value = value / 100 * 2.8328611898017 # /100 to therms then * to convert from therms to cubic meters
