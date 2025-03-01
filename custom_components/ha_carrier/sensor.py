@@ -51,6 +51,8 @@ async def async_setup_entry(hass, config_entry: ConfigEntry, async_add_entities)
                 entities.append(EnergyMeasurementSensor(updater, carrier_system.profile.serial, electric_metric))
         if carrier_system.energy.gas:
             entities.append(GasMeasurementSensor(updater, carrier_system.profile.serial, "gas"))
+            if carrier_system.config.fuel_type == 'propane':
+                entities.append(PropaneMeasurementSensor(updater, carrier_system.profile.serial))
         for zone in carrier_system.config.zones:
             entities.extend(
                 [
@@ -81,14 +83,12 @@ class ZoneHumiditySensor(CarrierEntity, SensorEntity):
 class GasMeasurementSensor(CarrierEntity, SensorEntity):
     def __init__(self, updater: CarrierDataUpdateCoordinator, system_serial: str, metric: str):
         self.fuel_type = updater.system(system_serial=system_serial).config.fuel_type
-        device_class = SensorDeviceClass.GAS
         unit_of_measurement = UnitOfVolume.CUBIC_METERS # for therms
         if self.fuel_type == "propane":
-            unit_of_measurement = UnitOfVolume.GALLONS
-            device_class = SensorDeviceClass.VOLUME
+            unit_of_measurement = UnitOfVolume.CUBIC_FEET
         self.entity_description = SensorEntityDescription(
             key=metric,
-            device_class=device_class,
+            device_class=SensorDeviceClass.GAS,
             state_class=SensorStateClass.TOTAL,
             native_unit_of_measurement=unit_of_measurement,
             suggested_display_precision=2,
@@ -101,12 +101,29 @@ class GasMeasurementSensor(CarrierEntity, SensorEntity):
         value = self.carrier_system.energy.current_year_measurements().gas
         match self.carrier_system.config.gas_unit:
             case "gallon":
-                value = value / 91.5 # convert based on math in https://github.com/dahlb/ha_carrier/issues/192
+                value = value / 2.54998 # Convert kBTU to cubic feet (1 cubic foot = 2,549.98 BTU, so divide by 2.54998)
             case "therm":
                 value = value / 100 * 2.8328611898017 # /100 to therms then * to convert from therms to cubic meters
             case "gjoule":
                 value = value / 100 * 25.5  # /100 to gjoules (because carrier keeps it an integer in the api response even though it is a float) then * to convert from gjoules to cubic meters
         return value
+
+class PropaneMeasurementSensor(CarrierEntity, SensorEntity):
+    def __init__(self, updater: CarrierDataUpdateCoordinator, system_serial: str):
+        self.entity_description = SensorEntityDescription(
+            key="propane",
+            device_class=SensorDeviceClass.VOLUME,
+            state_class=SensorStateClass.TOTAL,
+            native_unit_of_measurement=UnitOfVolume.GALLONS,
+            suggested_display_precision=2,
+            last_reset=datetime(year=datetime.now().year, month=1, day=1)
+        )
+        super().__init__(f"Propane Yearly Gallons", updater, system_serial)
+
+    @property
+    def native_value(self) -> float:
+        value = self.carrier_system.energy.current_year_measurements().gas
+        return value / 91.69 # Convert kBTU to gallons (1 gallon LPG = 91,690 BTU, so divide by 91.69)
 
 class EnergyMeasurementSensor(CarrierEntity, SensorEntity):
     def __init__(self, updater: CarrierDataUpdateCoordinator, system_serial: str, metric: str):
