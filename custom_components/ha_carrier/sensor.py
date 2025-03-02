@@ -316,7 +316,8 @@ class StaticPressureSensor(CarrierEntity, SensorEntity):
     @property
     def native_value(self) -> float:
         """Return Static Pressure in psi."""
-        return self.carrier_system.status.static_pressure
+        if self.carrier_system.status.static_pressure is not None:
+           return self.carrier_system.status.static_pressure * 0.03613 # convert from inwc to psi
 
     @property
     def available(self) -> bool:
