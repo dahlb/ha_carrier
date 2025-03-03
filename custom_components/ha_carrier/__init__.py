@@ -65,16 +65,14 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry):
             while running:
                 try:
                     _LOGGER.debug("websocket task listening")
-                    async def listener_callback(ws_message):
-                        _LOGGER.debug(f"websocket update message: {ws_message}")
-                        await data[DATA_UPDATE_COORDINATOR].async_request_refresh()
-                    await data[DATA_UPDATE_COORDINATOR].api_connection.ws_listener(listener_callback)
+                    await data[DATA_UPDATE_COORDINATOR].api_connection.api_websocket.listener()
                     _LOGGER.debug("websocket task ending")
                 except asyncio.CancelledError:
                     running = False
                     _LOGGER.debug("websocket task cancelled")
                 except Exception as websocket_error:
                     _LOGGER.exception("websocket task exception", exc_info=websocket_error)
+                    await data[DATA_UPDATE_COORDINATOR].async_request_refresh()
         hass.async_create_background_task(ws_updates(), "ha_carrier_ws")
     except Exception as error:
         _LOGGER.exception(error)
