@@ -72,6 +72,7 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry):
                     _LOGGER.debug("websocket task cancelled")
                 except Exception as websocket_error:
                     _LOGGER.exception("websocket task exception", exc_info=websocket_error)
+                    data[DATA_UPDATE_COORDINATOR].data_flush = True
                     await data[DATA_UPDATE_COORDINATOR].async_request_refresh()
         hass.async_create_background_task(ws_updates(), "ha_carrier_ws")
     except Exception as error:
