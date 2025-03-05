@@ -50,18 +50,27 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator):
     async def _async_update_data(self):
         try:
             if self.data_flush:
-                _LOGGER.debug("flushing data")
-                if self.websocket_data_updater is not None:
-                    self.api_connection.api_websocket.callback_remove(self.websocket_data_updater.message_handler)
-                    self.api_connection.api_websocket.callback_remove(self.updated_callback)
-                self.systems: list[System] = await self.api_connection.load_data()
+                _LOGGER.debug("flushing all data")
+                fresh_systems: list[System] = await self.api_connection.load_data()
+                if self.systems is None:
+                    self.systems = fresh_systems
+                    self.websocket_data_updater = WebsocketDataUpdater(systems=self.systems)
+                    self.api_connection.api_websocket.callback_add(self.websocket_data_updater.message_handler)
+                    self.api_connection.api_websocket.callback_add(self.updated_callback)
+                else:
+                    for fresh_system in fresh_systems:
+                        related_stale_system = self.system(fresh_system.profile.serial)
+                        if related_stale_system is None:
+                            _LOGGER.error("unable to find matching system, serial %s", fresh_system.profile.serial)
+                        else:
+                            related_stale_system.profile = fresh_system.profile
+                            related_stale_system.status = fresh_system.status
+                            related_stale_system.config = fresh_system.config
+                            related_stale_system.energy = fresh_system.energy
                 for system in self.systems:
                     _LOGGER.debug(
                         async_redact_data(system.__repr__(), TO_REDACT_MAPPED)
                     )
-                self.websocket_data_updater = WebsocketDataUpdater(systems=self.systems)
-                self.api_connection.api_websocket.callback_add(self.websocket_data_updater.message_handler)
-                self.api_connection.api_websocket.callback_add(self.updated_callback)
                 self.data_flush = False
             else:
                 _LOGGER.debug("fetching energy data")

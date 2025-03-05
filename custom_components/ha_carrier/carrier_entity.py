@@ -1,4 +1,6 @@
 """Base entity for carrier devices."""
+from logging import getLogger, Logger
+
 from carrier_api import StatusZone, ConfigZone
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.update_coordinator import (
@@ -7,6 +9,8 @@ from homeassistant.helpers.update_coordinator import (
 
 from .const import DOMAIN
 from .carrier_data_update_coordinator import CarrierDataUpdateCoordinator
+
+_LOGGER: Logger = getLogger(__package__)
 
 
 class CarrierEntity(CoordinatorEntity[CarrierDataUpdateCoordinator]):
@@ -33,6 +37,9 @@ class CarrierEntity(CoordinatorEntity[CarrierDataUpdateCoordinator]):
             for zone in self.carrier_system.status.zones:
                 if zone.api_id == self.zone_api_id:
                     return zone
+            raise ValueError("Status Zone not found: %s", self.zone_api_id)
+        else:
+            raise ValueError("No zone api id defined")
 
     @property
     def _config_zone(self) -> ConfigZone:
@@ -40,6 +47,9 @@ class CarrierEntity(CoordinatorEntity[CarrierDataUpdateCoordinator]):
             for zone in self.carrier_system.config.zones:
                 if zone.api_id == self.zone_api_id:
                     return zone
+            raise ValueError("Config Zone not found: %s", self.zone_api_id)
+        else:
+            raise ValueError("No zone api id defined")
 
     @property
     def device_info(self) -> DeviceInfo:
