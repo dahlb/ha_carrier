@@ -37,7 +37,7 @@ class CarrierEntity(CoordinatorEntity[CarrierDataUpdateCoordinator]):
             for zone in self.carrier_system.status.zones:
                 if zone.api_id == self.zone_api_id:
                     return zone
-            raise ValueError("Status Zone not found: %s", self.zone_api_id)
+            raise ValueError(f"Status Zone not found: {self.zone_api_id}")
         else:
             raise ValueError("No zone api id defined")
 
@@ -47,7 +47,7 @@ class CarrierEntity(CoordinatorEntity[CarrierDataUpdateCoordinator]):
             for zone in self.carrier_system.config.zones:
                 if zone.api_id == self.zone_api_id:
                     return zone
-            raise ValueError("Config Zone not found: %s", self.zone_api_id)
+            raise ValueError(f"Config Zone not found: {self.zone_api_id}")
         else:
             raise ValueError("No zone api id defined")
 

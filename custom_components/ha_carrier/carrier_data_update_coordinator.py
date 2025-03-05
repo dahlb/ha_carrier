@@ -61,7 +61,7 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator):
                     for fresh_system in fresh_systems:
                         related_stale_system = self.system(fresh_system.profile.serial)
                         if related_stale_system is None:
-                            _LOGGER.error("unable to find matching system, serial %s", fresh_system.profile.serial)
+                            _LOGGER.error(f"unable to find matching system, serial {fresh_system.profile.serial}")
                         else:
                             related_stale_system.profile = fresh_system.profile
                             related_stale_system.status = fresh_system.status
@@ -89,4 +89,5 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator):
                 return system
 
     async def updated_callback(self, _message: str) -> None:
+        _LOGGER.debug(self.systems[0].status.raw)
         self.async_update_listeners()
