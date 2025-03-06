@@ -66,6 +66,7 @@ async def async_setup_entry(hass, config_entry: ConfigEntry, async_add_entities)
 class ZoneHumiditySensor(CarrierEntity, SensorEntity):
     """Displays humidity at zone."""
     _attr_device_class = SensorDeviceClass.HUMIDITY
+    _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_native_unit_of_measurement = PERCENTAGE
 
     def __init__(self, updater: CarrierDataUpdateCoordinator, system_serial: str, zone_api_id: str):
@@ -145,6 +146,7 @@ class EnergyMeasurementSensor(CarrierEntity, SensorEntity):
 class ZoneTemperatureSensor(CarrierEntity, SensorEntity):
     """Displays temperature at zone."""
     _attr_device_class = SensorDeviceClass.TEMPERATURE
+    _attr_state_class = SensorStateClass.MEASUREMENT
 
     def __init__(self, updater: CarrierDataUpdateCoordinator, system_serial: str, zone_api_id: str):
         """Create identifiers."""
@@ -173,6 +175,7 @@ class ZoneTemperatureSensor(CarrierEntity, SensorEntity):
 class OutdoorTemperatureSensor(CarrierEntity, SensorEntity):
     """Temperature sensor."""
     _attr_device_class = SensorDeviceClass.TEMPERATURE
+    _attr_state_class = SensorStateClass.MEASUREMENT
 
     def __init__(self, updater: CarrierDataUpdateCoordinator, system_serial: str):
         """Temperature sensor."""
@@ -193,6 +196,7 @@ class FilterUsedSensor(CarrierEntity, SensorEntity):
     """Filter used sensor, mimics battery for easy testing."""
     _attr_device_class = SensorDeviceClass.BATTERY
     _attr_native_unit_of_measurement = PERCENTAGE
+    _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_icon = "mdi:air-filter"
 
     def __init__(self, updater: CarrierDataUpdateCoordinator, system_serial: str):
@@ -215,6 +219,7 @@ class HumidifierRemainingSensor(CarrierEntity, SensorEntity):
     """Humidifier remaining sensor, mimics battery for easy testing."""
     _attr_device_class = SensorDeviceClass.BATTERY
     _attr_native_unit_of_measurement = PERCENTAGE
+    _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_icon = "mdi:air-filter"
 
     def __init__(self, updater: CarrierDataUpdateCoordinator, system_serial: str):
@@ -237,6 +242,7 @@ class UVLampRemainingSensor(CarrierEntity, SensorEntity):
     """UV Lamp remaining sensor, mimics battery for easy testing."""
     _attr_device_class = SensorDeviceClass.BATTERY
     _attr_native_unit_of_measurement = PERCENTAGE
+    _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_icon = "mdi:lightbulb-fluorescent-tube-outline"
 
     def __init__(self, updater: CarrierDataUpdateCoordinator, system_serial: str):
@@ -259,6 +265,7 @@ class StatusAgeSensor(CarrierEntity, SensorEntity):
     """Time since thermostat updated the api last."""
     _attr_device_class = SensorDeviceClass.DURATION
     _attr_native_unit_of_measurement = UnitOfTime.MINUTES
+    _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_suggested_display_precision = 0
 
     def __init__(self, updater: CarrierDataUpdateCoordinator, system_serial: str):
@@ -285,6 +292,7 @@ class AirflowSensor(CarrierEntity, SensorEntity):
     """Airflow sensor."""
     _attr_device_class = SensorDeviceClass.VOLUME_FLOW_RATE
     _attr_native_unit_of_measurement = UnitOfVolumeFlowRate.CUBIC_FEET_PER_MINUTE
+    _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_icon = "mdi:fan"
 
     def __init__(self, updater: CarrierDataUpdateCoordinator, system_serial: str):
@@ -307,6 +315,7 @@ class StaticPressureSensor(CarrierEntity, SensorEntity):
     """Static Pressure sensor."""
     _attr_device_class = SensorDeviceClass.PRESSURE
     _attr_native_unit_of_measurement = "psi"
+    _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_icon = "mdi:air-filter"
 
     def __init__(self, updater: CarrierDataUpdateCoordinator, system_serial: str):
