@@ -81,6 +81,7 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator):
             return [system.__repr__() for system in self.systems]
         except Exception as error:
             _LOGGER.exception(error)
+            self.data_flush = True
             raise UpdateFailed(error) from error
 
     def system(self, system_serial: str) -> System:
