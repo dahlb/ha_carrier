@@ -46,7 +46,7 @@ class HeatSourceSelect(CarrierEntity, SelectEntity):
     def __init__(self, updater: CarrierDataUpdateCoordinator, system_serial: str):
         """Declare device class and identifiers."""
         super().__init__("Heat Source", updater, system_serial)
-        if self.carrier_system.profile.outdoor_unit_type in ["varcaphp", "multistghp"]:
+        if self.carrier_system.profile.outdoor_unit_type in ["hp2stg", "varcaphp", "multistghp"]:
             options = [self.idu_only_label(), HEAT_SOURCE_ODU_ONLY_LABEL, HEAT_SOURCE_SYSTEM_LABEL]
         else:
             options = [self.idu_only_label(), HEAT_SOURCE_SYSTEM_LABEL]
