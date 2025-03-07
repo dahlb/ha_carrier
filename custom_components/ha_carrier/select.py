@@ -82,3 +82,8 @@ class HeatSourceSelect(CarrierEntity, SelectEntity):
             heat_source=new_heat_source
         )
         await self.coordinator.async_request_refresh()
+
+    @property
+    def available(self) -> bool:
+        """Return true if sensor is ready for display."""
+        return self.current_option is not None

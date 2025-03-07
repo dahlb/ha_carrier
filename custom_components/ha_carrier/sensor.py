@@ -81,6 +81,11 @@ class ZoneHumiditySensor(CarrierEntity, SensorEntity):
         """Returns temperature."""
         return self._status_zone.humidity
 
+    @property
+    def available(self) -> bool:
+        """Return true if sensor is ready for display."""
+        return self.native_value is not None
+
 class GasMeasurementSensor(CarrierEntity, SensorEntity):
     def __init__(self, updater: CarrierDataUpdateCoordinator, system_serial: str, metric: str):
         self.fuel_type = updater.system(system_serial=system_serial).config.fuel_type
@@ -109,6 +114,11 @@ class GasMeasurementSensor(CarrierEntity, SensorEntity):
                 value = value / 100 * 25.5  # /100 to gjoules (because carrier keeps it an integer in the api response even though it is a float) then * to convert from gjoules to cubic meters
         return value
 
+    @property
+    def available(self) -> bool:
+        """Return true if sensor is ready for display."""
+        return self.native_value is not None
+
 class PropaneMeasurementSensor(CarrierEntity, SensorEntity):
     def __init__(self, updater: CarrierDataUpdateCoordinator, system_serial: str):
         self.entity_description = SensorEntityDescription(
@@ -126,6 +136,11 @@ class PropaneMeasurementSensor(CarrierEntity, SensorEntity):
         value = self.carrier_system.energy.current_year_measurements().gas
         return value / 91.69 # Convert kBTU to gallons (1 gallon LPG = 91,690 BTU, so divide by 91.69)
 
+    @property
+    def available(self) -> bool:
+        """Return true if sensor is ready for display."""
+        return self.native_value is not None
+
 class EnergyMeasurementSensor(CarrierEntity, SensorEntity):
     def __init__(self, updater: CarrierDataUpdateCoordinator, system_serial: str, metric: str):
         self.entity_description = SensorEntityDescription(
@@ -141,6 +156,11 @@ class EnergyMeasurementSensor(CarrierEntity, SensorEntity):
     @property
     def native_value(self) -> float:
         return getattr(self.carrier_system.energy.current_year_measurements(), self.entity_description.key)
+
+    @property
+    def available(self) -> bool:
+        """Return true if sensor is ready for display."""
+        return self.native_value is not None
 
 
 class ZoneTemperatureSensor(CarrierEntity, SensorEntity):
@@ -171,25 +191,31 @@ class ZoneTemperatureSensor(CarrierEntity, SensorEntity):
         """Returns temperature."""
         return self._status_zone.temperature
 
+    @property
+    def available(self) -> bool:
+        """Return true if sensor is ready for display."""
+        return self.native_value is not None
+
 
 class OutdoorTemperatureSensor(CarrierEntity, SensorEntity):
     """Temperature sensor."""
     _attr_device_class = SensorDeviceClass.TEMPERATURE
     _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_native_unit_of_measurement = UnitOfTemperature.FAHRENHEIT
 
     def __init__(self, updater: CarrierDataUpdateCoordinator, system_serial: str):
         """Temperature sensor."""
         super().__init__("Outdoor Temperature", updater, system_serial)
 
     @property
-    def native_unit_of_measurement(self) -> str | None:
-        """Returns unit of temperature."""
-        return UnitOfTemperature.FAHRENHEIT
-
-    @property
     def native_value(self) -> float:
         """Returns temperature."""
         return self.carrier_system.status.outdoor_temperature
+
+    @property
+    def available(self) -> bool:
+        """Return true if sensor is ready for display."""
+        return self.native_value is not None
 
 
 class FilterUsedSensor(CarrierEntity, SensorEntity):

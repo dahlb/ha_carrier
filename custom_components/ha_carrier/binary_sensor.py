@@ -63,6 +63,11 @@ class OnlineSensor(CarrierEntity, BinarySensorEntity):
         else:
             return "mdi:wifi-strength-outline"
 
+    @property
+    def available(self) -> bool:
+        """Return true if sensor is ready for display."""
+        return self.is_on is not None
+
 
 class OccupancySensor(CarrierEntity, BinarySensorEntity):
     """Displays occupancy state."""
@@ -79,6 +84,11 @@ class OccupancySensor(CarrierEntity, BinarySensorEntity):
     def is_on(self) -> bool | None:
         """Return true if occupied."""
         return self._status_zone.occupancy
+
+    @property
+    def available(self) -> bool:
+        """Return true if sensor is ready for display."""
+        return self.is_on is not None
 
 
 class HumidifierSensor(CarrierEntity, BinarySensorEntity):
@@ -100,3 +110,8 @@ class HumidifierSensor(CarrierEntity, BinarySensorEntity):
             return "mdi:air-humidifier"
         else:
             return "mdi:air-humidifier-off"
+
+    @property
+    def available(self) -> bool:
+        """Return true if sensor is ready for display."""
+        return self.is_on is not None

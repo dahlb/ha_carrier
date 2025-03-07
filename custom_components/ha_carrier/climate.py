@@ -327,3 +327,8 @@ class Thermostat(CarrierEntity, ClimateEntity):
             "status_mode": self.carrier_system.status.mode,
             "blower_rpm": self.carrier_system.status.blower_rpm,
         }
+
+    @property
+    def available(self) -> bool:
+        """Return true if sensor is ready for display."""
+        return self._status_zone is not None and self._current_activity() is not None

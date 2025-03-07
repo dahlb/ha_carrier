@@ -5,6 +5,7 @@ from logging import Logger, getLogger
 
 from carrier_api import ApiConnectionGraphql, System, Energy
 from carrier_api.api_websocket_data_updater import WebsocketDataUpdater
+from gql.transport.exceptions import TransportServerError
 
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.debounce import Debouncer
@@ -15,6 +16,7 @@ from .const import DOMAIN, TO_REDACT_MAPPED
 from .util import async_redact_data
 
 _LOGGER: Logger = getLogger(__package__)
+DEFAULT_UPDATE_INTERVAL_MINUTES = 30
 
 
 class CarrierDataUpdateCoordinator(DataUpdateCoordinator):
@@ -36,7 +38,7 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator):
             hass,
             _LOGGER,
             name=f"{DOMAIN}-{self.api_connection.username}",
-            update_interval=timedelta(minutes=30),
+            update_interval=timedelta(minutes=DEFAULT_UPDATE_INTERVAL_MINUTES),
             always_update=False,
             request_refresh_debouncer=Debouncer(
                 hass,
@@ -78,7 +80,12 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator):
                     energy_response = await self.api_connection.get_energy(system.profile.serial)
                     energy = Energy(raw=energy_response["infinityEnergy"])
                     system.energy = energy
+            self.update_interval = timedelta(minutes=DEFAULT_UPDATE_INTERVAL_MINUTES)
             return [system.__repr__() for system in self.systems]
+        except TransportServerError as server_error:
+            _LOGGER.exception(server_error)
+            self.update_interval = timedelta(minutes=2)
+            raise UpdateFailed(server_error) from server_error
         except Exception as error:
             _LOGGER.exception(error)
             self.data_flush = True
