@@ -97,5 +97,4 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator):
                 return system
 
     async def updated_callback(self, _message: str) -> None:
-        _LOGGER.debug(self.systems[0].status.raw)
         self.async_update_listeners()
