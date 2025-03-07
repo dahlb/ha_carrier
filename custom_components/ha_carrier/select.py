@@ -81,7 +81,6 @@ class HeatSourceSelect(CarrierEntity, SelectEntity):
             system_serial=self.carrier_system.profile.serial,
             heat_source=new_heat_source
         )
-        await self.coordinator.async_request_refresh()
 
     @property
     def available(self) -> bool:

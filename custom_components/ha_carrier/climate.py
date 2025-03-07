@@ -211,10 +211,6 @@ class Thermostat(CarrierEntity, ClimateEntity):
         else:
             return self._current_activity().fan.value
 
-    async def update(self) -> None:
-        await sleep(5)
-        await self.coordinator.async_request_refresh()
-
     async def async_set_hvac_mode(self, hvac_mode: HVACMode) -> None:
         """Update hvac mode."""
         _LOGGER.debug(f"set_hvac_mode; hvac_mode:{hvac_mode}")
@@ -236,7 +232,6 @@ class Thermostat(CarrierEntity, ClimateEntity):
         await self.coordinator.api_connection.set_config_mode(
             system_serial=self.carrier_system.profile.serial, mode=mode
         )
-        await self.update()
 
     @property
     def _hold_until(self):
@@ -264,7 +259,6 @@ class Thermostat(CarrierEntity, ClimateEntity):
                 activity_type=activity_type,
                 hold_until=self._hold_until,
             )
-        await self.update()
 
     async def async_set_fan_mode(self, fan_mode: str) -> None:
         """Set fan mode."""
@@ -280,7 +274,6 @@ class Thermostat(CarrierEntity, ClimateEntity):
             activity_type=self._current_activity().type,
             fan_mode=fan_mode,
         )
-        await self.update()
 
     async def async_set_temperature(self, **kwargs) -> None:
         """Set temperatures."""
@@ -317,7 +310,6 @@ class Thermostat(CarrierEntity, ClimateEntity):
             cool_set_point=str(cool_set_point),
             fan_mode=fan_mode,
         )
-        await self.update()
 
     @property
     def extra_state_attributes(self) -> Mapping[str, Any] | None:
