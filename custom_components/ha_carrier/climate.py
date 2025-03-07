@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from asyncio import sleep
 from logging import Logger, getLogger
 
 from collections.abc import Mapping
