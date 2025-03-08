@@ -1,5 +1,5 @@
 """Update data from carrier api."""
-from datetime import timedelta
+from datetime import timedelta, datetime, UTC
 from logging import Logger, getLogger
 
 
@@ -24,6 +24,9 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator):
     systems: list[System] = None
     websocket_data_updater: WebsocketDataUpdater = None
     data_flush: bool = True
+    timestamp_all_data = None
+    timestamp_websocket = None
+    timestamp_energy = None
 
     def __init__(
             self,
@@ -73,6 +76,8 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator):
                     _LOGGER.debug(
                         async_redact_data(system.__repr__(), TO_REDACT_MAPPED)
                     )
+                self.timestamp_all_data = datetime.now(UTC)
+                self.timestamp_energy = self.timestamp_all_data
                 self.data_flush = False
             else:
                 _LOGGER.debug("fetching energy data")
@@ -80,11 +85,12 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator):
                     energy_response = await self.api_connection.get_energy(system.profile.serial)
                     energy = Energy(raw=energy_response["infinityEnergy"])
                     system.energy = energy
+                self.timestamp_energy = datetime.now(UTC)
             self.update_interval = timedelta(minutes=DEFAULT_UPDATE_INTERVAL_MINUTES)
             return [system.__repr__() for system in self.systems]
         except TransportServerError as server_error:
             _LOGGER.exception(server_error)
-            self.update_interval = timedelta(minutes=2)
+            self.update_interval = timedelta(minutes=1)
             raise UpdateFailed(server_error) from server_error
         except Exception as error:
             _LOGGER.exception(error)
@@ -97,4 +103,5 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator):
                 return system
 
     async def updated_callback(self, _message: str) -> None:
+        self.timestamp_websocket = datetime.now(UTC)
         self.async_update_listeners()

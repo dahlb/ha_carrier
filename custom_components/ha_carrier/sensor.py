@@ -35,7 +35,9 @@ async def async_setup_entry(hass, config_entry: ConfigEntry, async_add_entities)
             [
                 OutdoorTemperatureSensor(updater, carrier_system.profile.serial),
                 FilterUsedSensor(updater, carrier_system.profile.serial),
-                StatusAgeSensor(updater, carrier_system.profile.serial),
+                TimestampSensor(updater, carrier_system.profile.serial, "all_data"),
+                TimestampSensor(updater, carrier_system.profile.serial, "websocket"),
+                TimestampSensor(updater, carrier_system.profile.serial, "energy"),
                 AirflowSensor(updater, carrier_system.profile.serial),
                 StaticPressureSensor(updater, carrier_system.profile.serial),
                 OutdoorUnitOperationalStatusSensor(updater, carrier_system.profile.serial),
@@ -287,26 +289,16 @@ class UVLampRemainingSensor(CarrierEntity, SensorEntity):
         return self.native_value is not None
 
 
-class StatusAgeSensor(CarrierEntity, SensorEntity):
-    """Time since thermostat updated the api last."""
-    _attr_device_class = SensorDeviceClass.DURATION
-    _attr_native_unit_of_measurement = UnitOfTime.MINUTES
-    _attr_state_class = SensorStateClass.MEASUREMENT
-    _attr_suggested_display_precision = 0
+class TimestampSensor(CarrierEntity, SensorEntity):
+    _attr_device_class = SensorDeviceClass.TIMESTAMP
 
-    def __init__(self, updater: CarrierDataUpdateCoordinator, system_serial: str):
-        """Time since thermostat updated the api last."""
-        super().__init__("Status Minutes Since Updating", updater, system_serial)
+    def __init__(self, updater: CarrierDataUpdateCoordinator, system_serial: str, key: str):
+        super().__init__(f"updated {key.replace("_", " ").capitalize()} at", updater, system_serial)
+        self.key = key
 
     @property
     def native_value(self) -> float:
-        """Return minutes since thermostat last updated the api."""
-        if self.carrier_system.status.time_stamp is not None:
-            age_of_last_sync = (
-                datetime.now().astimezone()
-                - self.carrier_system.status.time_stamp
-            )
-            return int(age_of_last_sync.total_seconds() / 60)
+        return getattr(self.coordinator, f"timestamp_{self.key}")
 
     @property
     def available(self) -> bool:
