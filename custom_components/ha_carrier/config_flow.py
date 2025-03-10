@@ -85,6 +85,8 @@ class ConfigFlowHandler(config_entries.ConfigFlow):
                 api_connection = ApiConnectionGraphql(username=username, password=password)
                 await api_connection.load_data()
                 self.data.update(user_input)
+                await self.async_set_unique_id(username)
+                self._abort_if_unique_id_configured()
                 return self.async_create_entry(
                     title=username,
                     data=self.data,
