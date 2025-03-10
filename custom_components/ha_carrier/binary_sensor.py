@@ -31,11 +31,12 @@ async def async_setup_entry(hass, config_entry: ConfigEntry, async_add_entities)
             ]
         )
         for zone in carrier_system.config.zones:
-            entities.extend(
-                [
-                    OccupancySensor(updater, carrier_system.profile.serial, zone_api_id=zone.api_id),
-                ]
-            )
+            if zone.occupancy_enabled:
+                entities.extend(
+                    [
+                        OccupancySensor(updater, carrier_system.profile.serial, zone_api_id=zone.api_id),
+                    ]
+                )
     async_add_entities(entities)
 
 
