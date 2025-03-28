@@ -8,6 +8,6 @@
   "iot_class": "cloud_push",
   "issue_tracker": "https://github.com/dahlb/ha_carrier/issues",
   "loggers": ["ha_carrier", "carrier_api"],
-  "requirements": ["carrier-api==2.8.5"],
+  "requirements": ["carrier-api==2.8.6"],
   "version": "2.7.13"
 }
