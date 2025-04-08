@@ -223,7 +223,7 @@ class Thermostat(CarrierEntity, ClimateEntity):
                 mode = SystemModes.HEAT
             case HVACMode.OFF:
                 mode = SystemModes.OFF
-            case HVACMode.HEAT_COOL | HVACMode.AUTO:
+            case HVACMode.HEAT_COOL:
                 mode = SystemModes.AUTO
             case HVACMode.FAN_ONLY:
                 mode = SystemModes.FAN_ONLY
