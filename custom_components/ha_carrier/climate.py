@@ -215,8 +215,7 @@ class Thermostat(CarrierEntity, ClimateEntity):
         _LOGGER.debug(f"set_hvac_mode; hvac_mode:{hvac_mode}")
         if hvac_mode in [HVACMode.DRY]:
             return
-        mode = None
-        match hvac_mode.strip().lower():
+        match hvac_mode:
             case HVACMode.COOL:
                 mode = SystemModes.COOL
             case HVACMode.HEAT:
@@ -227,6 +226,8 @@ class Thermostat(CarrierEntity, ClimateEntity):
                 mode = SystemModes.AUTO
             case HVACMode.FAN_ONLY:
                 mode = SystemModes.FAN_ONLY
+            case _:
+                raise ValueError(f"unsupported mode: {hvac_mode}")
         self.carrier_system.config.mode = mode.value
         await self.coordinator.api_connection.set_config_mode(
             system_serial=self.carrier_system.profile.serial, mode=mode
