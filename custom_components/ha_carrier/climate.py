@@ -215,7 +215,7 @@ class Thermostat(CarrierEntity, ClimateEntity):
         _LOGGER.debug(f"set_hvac_mode; hvac_mode:{hvac_mode}")
         if hvac_mode in [HVACMode.DRY]:
             return
-        match hvac_mode:
+        match hvac_mode.strip().lower():
             case HVACMode.COOL:
                 mode = SystemModes.COOL
             case HVACMode.HEAT:
