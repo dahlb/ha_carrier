@@ -55,7 +55,7 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator):
     async def _async_update_data(self):
         try:
             if self.data_flush:
-                _LOGGER.debug("flushing all data")
+                _LOGGER.debug("fetching fresh all data")
                 fresh_systems: list[System] = await self.api_connection.load_data()
                 if self.systems is None:
                     self.systems = fresh_systems
@@ -90,14 +90,17 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator):
             return [system.__repr__() for system in self.systems]
         except TransportServerError as server_error:
             _LOGGER.exception(server_error)
+            self.data_flush = True
+            _LOGGER.debug("transport error likely carrier api maintenance so retrying in 1 minute.")
             self.update_interval = timedelta(minutes=1)
             raise UpdateFailed(server_error) from server_error
         except Exception as error:
             _LOGGER.exception(error)
             self.data_flush = True
+            _LOGGER.debug("unrecognized error so retying in default 30 minutes but refreshing all data then.")
             raise UpdateFailed(error) from error
 
-    def system(self, system_serial: str) -> System:
+    def system(self, system_serial: str) -> System | None:
         for system in self.systems:
             if system.profile.serial == system_serial:
                 return system
