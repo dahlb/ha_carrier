@@ -213,8 +213,6 @@ class Thermostat(CarrierEntity, ClimateEntity):
     async def async_set_hvac_mode(self, hvac_mode: HVACMode) -> None:
         """Update hvac mode."""
         _LOGGER.debug(f"set_hvac_mode; hvac_mode:{hvac_mode}")
-        if hvac_mode in [HVACMode.DRY]:
-            return
         match hvac_mode.strip().lower():
             case HVACMode.COOL:
                 mode = SystemModes.COOL
