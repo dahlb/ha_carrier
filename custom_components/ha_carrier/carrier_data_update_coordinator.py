@@ -107,4 +107,9 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator):
 
     async def updated_callback(self, _message: str) -> None:
         self.timestamp_websocket = datetime.now(UTC)
+        _LOGGER.debug("websocket updated system")
+        for system in self.systems:
+            _LOGGER.debug(
+                async_redact_data(system.__repr__(), TO_REDACT_MAPPED)
+            )
         self.async_update_listeners()
