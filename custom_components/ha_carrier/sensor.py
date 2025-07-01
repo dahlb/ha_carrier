@@ -292,7 +292,7 @@ class TimestampSensor(CarrierEntity, SensorEntity):
     _attr_device_class = SensorDeviceClass.TIMESTAMP
 
     def __init__(self, updater: CarrierDataUpdateCoordinator, system_serial: str, key: str):
-        super().__init__(f"updated {key.replace("_", " ").capitalize()} at", updater, system_serial)
+        super().__init__(f"updated {key.replace('_', ' ').capitalize()} at", updater, system_serial)
         self.key = key
 
     @property
