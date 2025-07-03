@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 from logging import Logger, getLogger
+from typing import Any
 
 from homeassistant.components.sensor import SensorEntity, SensorDeviceClass, SensorEntityDescription, SensorStateClass
 from homeassistant.const import (
@@ -353,15 +354,18 @@ class StaticPressureSensor(CarrierEntity, SensorEntity):
 
 class OutdoorUnitOperationalStatusSensor(CarrierEntity, SensorEntity):
     """Outdoor unit operational status sensor."""
-    _attr_device_class = SensorDeviceClass.ENUM
     _attr_icon = "mdi:hvac"
 
     def __init__(self, updater: CarrierDataUpdateCoordinator, system_serial: str):
         """Creates outdoor unit operational status sensor."""
         super().__init__("ODU Status", updater, system_serial)
+        if self.carrier_system.profile.outdoor_unit_type == "varcaphp":
+            self.entity_description = SensorEntityDescription(key="ODU Status", native_unit_of_measurement="%", state_class=SensorStateClass.MEASUREMENT, device_class=SensorDeviceClass.POWER_FACTOR)
+        else:
+            self.entity_description = SensorEntityDescription(key="ODU Status", device_class=SensorDeviceClass.ENUM)
 
     @property
-    def native_value(self) -> float:
+    def native_value(self) -> Any | None:
         """Return outdoor unit operational status."""
         if self.carrier_system.status.outdoor_unit_operational_status is not None:
             return self.carrier_system.status.outdoor_unit_operational_status
