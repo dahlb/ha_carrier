@@ -359,10 +359,7 @@ class OutdoorUnitOperationalStatusSensor(CarrierEntity, SensorEntity):
     def __init__(self, updater: CarrierDataUpdateCoordinator, system_serial: str):
         """Creates outdoor unit operational status sensor."""
         super().__init__("ODU Status", updater, system_serial)
-        if self.carrier_system.profile.outdoor_unit_type == "varcaphp":
-            self.entity_description = SensorEntityDescription(key="ODU Status", native_unit_of_measurement="%", state_class=SensorStateClass.MEASUREMENT, device_class=SensorDeviceClass.POWER_FACTOR)
-        else:
-            self.entity_description = SensorEntityDescription(key="ODU Status", device_class=SensorDeviceClass.ENUM)
+        self.entity_description = SensorEntityDescription(key="ODU Status", device_class=SensorDeviceClass.ENUM)
 
     @property
     def native_value(self) -> Any | None:
