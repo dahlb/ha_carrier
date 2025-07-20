@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 from logging import Logger, getLogger
-from typing import Any
+from typing import Any, Mapping
 
 from homeassistant.components.sensor import SensorEntity, SensorDeviceClass, SensorEntityDescription, SensorStateClass
 from homeassistant.const import (
@@ -382,6 +382,10 @@ class OutdoorUnitOperationalStatusSensor(CarrierEntity, SensorEntity):
         """Return true if sensor is ready for display."""
         return self.native_value is not None
 
+    @property
+    def extra_state_attributes(self) -> Mapping[str, Any] | None:
+        return self.carrier_system.status.raw["odu"]
+
 
 class IndoorUnitOperationalStatusSensor(CarrierEntity, SensorEntity):
     """Indoor unit operational status sensor."""
@@ -393,7 +397,7 @@ class IndoorUnitOperationalStatusSensor(CarrierEntity, SensorEntity):
         super().__init__("IDU Status", updater, system_serial)
 
     @property
-    def native_value(self) -> float:
+    def native_value(self) -> str | None:
         """Return indoor unit operational status."""
         if self.carrier_system.status.indoor_unit_operational_status is not None:
             return self.carrier_system.status.indoor_unit_operational_status
@@ -402,6 +406,10 @@ class IndoorUnitOperationalStatusSensor(CarrierEntity, SensorEntity):
     def available(self) -> bool:
         """Return true if sensor is ready for display."""
         return self.native_value is not None
+
+    @property
+    def extra_state_attributes(self) -> Mapping[str, Any] | None:
+        return self.carrier_system.status.raw["idu"]
 
 
 class HPVarSensor(CarrierEntity, SensorEntity):

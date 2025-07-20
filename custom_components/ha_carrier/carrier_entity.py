@@ -1,7 +1,7 @@
 """Base entity for carrier devices."""
 from logging import getLogger, Logger
 
-from carrier_api import StatusZone, ConfigZone
+from carrier_api import StatusZone, ConfigZone, System
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.update_coordinator import (
     CoordinatorEntity,
@@ -28,7 +28,7 @@ class CarrierEntity(CoordinatorEntity[CarrierDataUpdateCoordinator]):
         self._attr_unique_id = f"{self.carrier_system.profile.serial}_{entity_type}"
 
     @property
-    def carrier_system(self):
+    def carrier_system(self) -> System:
         return self.coordinator.system(system_serial=self.coordinator_context)
 
     @property
