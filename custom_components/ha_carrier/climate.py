@@ -316,7 +316,7 @@ class Thermostat(CarrierEntity, ClimateEntity):
             "conditioning": self._status_zone.conditioning,
             "status_mode": self.carrier_system.status.mode,
             "blower_rpm": self.carrier_system.status.blower_rpm,
-            "damper_position": self._status_zone_raw.damper_position,
+            "damper_position": self._status_zone.damper_position,
         }
 
     @property
