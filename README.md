@@ -8,7 +8,7 @@
 
 A custom integration for Carrier Infinity Thermostats.
 
-This integration utilizes the Carrier Api, if you would prefer a fully local integration for carrier thermostats use [infinitude](https://github.com/MizterB/homeassistant-infinitude)
+This integration utilizes the Carrier Api, if you would prefer a fully local integration for carrier thermostats use [infinitude](https://github.com/MizterB/homeassistant-infinitude-beyond)
 
 tested initially on SYSTXCCWIC01-B fw 4.31
 
