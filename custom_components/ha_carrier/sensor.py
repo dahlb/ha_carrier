@@ -45,8 +45,8 @@ async def async_setup_entry(hass, config_entry: ConfigEntry, async_add_entities)
                 IndoorUnitOperationalStatusSensor(updater, carrier_system.profile.serial),
             ]
         )
-        if carrier_system.profile.outdoor_unit_type == "varcaphp":
-            entities.append(HPVarSensor(updater, carrier_system.profile.serial))
+        if carrier_system.profile.outdoor_unit_type in ["varcaphp","varcapac"]:
+            entities.append(OutDoorUnitVarSensor(updater, carrier_system.profile.serial))
         if carrier_system.config.humidifier_enabled:
             entities.append(HumidifierRemainingSensor(updater, carrier_system.profile.serial))
         if carrier_system.config.uv_enabled:
@@ -413,9 +413,9 @@ class IndoorUnitOperationalStatusSensor(CarrierEntity, SensorEntity):
         return self.carrier_system.status.raw["idu"]
 
 
-class HPVarSensor(CarrierEntity, SensorEntity):
-    """HP Var sensor for variable capacity heat pump percentage.
-    Only registered for systems with outdoor_unit_type == 'varcaphp'.
+class OutDoorUnitVarSensor(CarrierEntity, SensorEntity):
+    """Outdoor Unit Var sensor for variable capacity odu percentage.
+    Only registered for systems with outdoor_unit_type == 'varcaphp' or 'varcapac'.
     Returns the percentage as a float if the value is a numeric string (including decimals),
     or 0 for any non-numeric value.
     """
@@ -424,13 +424,13 @@ class HPVarSensor(CarrierEntity, SensorEntity):
     _attr_state_class = SensorStateClass.MEASUREMENT
 
     def __init__(self, updater: CarrierDataUpdateCoordinator, system_serial: str):
-        """Create HP Var sensor."""
-        super().__init__("HP Var", updater, system_serial)
+        """Create ODU Var sensor."""
+        super().__init__("ODU Var", updater, system_serial)
 
     @property
     def native_value(self) -> float | None:
         """
-        Return HP Var percentage as a float if the value is a numeric string (including decimals).
+        Return ODU Var percentage as a float if the value is a numeric string (including decimals).
         Returns 0 for any non-numeric value.
         """
         value = self.carrier_system.status.outdoor_unit_operational_status
