@@ -11,7 +11,7 @@ from homeassistant.const import (
     PERCENTAGE,
     UnitOfVolumeFlowRate,
     UnitOfEnergy,
-    UnitOfVolume,
+    UnitOfVolume, UnitOfPressure,
 )
 from homeassistant.config_entries import ConfigEntry
 from datetime import datetime
@@ -335,7 +335,7 @@ class AirflowSensor(CarrierEntity, SensorEntity):
 class StaticPressureSensor(CarrierEntity, SensorEntity):
     """Static Pressure sensor."""
     _attr_device_class = SensorDeviceClass.PRESSURE
-    _attr_native_unit_of_measurement = "psi"
+    _attr_native_unit_of_measurement = UnitOfPressure.INH2O
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_icon = "mdi:air-filter"
 
@@ -347,7 +347,8 @@ class StaticPressureSensor(CarrierEntity, SensorEntity):
     def native_value(self) -> float:
         """Return Static Pressure in psi."""
         if self.carrier_system.status.static_pressure is not None:
-           return self.carrier_system.status.static_pressure * 0.03613 # convert from inwc to psi
+           return self.carrier_system.status.static_pressure
+        return None
 
     @property
     def available(self) -> bool:
