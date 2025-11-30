@@ -226,7 +226,7 @@ class Thermostat(CarrierEntity, ClimateEntity):
         _LOGGER.debug(f"Setting target humidity to {humidity}")
         if humidity > 45:
             humidity = 45
-            _LOGGER.debug(f"Setting target humidity to max heating of 45")
+            _LOGGER.debug("Setting target humidity to max heating of 45")
         rounded_humidity = int(humidity/5)*5
         _LOGGER.debug(f"Setting target humidity to api acceptable multiple of 5 {rounded_humidity}")
         await self.coordinator.api_connection.set_config_heat_humidity(
