@@ -82,6 +82,8 @@ class Thermostat(CarrierEntity, ClimateEntity):
     """Create thermostat."""
     _attr_supported_features = SUPPORT_FLAGS
     _enable_turn_on_off_backwards_compatibility = False
+    _attr_max_humidity = 45
+    _attr_min_humidity = 0
 
     def __init__(self, updater: CarrierDataUpdateCoordinator, system_serial: str, infinite_hold: bool, zone_api_id: str):
         """Create thermostat."""
@@ -109,6 +111,8 @@ class Thermostat(CarrierEntity, ClimateEntity):
             activity.type.value for activity in self._config_zone.activities
         ]
         self._attr_preset_modes.append("resume")
+        if self.carrier_system.config.humidifier_enabled:
+            self._attr_supported_features |= ClimateEntityFeature.TARGET_HUMIDITY
 
     @property
     def current_humidity(self) -> int | None:
@@ -198,6 +202,13 @@ class Thermostat(CarrierEntity, ClimateEntity):
         return None
 
     @property
+    def target_humidity(self) -> float | None:
+        """Return target temperature low."""
+        if self.carrier_system.config.humidifier_enabled:
+            return self.carrier_system.config.humidifier_heat_target
+        return None
+
+    @property
     def preset_mode(self) -> str | None:
         """Return preset mode."""
         return self._current_activity().type.value
@@ -209,6 +220,19 @@ class Thermostat(CarrierEntity, ClimateEntity):
             return FAN_AUTO
         else:
             return self._current_activity().fan.value
+
+    async def async_set_humidity(self, humidity: int) -> None:
+        """Set new target humidity."""
+        _LOGGER.debug(f"Setting target humidity to {humidity}")
+        if humidity > 45:
+            humidity = 45
+            _LOGGER.debug(f"Setting target humidity to max heating of 45")
+        rounded_humidity = int(humidity/5)*5
+        _LOGGER.debug(f"Setting target humidity to api acceptable multiple of 5 {rounded_humidity}")
+        await self.coordinator.api_connection.set_config_heat_humidity(
+            system_serial=self.carrier_system.profile.serial,
+            humidity_target=rounded_humidity
+        )
 
     async def async_set_hvac_mode(self, hvac_mode: HVACMode) -> None:
         """Update hvac mode."""
