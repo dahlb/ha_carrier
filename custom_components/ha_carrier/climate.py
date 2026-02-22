@@ -181,24 +181,28 @@ class Thermostat(CarrierEntity, ClimateEntity):
     @property
     def target_temperature(self) -> float | None:
         """Return target temperature."""
+        # Use actual setpoints from status, not config activity lookup
+        # This fixes bug where API returns stale currentActivity but correct htsp/clsp
         if self.hvac_mode == HVACMode.HEAT:
-            return self._current_activity().heat_set_point
+            return self._status_zone.heat_set_point
         if self.hvac_mode == HVACMode.COOL:
-            return self._current_activity().cool_set_point
+            return self._status_zone.cool_set_point
         return None
 
     @property
     def target_temperature_high(self) -> float | None:
         """Return target temperature high."""
+        # Use actual setpoints from status, not config activity lookup
         if self.hvac_mode == HVACMode.HEAT_COOL:
-            return self._current_activity().cool_set_point
+            return self._status_zone.cool_set_point
         return None
 
     @property
     def target_temperature_low(self) -> float | None:
         """Return target temperature low."""
+        # Use actual setpoints from status, not config activity lookup
         if self.hvac_mode == HVACMode.HEAT_COOL:
-            return self._current_activity().heat_set_point
+            return self._status_zone.heat_set_point
         return None
 
     @property
@@ -210,7 +214,17 @@ class Thermostat(CarrierEntity, ClimateEntity):
 
     @property
     def preset_mode(self) -> str | None:
-        """Return preset mode."""
+        """Return preset mode by matching actual setpoints to configured activities."""
+        # Get actual setpoints from status (not from activity lookup)
+        actual_heat = self._status_zone.heat_set_point
+        actual_cool = self._status_zone.cool_set_point
+        # Find which activity matches these setpoints
+        for activity in self._config_zone.activities:
+            if (activity.heat_set_point == actual_heat and 
+                activity.cool_set_point == actual_cool):
+                return activity.type.value
+        # No match found - fall back to API's reported activity
+        # This could happen during transitions or with custom setpoints
         return self._current_activity().type.value
 
     @property
