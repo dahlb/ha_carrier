@@ -1,6 +1,6 @@
 {
   "domain": "ha_carrier",
-  "name": "Carrier Infinity",
+  "name": "Carrier Infinity fix",
   "codeowners": ["@dahlb"],
   "config_flow": true,
   "documentation": "https://github.com/dahlb/ha_carrier",
