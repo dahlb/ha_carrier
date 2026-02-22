@@ -54,6 +54,7 @@ async def async_setup_entry(hass, config_entry: ConfigEntry, async_add_entities)
         for electric_metric in ["cooling", "hp_heat", "fan", "electric_heat", "reheat", "fan_gas", "loop_pump"]:
             if getattr(carrier_system.energy, electric_metric):
                 entities.append(EnergyMeasurementSensor(updater, carrier_system.profile.serial, electric_metric))
+                entities.append(LifetimeEnergyMeasurementSensor(updater, carrier_system.profile.serial, electric_metric))
                 entities.append(DailyEnergyMeasurementSensor(updater, carrier_system.profile.serial, electric_metric))
                 entities.append(MonthlyEnergyMeasurementSensor(updater, carrier_system.profile.serial, electric_metric))
         if carrier_system.energy.gas:
@@ -162,6 +163,30 @@ class EnergyMeasurementSensor(CarrierEntity, SensorEntity):
 
     @property
     def native_value(self) -> float:
+        return getattr(self.carrier_system.energy.current_year_measurements(), self.entity_description.key)
+
+    @property
+    def available(self) -> bool:
+        """Return true if sensor is ready for display."""
+        return self.native_value is not None
+
+
+class LifetimeEnergyMeasurementSensor(CarrierEntity, SensorEntity):
+    """Lifetime cumulative energy sensor - never resets, continues accumulating across years."""
+    def __init__(self, updater: CarrierDataUpdateCoordinator, system_serial: str, metric: str):
+        self.entity_description = SensorEntityDescription(
+            key=metric,
+            device_class=SensorDeviceClass.ENERGY,
+            state_class=SensorStateClass.TOTAL_INCREASING,
+            native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+            suggested_display_precision=0,
+            # No last_reset - this makes it a continuous accumulating meter
+        )
+        super().__init__(f"{self.entity_description.key} Energy Lifetime", updater, system_serial)
+
+    @property
+    def native_value(self) -> float:
+        # Use current year's value - HA will track cumulative total across resets
         return getattr(self.carrier_system.energy.current_year_measurements(), self.entity_description.key)
 
     @property
