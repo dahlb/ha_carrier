@@ -225,6 +225,11 @@ class Thermostat(CarrierEntity, ClimateEntity):
                 return activity.type.value
         # No match found - fall back to API's reported activity
         # This could happen during transitions or with custom setpoints
+        _LOGGER.debug(
+            f"Zone {self._config_zone.name}: No activity matched setpoints "
+            f"(heat={actual_heat}, cool={actual_cool}). "
+            f"Falling back to API activity: {self._current_activity().type.value}"
+        )
         return self._current_activity().type.value
 
     @property
