@@ -54,6 +54,8 @@ async def async_setup_entry(hass, config_entry: ConfigEntry, async_add_entities)
         for electric_metric in ["cooling", "hp_heat", "fan", "electric_heat", "reheat", "fan_gas", "loop_pump"]:
             if getattr(carrier_system.energy, electric_metric):
                 entities.append(EnergyMeasurementSensor(updater, carrier_system.profile.serial, electric_metric))
+                entities.append(DailyEnergyMeasurementSensor(updater, carrier_system.profile.serial, electric_metric))
+                entities.append(MonthlyEnergyMeasurementSensor(updater, carrier_system.profile.serial, electric_metric))
         if carrier_system.energy.gas:
             entities.append(GasMeasurementSensor(updater, carrier_system.profile.serial, "gas"))
             if carrier_system.config.fuel_type == 'propane':
@@ -166,6 +168,86 @@ class EnergyMeasurementSensor(CarrierEntity, SensorEntity):
     def available(self) -> bool:
         """Return true if sensor is ready for display."""
         return self.native_value is not None
+
+
+class DailyEnergyMeasurementSensor(CarrierEntity, SensorEntity):
+    """Sensor for daily energy consumption (yesterday's usage)."""
+    def __init__(self, updater: CarrierDataUpdateCoordinator, system_serial: str, metric: str):
+        # Map metric names to API field names
+        self.metric_map = {
+            "cooling": "coolingKwh",
+            "hp_heat": "hPHeatKwh",
+            "fan": "fanKwh",
+            "electric_heat": "eHeatKwh",
+            "reheat": "reheatKwh",
+            "fan_gas": "fanGasKwh",
+            "loop_pump": "loopPumpKwh",
+            "gas": "gasKwh"
+        }
+        self.metric = metric
+        self.entity_description = SensorEntityDescription(
+            key=f"{metric}_daily",
+            device_class=SensorDeviceClass.ENERGY,
+            state_class=SensorStateClass.TOTAL_INCREASING,
+            native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+            suggested_display_precision=1,
+        )
+        super().__init__(f"{metric} Energy Yesterday", updater, system_serial)
+
+    @property
+    def native_value(self) -> float:
+        """Return yesterday's consumption."""
+        energy_periods = self.carrier_system.energy.raw.get("energyPeriods", [])
+        for period in energy_periods:
+            if period.get("energyPeriodType") == "day1":
+                api_field = self.metric_map.get(self.metric)
+                return period.get(api_field, 0)
+        return 0
+
+    @property
+    def available(self) -> bool:
+        """Return true if sensor is ready for display."""
+        return self.carrier_system.energy.raw is not None
+
+
+class MonthlyEnergyMeasurementSensor(CarrierEntity, SensorEntity):
+    """Sensor for monthly energy consumption (last month's usage)."""
+    def __init__(self, updater: CarrierDataUpdateCoordinator, system_serial: str, metric: str):
+        # Map metric names to API field names
+        self.metric_map = {
+            "cooling": "coolingKwh",
+            "hp_heat": "hPHeatKwh",
+            "fan": "fanKwh",
+            "electric_heat": "eHeatKwh",
+            "reheat": "reheatKwh",
+            "fan_gas": "fanGasKwh",
+            "loop_pump": "loopPumpKwh",
+            "gas": "gasKwh"
+        }
+        self.metric = metric
+        self.entity_description = SensorEntityDescription(
+            key=f"{metric}_monthly",
+            device_class=SensorDeviceClass.ENERGY,
+            state_class=SensorStateClass.TOTAL,
+            native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+            suggested_display_precision=0,
+        )
+        super().__init__(f"{metric} Energy Last Month", updater, system_serial)
+
+    @property
+    def native_value(self) -> float:
+        """Return last month's consumption."""
+        energy_periods = self.carrier_system.energy.raw.get("energyPeriods", [])
+        for period in energy_periods:
+            if period.get("energyPeriodType") == "month1":
+                api_field = self.metric_map.get(self.metric)
+                return period.get(api_field, 0)
+        return 0
+
+    @property
+    def available(self) -> bool:
+        """Return true if sensor is ready for display."""
+        return self.carrier_system.energy.raw is not None
 
 
 class ZoneTemperatureSensor(CarrierEntity, SensorEntity):
