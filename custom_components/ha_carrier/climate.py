@@ -220,7 +220,7 @@ class Thermostat(CarrierEntity, ClimateEntity):
         actual_cool = self._status_zone.cool_set_point
         # Find which activity matches these setpoints
         for activity in self._config_zone.activities:
-            if (activity.heat_set_point == actual_heat and 
+            if (activity.heat_set_point == actual_heat and
                 activity.cool_set_point == actual_cool):
                 return activity.type.value
         # No match found - fall back to API's reported activity
