@@ -14,7 +14,7 @@ from homeassistant.const import (
     UnitOfVolume, UnitOfPressure,
 )
 from homeassistant.config_entries import ConfigEntry
-from datetime import datetime
+from datetime import UTC, datetime
 from carrier_api import TemperatureUnits
 
 
@@ -105,7 +105,7 @@ class GasMeasurementSensor(CarrierEntity, SensorEntity):
             state_class=SensorStateClass.TOTAL,
             native_unit_of_measurement=unit_of_measurement,
             suggested_display_precision=2,
-            last_reset=datetime(year=datetime.now().year, month=1, day=1)
+            last_reset=datetime(year=datetime.now(UTC).year, month=1, day=1, tzinfo=UTC)
         )
         super().__init__(f"{self.fuel_type.capitalize()} Yearly", updater, system_serial)
 
@@ -134,7 +134,7 @@ class PropaneMeasurementSensor(CarrierEntity, SensorEntity):
             state_class=SensorStateClass.TOTAL,
             native_unit_of_measurement=UnitOfVolume.GALLONS,
             suggested_display_precision=2,
-            last_reset=datetime(year=datetime.now().year, month=1, day=1)
+            last_reset=datetime(year=datetime.now(UTC).year, month=1, day=1, tzinfo=UTC)
         )
         super().__init__("Propane Yearly Gallons", updater, system_serial)
 
@@ -156,7 +156,7 @@ class EnergyMeasurementSensor(CarrierEntity, SensorEntity):
             state_class=SensorStateClass.TOTAL,
             native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
             suggested_display_precision=0,
-            last_reset=datetime(year=datetime.now().year, month=1, day=1)
+            last_reset=datetime(year=datetime.now(UTC).year, month=1, day=1, tzinfo=UTC)
         )
         super().__init__(f"{self.entity_description.key} Energy Yearly", updater, system_serial)
 
