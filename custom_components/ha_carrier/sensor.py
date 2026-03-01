@@ -45,6 +45,7 @@ async def async_setup_entry(hass, config_entry: ConfigEntry, async_add_entities)
                 IndoorUnitOperationalStatusSensor(updater, carrier_system.profile.serial),
             ]
         )
+        entities.append(HumidityLevelSettingSensor(updater, carrier_system.profile.serial))
         if carrier_system.profile.outdoor_unit_type in ["varcaphp","varcapac"]:
             entities.append(OutDoorUnitVarSensor(updater, carrier_system.profile.serial))
         if carrier_system.config.humidifier_enabled:
@@ -70,6 +71,25 @@ async def async_setup_entry(hass, config_entry: ConfigEntry, async_add_entities)
     async_add_entities(entities)
 
 
+class HumidityLevelSettingSensor(CarrierEntity, SensorEntity):
+    """System-level humidity level setting from humlvl."""
+    def __init__(self, updater: CarrierDataUpdateCoordinator, system_serial: str):
+        """Create identifiers."""
+        self.coordinator = updater
+        self.coordinator_context = system_serial
+        super().__init__("Humidity Level Setting", updater, system_serial)
+
+    @property
+    def native_value(self) -> float | None:
+        """Return the raw Carrier humidity level setting."""
+        return self.carrier_system.status.humidity_level
+
+    @property
+    def available(self) -> bool:
+        """Return true if the humidity value is known."""
+        return self.native_value is not None
+
+
 class ZoneHumiditySensor(CarrierEntity, SensorEntity):
     """Displays humidity at zone."""
     _attr_device_class = SensorDeviceClass.HUMIDITY
@@ -84,8 +104,8 @@ class ZoneHumiditySensor(CarrierEntity, SensorEntity):
         super().__init__(f"{self._config_zone.name} Humidity", updater, system_serial)
 
     @property
-    def native_value(self) -> float:
-        """Returns temperature."""
+    def native_value(self) -> float | None:
+        """Return zone relative humidity."""
         return self._status_zone.humidity
 
     @property
