@@ -102,7 +102,7 @@ class GasMeasurementSensor(CarrierEntity, SensorEntity):
         self.entity_description = SensorEntityDescription(
             key=metric,
             device_class=SensorDeviceClass.GAS,
-            state_class=SensorStateClass.TOTAL_INCREASING,
+            state_class=SensorStateClass.TOTAL,
             native_unit_of_measurement=unit_of_measurement,
             suggested_display_precision=2,
             last_reset=datetime(year=datetime.now().year, month=1, day=1)
@@ -131,7 +131,7 @@ class PropaneMeasurementSensor(CarrierEntity, SensorEntity):
         self.entity_description = SensorEntityDescription(
             key="propane",
             device_class=SensorDeviceClass.VOLUME,
-            state_class=SensorStateClass.TOTAL_INCREASING,
+            state_class=SensorStateClass.TOTAL,
             native_unit_of_measurement=UnitOfVolume.GALLONS,
             suggested_display_precision=2,
             last_reset=datetime(year=datetime.now().year, month=1, day=1)
@@ -153,7 +153,7 @@ class EnergyMeasurementSensor(CarrierEntity, SensorEntity):
         self.entity_description = SensorEntityDescription(
             key=metric,
             device_class=SensorDeviceClass.ENERGY,
-            state_class=SensorStateClass.TOTAL_INCREASING,
+            state_class=SensorStateClass.TOTAL,
             native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
             suggested_display_precision=0,
             last_reset=datetime(year=datetime.now().year, month=1, day=1)
