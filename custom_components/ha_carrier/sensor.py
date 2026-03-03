@@ -102,10 +102,9 @@ class GasMeasurementSensor(CarrierEntity, SensorEntity):
         self.entity_description = SensorEntityDescription(
             key=metric,
             device_class=SensorDeviceClass.GAS,
-            state_class=SensorStateClass.TOTAL,
+            state_class=SensorStateClass.TOTAL_INCREASING,
             native_unit_of_measurement=unit_of_measurement,
             suggested_display_precision=2,
-            last_reset=datetime(year=datetime.now(UTC).year, month=1, day=1, tzinfo=UTC)
         )
         super().__init__(f"{self.fuel_type.capitalize()} Yearly", updater, system_serial)
 
@@ -131,10 +130,9 @@ class PropaneMeasurementSensor(CarrierEntity, SensorEntity):
         self.entity_description = SensorEntityDescription(
             key="propane",
             device_class=SensorDeviceClass.VOLUME,
-            state_class=SensorStateClass.TOTAL,
+            state_class=SensorStateClass.TOTAL_INCREASING,
             native_unit_of_measurement=UnitOfVolume.GALLONS,
             suggested_display_precision=2,
-            last_reset=datetime(year=datetime.now(UTC).year, month=1, day=1, tzinfo=UTC)
         )
         super().__init__("Propane Yearly Gallons", updater, system_serial)
 
@@ -153,10 +151,9 @@ class EnergyMeasurementSensor(CarrierEntity, SensorEntity):
         self.entity_description = SensorEntityDescription(
             key=metric,
             device_class=SensorDeviceClass.ENERGY,
-            state_class=SensorStateClass.TOTAL,
+            state_class=SensorStateClass.TOTAL_INCREASING,
             native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
             suggested_display_precision=0,
-            last_reset=datetime(year=datetime.now(UTC).year, month=1, day=1, tzinfo=UTC)
         )
         super().__init__(f"{self.entity_description.key} Energy Yearly", updater, system_serial)
 
