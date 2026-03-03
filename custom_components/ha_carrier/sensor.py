@@ -14,7 +14,6 @@ from homeassistant.const import (
     UnitOfVolume, UnitOfPressure,
 )
 from homeassistant.config_entries import ConfigEntry
-from datetime import UTC, datetime
 from carrier_api import TemperatureUnits
 
 
