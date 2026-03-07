@@ -374,4 +374,10 @@ class Thermostat(CarrierEntity, ClimateEntity):
     @property
     def available(self) -> bool:
         """Return true if sensor is ready for display."""
-        return self._status_zone is not None and self._current_activity() is not None
+        # `find_activity(status.current_activity)` can transiently return None
+        # during websocket/config synchronization. Availability should reflect
+        # zone existence, not activity lookup success in that instant.
+        try:
+            return self._status_zone is not None and self._config_zone is not None
+        except ValueError:
+            return False
