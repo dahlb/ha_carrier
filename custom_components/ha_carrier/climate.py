@@ -283,12 +283,6 @@ class Thermostat(CarrierEntity, ClimateEntity):
             return self._config_zone.next_activity_time()
         return None
 
-    @property
-    def _hold_activity_name(self):
-        if self._hold_until is None or self._config_zone.hold_activity is None:
-            return None
-        return self._config_zone.hold_activity.value
-
     async def async_set_preset_mode(self, preset_mode: str) -> None:
         """Set preset mode."""
         _LOGGER.debug(f"set_preset_mode; preset_mode:{preset_mode}")
@@ -367,8 +361,9 @@ class Thermostat(CarrierEntity, ClimateEntity):
             "status_mode": self.carrier_system.status.mode,
             "blower_rpm": self.carrier_system.status.blower_rpm,
             "damper_position": self._status_zone.damper_position,
-            "hold_activity": self._hold_activity_name,
-            "hold_until": self._hold_until,
+            "hold_activity": self._config_zone.hold_activity,
+            "hold_until": self._config_zone.hold_until,
+            "next_activity_time": self._config_zone.next_activity_time(),
         }
 
     @property
