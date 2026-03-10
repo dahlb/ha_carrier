@@ -93,8 +93,8 @@ class OccupancySensor(CarrierEntity, BinarySensorEntity):
 
 
 class HumidifierSensor(CarrierEntity, BinarySensorEntity):
-    """Displays occupancy state."""
-    _attr_device_class = BinarySensorDeviceClass.MOISTURE
+    """Displays humidifier running state."""
+    _attr_device_class = BinarySensorDeviceClass.RUNNING
 
     def __init__(self, updater: CarrierDataUpdateCoordinator, system_serial: str):
         super().__init__("Humidifier Running", updater, system_serial)
