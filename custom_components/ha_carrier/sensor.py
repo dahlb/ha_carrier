@@ -302,8 +302,7 @@ class OutdoorTemperatureSensor(CarrierEntity, SensorEntity):
 
 
 class FilterUsedSensor(CarrierEntity, SensorEntity):
-    """Filter used sensor, mimics battery for easy testing."""
-    _attr_device_class = SensorDeviceClass.BATTERY
+    """Air filter remaining sensor."""
     _attr_native_unit_of_measurement = PERCENTAGE
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_icon = "mdi:air-filter"
