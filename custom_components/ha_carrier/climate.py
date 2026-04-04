@@ -356,12 +356,13 @@ class Thermostat(CarrierEntity, ClimateEntity):
     @property
     def extra_state_attributes(self) -> Mapping[str, Any] | None:
         """Return extra state attributes."""
+        hold_activity_name = self._config_zone.hold_activity.value if self._config_zone.hold_activity else None
         return {
             "conditioning": self._status_zone.conditioning,
             "status_mode": self.carrier_system.status.mode,
             "blower_rpm": self.carrier_system.status.blower_rpm,
             "damper_position": self._status_zone.damper_position,
-            "hold_activity": self._config_zone.hold_activity,
+            "hold_activity": hold_activity_name,
             "hold_until": self._config_zone.hold_until,
             "next_activity_time": self._config_zone.next_activity_time(),
         }
