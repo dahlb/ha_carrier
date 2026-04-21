@@ -1,37 +1,53 @@
 """Update data from carrier api."""
-from datetime import timedelta, datetime, UTC
+
+import asyncio
+from collections.abc import Awaitable, Callable
+from datetime import UTC, datetime, timedelta
 from logging import Logger, getLogger
+from typing import Any
 
-
-from carrier_api import ApiConnectionGraphql, System, Energy
+from carrier_api import ApiConnectionGraphql, Energy, System
 from carrier_api.api_websocket_data_updater import WebsocketDataUpdater
 from gql.transport.exceptions import TransportServerError
-
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.debounce import Debouncer
-from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed, \
-    REQUEST_REFRESH_DEFAULT_COOLDOWN
+from homeassistant.helpers.update_coordinator import (
+    REQUEST_REFRESH_DEFAULT_COOLDOWN,
+    DataUpdateCoordinator,
+    UpdateFailed,
+)
 
 from .const import DOMAIN, TO_REDACT_MAPPED
 from .util import async_redact_data
 
 _LOGGER: Logger = getLogger(__package__)
 DEFAULT_UPDATE_INTERVAL_MINUTES = 30
+UNAUTHORIZED_RETRY_THRESHOLD = 3
+WRITE_RETRY_DELAY_SECONDS = 1
+
+
+class CarrierUnauthorizedError(Exception):
+    """Raised when unauthorized responses stop looking transient."""
 
 
 class CarrierDataUpdateCoordinator(DataUpdateCoordinator):
     """Update data from carrier api."""
+
     systems: list[System] = None
     websocket_data_updater: WebsocketDataUpdater = None
     data_flush: bool = True
     timestamp_all_data = None
     timestamp_websocket = None
     timestamp_energy = None
+    consecutive_unauthorized_count: int = 0
+    unauthorized_outage_logged: bool = False
+    unauthorized_escalated_logged: bool = False
 
     def __init__(
-            self,
-            hass: HomeAssistant,
-            api_connection: ApiConnectionGraphql,
+        self,
+        hass: HomeAssistant,
+        api_connection: ApiConnectionGraphql,
     ) -> None:
         """Initialize the device."""
         self.hass: HomeAssistant = hass
@@ -49,10 +65,11 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator):
                 cooldown=REQUEST_REFRESH_DEFAULT_COOLDOWN,
                 immediate=False,
                 function=self.async_refresh,
-            )
+            ),
         )
 
     async def _async_update_data(self):
+        refresh_context = "full data refresh" if self.data_flush else "energy refresh"
         try:
             if self.data_flush:
                 _LOGGER.debug("fetching fresh all data")
@@ -60,45 +77,165 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator):
                 if self.systems is None:
                     self.systems = fresh_systems
                     self.websocket_data_updater = WebsocketDataUpdater(systems=self.systems)
-                    self.api_connection.api_websocket.callback_add(self.websocket_data_updater.message_handler)
+                    self.api_connection.api_websocket.callback_add(
+                        self.websocket_data_updater.message_handler
+                    )
                     self.api_connection.api_websocket.callback_add(self.updated_callback)
                 else:
                     for fresh_system in fresh_systems:
                         related_stale_system = self.system(fresh_system.profile.serial)
                         if related_stale_system is None:
-                            _LOGGER.error(f"unable to find matching system, serial {fresh_system.profile.serial}")
+                            _LOGGER.error(
+                                f"unable to find matching system, serial {fresh_system.profile.serial}"
+                            )
                         else:
                             related_stale_system.profile = fresh_system.profile
                             related_stale_system.status = fresh_system.status
                             related_stale_system.config = fresh_system.config
                             related_stale_system.energy = fresh_system.energy
                 for system in self.systems:
-                    _LOGGER.debug(
-                        async_redact_data(system.__repr__(), TO_REDACT_MAPPED)
-                    )
+                    _LOGGER.debug(async_redact_data(system.__repr__(), TO_REDACT_MAPPED))
                 self.timestamp_all_data = datetime.now(UTC)
                 self.timestamp_energy = self.timestamp_all_data
                 self.data_flush = False
+                self._reset_unauthorized_tracking()
+                self.update_interval = timedelta(minutes=DEFAULT_UPDATE_INTERVAL_MINUTES)
             else:
                 _LOGGER.debug("fetching energy data")
+                energy_refresh_successful = True
+                found_unauthorized = False
                 for system in self.systems:
-                    energy_response = await self.api_connection.get_energy(system.profile.serial)
+                    try:
+                        energy_response = await self.api_connection.get_energy(
+                            system.profile.serial
+                        )
+                    except TransportServerError as server_error:
+                        if not self._is_unauthorized_error(server_error):
+                            raise
+                        energy_refresh_successful = False
+                        found_unauthorized = True
+                        continue
                     energy = Energy(raw=energy_response["infinityEnergy"])
                     system.energy = energy
-                self.timestamp_energy = datetime.now(UTC)
-            self.update_interval = timedelta(minutes=DEFAULT_UPDATE_INTERVAL_MINUTES)
+                if found_unauthorized and not energy_refresh_successful:
+                    should_escalate = self._record_unauthorized("energy refresh cycle")
+                    if should_escalate:
+                        raise CarrierUnauthorizedError(
+                            "Carrier API repeatedly rejected energy refresh requests; check credentials or service health."
+                        )
+                if energy_refresh_successful:
+                    self.timestamp_energy = datetime.now(UTC)
+                    self._reset_unauthorized_tracking()
+                    self.update_interval = timedelta(minutes=DEFAULT_UPDATE_INTERVAL_MINUTES)
+                else:
+                    self.update_interval = timedelta(minutes=1)
             return [system.__repr__() for system in self.systems]
-        except TransportServerError as server_error:
-            _LOGGER.exception(server_error)
+        except CarrierUnauthorizedError as error:
             self.data_flush = True
+            self.update_interval = timedelta(minutes=1)
+            raise UpdateFailed(str(error)) from error
+        except TransportServerError as server_error:
+            self.data_flush = True
+            if self._is_unauthorized_error(server_error):
+                should_escalate = self._record_unauthorized(refresh_context)
+                self.update_interval = timedelta(minutes=1)
+                if should_escalate:
+                    raise UpdateFailed(
+                        "Carrier API repeatedly rejected refresh requests; check credentials or service health."
+                    ) from server_error
+                raise UpdateFailed(
+                    "Carrier API temporarily rejected the refresh; retrying soon."
+                ) from server_error
+            _LOGGER.exception(server_error)
             _LOGGER.debug("transport error likely carrier api maintenance so retrying in 1 minute.")
             self.update_interval = timedelta(minutes=1)
             raise UpdateFailed(server_error) from server_error
         except Exception as error:
             _LOGGER.exception(error)
             self.data_flush = True
-            _LOGGER.debug("unrecognized error so retying in default 30 minutes but refreshing all data then.")
+            self.update_interval = timedelta(minutes=DEFAULT_UPDATE_INTERVAL_MINUTES)
+            _LOGGER.debug(
+                "unrecognized error so retrying in default 30 minutes but refreshing all data then."
+            )
             raise UpdateFailed(error) from error
+
+    @staticmethod
+    def _is_unauthorized_error(error: Exception) -> bool:
+        """Return true when carrier rejected the request as unauthorized."""
+        status_code = getattr(error, "code", None) or getattr(error, "status", None)
+        if status_code == 401:
+            return True
+        error_message = str(error)
+        return "401" in error_message and "Unauthorized" in error_message
+
+    def _reset_unauthorized_tracking(self) -> None:
+        """Reset intermittent auth-blip tracking after a successful request."""
+        self.consecutive_unauthorized_count = 0
+        self.unauthorized_outage_logged = False
+        self.unauthorized_escalated_logged = False
+
+    def _record_unauthorized(self, context: str) -> bool:
+        """Track unauthorized responses and rate-limit log noise."""
+        self.consecutive_unauthorized_count += 1
+        if not self.unauthorized_outage_logged:
+            _LOGGER.warning(
+                "Carrier API returned unauthorized during %s; treating it as a transient blip.",
+                context,
+            )
+            self.unauthorized_outage_logged = True
+        if (
+            self.consecutive_unauthorized_count >= UNAUTHORIZED_RETRY_THRESHOLD
+            and not self.unauthorized_escalated_logged
+        ):
+            _LOGGER.error(
+                "Carrier API returned unauthorized %s consecutive times; this no longer looks transient.",
+                self.consecutive_unauthorized_count,
+            )
+            self.unauthorized_escalated_logged = True
+        return self.consecutive_unauthorized_count >= UNAUTHORIZED_RETRY_THRESHOLD
+
+    async def async_perform_api_call(
+        self,
+        operation_name: str,
+        request: Callable[[], Awaitable[Any]],
+    ) -> Any:
+        """Perform a write call with a single retry for intermittent 401s."""
+        for attempt in range(2):
+            try:
+                result = await request()
+            except TransportServerError as error:
+                if not self._is_unauthorized_error(error):
+                    raise
+                if attempt == 0:
+                    await asyncio.sleep(WRITE_RETRY_DELAY_SECONDS)
+                    continue
+
+                self.data_flush = True
+                try:
+                    await self.async_refresh()
+                except Exception as refresh_error:  # pragma: no cover - defensive logging only
+                    _LOGGER.debug(
+                        "refresh after unauthorized %s failed: %s",
+                        operation_name,
+                        refresh_error,
+                    )
+
+                should_escalate = (
+                    self.consecutive_unauthorized_count >= UNAUTHORIZED_RETRY_THRESHOLD
+                )
+                if not should_escalate:
+                    should_escalate = self._record_unauthorized(operation_name)
+
+                if should_escalate:
+                    raise HomeAssistantError(
+                        "Carrier repeatedly rejected requests. Check credentials or Carrier service health."
+                    ) from error
+                raise HomeAssistantError(
+                    "Carrier temporarily rejected the request. Try again shortly."
+                ) from error
+            else:
+                self._reset_unauthorized_tracking()
+                return result
 
     def system(self, system_serial: str) -> System | None:
         for system in self.systems:
@@ -109,7 +246,5 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator):
         self.timestamp_websocket = datetime.now(UTC)
         _LOGGER.debug("websocket updated system")
         for system in self.systems:
-            _LOGGER.debug(
-                async_redact_data(system.__repr__(), TO_REDACT_MAPPED)
-            )
+            _LOGGER.debug(async_redact_data(system.__repr__(), TO_REDACT_MAPPED))
         self.async_update_listeners()
