@@ -178,7 +178,7 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator):
         """Track unauthorized responses and rate-limit log noise."""
         self.consecutive_unauthorized_count += 1
         if not self.unauthorized_outage_logged:
-            _LOGGER.warning(
+            _LOGGER.info(
                 "Carrier API returned unauthorized during %s; treating it as a transient blip.",
                 context,
             )
@@ -194,45 +194,77 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator):
             self.unauthorized_escalated_logged = True
         return self.consecutive_unauthorized_count >= UNAUTHORIZED_RETRY_THRESHOLD
 
+    def _is_retryable_write_error(self, error: Exception) -> bool:
+        """Return true when a write failure should be retried once."""
+        if isinstance(error, TransportServerError):
+            return self._is_unauthorized_error(error)
+        return isinstance(error, TimeoutError)
+
+    async def _async_retry_write(self, attempt: int) -> bool:
+        """Delay and indicate whether another write attempt should be made."""
+        if attempt != 0:
+            return False
+        await asyncio.sleep(WRITE_RETRY_DELAY_SECONDS)
+        return True
+
+    async def _async_handle_failed_write(self, operation_name: str, error: Exception) -> None:
+        """Refresh after a write failure and raise a user-facing error."""
+        is_unauthorized_write = isinstance(
+            error, TransportServerError
+        ) and self._is_unauthorized_error(error)
+        should_escalate = False
+        unauthorized_count = 0
+        unauthorized_outage_logged = False
+        unauthorized_escalated_logged = False
+
+        if is_unauthorized_write:
+            should_escalate = self._record_unauthorized(operation_name)
+            unauthorized_count = self.consecutive_unauthorized_count
+            unauthorized_outage_logged = self.unauthorized_outage_logged
+            unauthorized_escalated_logged = self.unauthorized_escalated_logged
+
+        self.data_flush = True
+        try:
+            await self.async_refresh()
+        except Exception as refresh_error:  # pragma: no cover - defensive logging only
+            _LOGGER.debug(
+                "refresh after failed %s write failed: %s",
+                operation_name,
+                refresh_error,
+            )
+
+        if is_unauthorized_write:
+            self.consecutive_unauthorized_count = unauthorized_count
+            self.unauthorized_outage_logged = unauthorized_outage_logged
+            self.unauthorized_escalated_logged = unauthorized_escalated_logged
+
+            if should_escalate:
+                raise HomeAssistantError(
+                    "Carrier repeatedly rejected requests. Check credentials or Carrier service health."
+                ) from error
+            raise HomeAssistantError(
+                "Carrier temporarily rejected the request. Try again shortly."
+            ) from error
+
+        raise HomeAssistantError(
+            "Carrier timed out while applying the request. Try again shortly."
+        ) from error
+
     async def async_perform_api_call(
         self,
         operation_name: str,
         request: Callable[[], Awaitable[Any]],
     ) -> Any:
-        """Perform a write call with a single retry for intermittent 401s."""
+        """Perform a write call with a single retry for transient Carrier API failures."""
         for attempt in range(2):
             try:
                 result = await request()
-            except TransportServerError as error:
-                if not self._is_unauthorized_error(error):
+            except (TransportServerError, TimeoutError) as error:
+                if not self._is_retryable_write_error(error):
                     raise
-                if attempt == 0:
-                    await asyncio.sleep(WRITE_RETRY_DELAY_SECONDS)
+                if await self._async_retry_write(attempt):
                     continue
-
-                self.data_flush = True
-                try:
-                    await self.async_refresh()
-                except Exception as refresh_error:  # pragma: no cover - defensive logging only
-                    _LOGGER.debug(
-                        "refresh after unauthorized %s failed: %s",
-                        operation_name,
-                        refresh_error,
-                    )
-
-                should_escalate = (
-                    self.consecutive_unauthorized_count >= UNAUTHORIZED_RETRY_THRESHOLD
-                )
-                if not should_escalate:
-                    should_escalate = self._record_unauthorized(operation_name)
-
-                if should_escalate:
-                    raise HomeAssistantError(
-                        "Carrier repeatedly rejected requests. Check credentials or Carrier service health."
-                    ) from error
-                raise HomeAssistantError(
-                    "Carrier temporarily rejected the request. Try again shortly."
-                ) from error
+                await self._async_handle_failed_write(operation_name, error)
             else:
                 self._reset_unauthorized_tracking()
                 return result

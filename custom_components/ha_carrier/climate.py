@@ -324,6 +324,7 @@ class Thermostat(CarrierEntity, ClimateEntity):
             await self.coordinator.async_refresh()
         else:
             activity_type = ActivityTypes(preset_mode.strip().lower())
+            selected_activity = self._config_zone.find_activity(activity_type)
             await self.coordinator.async_perform_api_call(
                 "set preset mode",
                 partial(
@@ -337,6 +338,9 @@ class Thermostat(CarrierEntity, ClimateEntity):
             self._config_zone.hold = True
             self._config_zone.hold_activity = activity_type
             self._config_zone.hold_until = self._hold_until
+            if selected_activity is not None:
+                self._status_zone.heat_set_point = selected_activity.heat_set_point
+                self._status_zone.cool_set_point = selected_activity.cool_set_point
             self.async_write_ha_state()
 
     async def async_set_fan_mode(self, fan_mode: str) -> None:
