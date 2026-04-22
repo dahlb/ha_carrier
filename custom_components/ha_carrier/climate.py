@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from functools import partial
 from logging import Logger, getLogger
 from typing import Any
 
@@ -57,9 +58,7 @@ SUPPORT_FLAGS = (
 async def async_setup_entry(hass, config_entry: ConfigEntry, async_add_entities):
     """Create climate platform."""
     _LOGGER.debug("setting up climate entry")
-    infinite_hold = config_entry.options.get(
-        CONF_INFINITE_HOLDS, DEFAULT_INFINITE_HOLDS
-    )
+    infinite_hold = config_entry.options.get(CONF_INFINITE_HOLDS, DEFAULT_INFINITE_HOLDS)
     updater: CarrierDataUpdateCoordinator = hass.data[DOMAIN][config_entry.entry_id][
         DATA_UPDATE_COORDINATOR
     ]
@@ -115,9 +114,7 @@ class Thermostat(CarrierEntity, ClimateEntity):
             HVACMode.HEAT,
             HVACMode.COOL,
         ]
-        self._attr_preset_modes = [
-            activity.type.value for activity in self._config_zone.activities
-        ]
+        self._attr_preset_modes = [activity.type.value for activity in self._config_zone.activities]
         self._attr_preset_modes.append("resume")
         if self.carrier_system.config.humidifier_enabled:
             self._attr_supported_features |= ClimateEntityFeature.TARGET_HUMIDITY
@@ -162,10 +159,7 @@ class Thermostat(CarrierEntity, ClimateEntity):
         """Return hvac action."""
         if self.hvac_mode == HVACMode.OFF:
             return HVACAction.OFF
-        elif (
-            self._status_zone.conditioning is None
-            or self._status_zone.conditioning == "idle"
-        ):
+        elif self._status_zone.conditioning is None or self._status_zone.conditioning == "idle":
             return HVACAction.IDLE
         elif "heat" in self._status_zone.conditioning:
             return HVACAction.HEATING
@@ -228,10 +222,7 @@ class Thermostat(CarrierEntity, ClimateEntity):
         actual_cool = self._status_zone.cool_set_point
         # Find which activity matches these setpoints
         for activity in self._config_zone.activities:
-            if (
-                activity.heat_set_point == actual_heat
-                and activity.cool_set_point == actual_cool
-            ):
+            if activity.heat_set_point == actual_heat and activity.cool_set_point == actual_cool:
                 return activity.type.value
         # No match found - fall back to API's reported activity
         # This could happen during transitions or with custom setpoints
@@ -257,16 +248,17 @@ class Thermostat(CarrierEntity, ClimateEntity):
             humidity = 45
             _LOGGER.debug("Setting target humidity to max heating of 45")
         rounded_humidity = int(humidity / 5) * 5
-        _LOGGER.debug(
-            f"Setting target humidity to api acceptable multiple of 5 {rounded_humidity}"
-        )
+        _LOGGER.debug(f"Setting target humidity to api acceptable multiple of 5 {rounded_humidity}")
         await self.coordinator.async_perform_api_call(
             "set humidity",
-            lambda: self.coordinator.api_connection.set_config_heat_humidity(
+            partial(
+                self.coordinator.api_connection.set_config_heat_humidity,
                 system_serial=self.carrier_system.profile.serial,
                 humidity_target=rounded_humidity,
             ),
         )
+        self.carrier_system.config.humidifier_heat_target = rounded_humidity
+        self.async_write_ha_state()
 
     async def async_set_hvac_mode(self, hvac_mode: HVACMode) -> None:
         """Update hvac mode."""
@@ -286,12 +278,14 @@ class Thermostat(CarrierEntity, ClimateEntity):
                 raise ValueError(f"unsupported mode: {hvac_mode}")
         await self.coordinator.async_perform_api_call(
             "set hvac mode",
-            lambda: self.coordinator.api_connection.set_config_mode(
+            partial(
+                self.coordinator.api_connection.set_config_mode,
                 system_serial=self.carrier_system.profile.serial,
                 mode=mode,
             ),
         )
         self.carrier_system.config.mode = mode.value
+        self.async_write_ha_state()
 
     @property
     def _hold_until(self):
@@ -320,17 +314,20 @@ class Thermostat(CarrierEntity, ClimateEntity):
         if preset_mode == "resume":
             await self.coordinator.async_perform_api_call(
                 "resume schedule",
-                lambda: self.coordinator.api_connection.resume_schedule(
+                partial(
+                    self.coordinator.api_connection.resume_schedule,
                     system_serial=self.carrier_system.profile.serial,
                     zone_id=self.zone_api_id,
                 ),
             )
+            self.coordinator.data_flush = True
             await self.coordinator.async_refresh()
         else:
             activity_type = ActivityTypes(preset_mode.strip().lower())
             await self.coordinator.async_perform_api_call(
                 "set preset mode",
-                lambda: self.coordinator.api_connection.set_config_hold(
+                partial(
+                    self.coordinator.api_connection.set_config_hold,
                     system_serial=self.carrier_system.profile.serial,
                     zone_id=self.zone_api_id,
                     activity_type=activity_type,
@@ -340,6 +337,7 @@ class Thermostat(CarrierEntity, ClimateEntity):
             self._config_zone.hold = True
             self._config_zone.hold_activity = activity_type
             self._config_zone.hold_until = self._hold_until
+            self.async_write_ha_state()
 
     async def async_set_fan_mode(self, fan_mode: str) -> None:
         """Set fan mode."""
@@ -351,7 +349,8 @@ class Thermostat(CarrierEntity, ClimateEntity):
         current_activity = self._current_activity()
         await self.coordinator.async_perform_api_call(
             "set fan mode",
-            lambda: self.coordinator.api_connection.update_fan(
+            partial(
+                self.coordinator.api_connection.update_fan,
                 system_serial=self.carrier_system.profile.serial,
                 zone_id=self.zone_api_id,
                 activity_type=current_activity.type,
@@ -359,6 +358,7 @@ class Thermostat(CarrierEntity, ClimateEntity):
             ),
         )
         current_activity.fan = fan_mode
+        self.async_write_ha_state()
 
     async def async_set_temperature(self, **kwargs) -> None:
         """Set temperatures."""
@@ -383,7 +383,8 @@ class Thermostat(CarrierEntity, ClimateEntity):
         try:
             await self.coordinator.async_perform_api_call(
                 "set manual hold",
-                lambda: self.coordinator.api_connection.set_config_hold(
+                partial(
+                    self.coordinator.api_connection.set_config_hold,
                     system_serial=self.carrier_system.profile.serial,
                     zone_id=self.zone_api_id,
                     activity_type=ActivityTypes.MANUAL,
@@ -392,7 +393,8 @@ class Thermostat(CarrierEntity, ClimateEntity):
             )
             await self.coordinator.async_perform_api_call(
                 "set manual activity",
-                lambda: self.coordinator.api_connection.set_config_manual_activity(
+                partial(
+                    self.coordinator.api_connection.set_config_manual_activity,
                     system_serial=self.carrier_system.profile.serial,
                     zone_id=self.zone_api_id,
                     heat_set_point=str(heat_set_point),
@@ -409,14 +411,15 @@ class Thermostat(CarrierEntity, ClimateEntity):
         self._config_zone.hold_until = self._hold_until
         manual_activity.cool_set_point = cool_set_point
         manual_activity.heat_set_point = heat_set_point
+        self._status_zone.cool_set_point = cool_set_point
+        self._status_zone.heat_set_point = heat_set_point
+        self.async_write_ha_state()
 
     @property
     def extra_state_attributes(self) -> Mapping[str, Any] | None:
         """Return extra state attributes."""
         hold_activity_name = (
-            self._config_zone.hold_activity.value
-            if self._config_zone.hold_activity
-            else None
+            self._config_zone.hold_activity.value if self._config_zone.hold_activity else None
         )
         return {
             "conditioning": self._status_zone.conditioning,

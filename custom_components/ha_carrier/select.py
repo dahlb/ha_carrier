@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from functools import partial
 from logging import Logger, getLogger
 
 from carrier_api.const import HeatSourceTypes
@@ -90,11 +91,14 @@ class HeatSourceSelect(CarrierEntity, SelectEntity):
         _LOGGER.debug(f"Selected heat source: {new_heat_source}")
         await self.coordinator.async_perform_api_call(
             "set heat source",
-            lambda: self.coordinator.api_connection.set_heat_source(
+            partial(
+                self.coordinator.api_connection.set_heat_source,
                 system_serial=self.carrier_system.profile.serial,
                 heat_source=new_heat_source,
             ),
         )
+        self.carrier_system.config.heat_source = new_heat_source.value
+        self.async_write_ha_state()
 
     @property
     def available(self) -> bool:
