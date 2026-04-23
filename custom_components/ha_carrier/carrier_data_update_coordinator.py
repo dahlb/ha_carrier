@@ -52,6 +52,7 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator):
         self.consecutive_unauthorized_count = 0
         self.unauthorized_outage_logged = False
         self.unauthorized_escalated_logged = False
+        self._suppress_unauthorized_recording = False
 
         super().__init__(
             hass,
@@ -208,6 +209,9 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator):
             bool: True when repeated unauthorized responses have crossed the
             escalation threshold.
         """
+        if self._suppress_unauthorized_recording:
+            return self.consecutive_unauthorized_count >= UNAUTHORIZED_RETRY_THRESHOLD
+
         self.consecutive_unauthorized_count += 1
         if not self.unauthorized_outage_logged:
             _LOGGER.info(
@@ -297,6 +301,7 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator):
             operation_name: Friendly name for the write operation that failed.
         """
         self.data_flush = True
+        self._suppress_unauthorized_recording = True
         try:
             # A write may have partially applied server-side before the transport
             # failed, so force a refresh before reporting or re-raising upstream.
@@ -307,6 +312,8 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator):
                 operation_name,
                 refresh_error,
             )
+        finally:
+            self._suppress_unauthorized_recording = False
 
     async def async_perform_api_call(
         self,
@@ -326,7 +333,8 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator):
         Raises:
             HomeAssistantError: Raised after retry and refresh recovery are
                 exhausted for retryable failures.
-            Exception: Re-raises non-retryable request failures unchanged.
+            HomeAssistantError: Raised after reconciliation for non-retryable
+                request failures.
         """
         for attempt in range(2):
             try:
@@ -334,7 +342,7 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator):
             except (TransportServerError, TimeoutError) as error:
                 if not self._is_retryable_write_error(error):
                     await self._async_reconcile_failed_write(operation_name)
-                    raise
+                    raise HomeAssistantError(str(error)) from error
                 if await self._async_retry_write(attempt):
                     continue
                 await self._async_handle_failed_write(operation_name, error)
