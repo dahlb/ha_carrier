@@ -297,25 +297,6 @@ class Thermostat(CarrierEntity, ClimateEntity):
             return self._config_zone.next_activity_time()
         return None
 
-    async def _async_refresh_after_write_failure(self, operation_name: str) -> None:
-        """Refresh coordinator state after a multi-step write fails.
-
-        Manual temperature updates are sent as separate Carrier API calls, so a
-        failure in the second step can leave Home Assistant with stale local state.
-
-        Args:
-            operation_name: Friendly name for the write sequence that failed.
-        """
-        self.coordinator.data_flush = True
-        try:
-            await self.coordinator.async_refresh()
-        except Exception as refresh_error:  # pragma: no cover - defensive logging only
-            _LOGGER.debug(
-                "refresh after failed %s write failed: %s",
-                operation_name,
-                refresh_error,
-            )
-
     async def async_set_preset_mode(self, preset_mode: str) -> None:
         """Set preset mode."""
         _LOGGER.debug(f"set_preset_mode; preset_mode:{preset_mode}")
@@ -397,35 +378,28 @@ class Thermostat(CarrierEntity, ClimateEntity):
             f"set_temperature; heat_set_point:{heat_set_point}, cool_set_point:{cool_set_point}, fan_mode:{fan_mode}"
         )
         # Carrier applies manual temperature changes through two separate writes.
-        # If the second call fails after the hold is enabled, refresh to reconcile
-        # any partial server-side state before the next user action.
-        try:
-            await self.coordinator.async_perform_api_call(
-                "set manual hold",
-                partial(
-                    self.coordinator.api_connection.set_config_hold,
-                    system_serial=self.carrier_system.profile.serial,
-                    zone_id=self.zone_api_id,
-                    activity_type=ActivityTypes.MANUAL,
-                    hold_until=self._hold_until,
-                ),
-            )
-            await self.coordinator.async_perform_api_call(
-                "set manual activity",
-                partial(
-                    self.coordinator.api_connection.set_config_manual_activity,
-                    system_serial=self.carrier_system.profile.serial,
-                    zone_id=self.zone_api_id,
-                    heat_set_point=str(heat_set_point),
-                    cool_set_point=str(cool_set_point),
-                    fan_mode=fan_mode,
-                ),
-            )
-        except HomeAssistantError:
-            raise
-        except Exception:
-            await self._async_refresh_after_write_failure("manual temperature")
-            raise
+        # Each write uses the coordinator's centralized retry/reconcile handling.
+        await self.coordinator.async_perform_api_call(
+            "set manual hold",
+            partial(
+                self.coordinator.api_connection.set_config_hold,
+                system_serial=self.carrier_system.profile.serial,
+                zone_id=self.zone_api_id,
+                activity_type=ActivityTypes.MANUAL,
+                hold_until=self._hold_until,
+            ),
+        )
+        await self.coordinator.async_perform_api_call(
+            "set manual activity",
+            partial(
+                self.coordinator.api_connection.set_config_manual_activity,
+                system_serial=self.carrier_system.profile.serial,
+                zone_id=self.zone_api_id,
+                heat_set_point=str(heat_set_point),
+                cool_set_point=str(cool_set_point),
+                fan_mode=fan_mode,
+            ),
+        )
 
         self._config_zone.hold = True
         self._config_zone.hold_activity = ActivityTypes.MANUAL

@@ -344,7 +344,7 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator):
                 if not self._is_retryable_write_error(error):
                     await self._async_reconcile_failed_write(operation_name)
                     raise HomeAssistantError(
-                        "Failed to communicate with Carrier service — operation could not be completed. See logs for details."
+                        "Failed to communicate with Carrier service — operation could not be completed."
                     ) from error
                 if await self._async_retry_write(attempt):
                     continue
