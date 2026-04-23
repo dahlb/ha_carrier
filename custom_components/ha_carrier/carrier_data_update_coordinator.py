@@ -275,17 +275,7 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator):
         if is_unauthorized_write:
             should_escalate = self._record_unauthorized(operation_name)
 
-        self.data_flush = True
-        try:
-            # A write may have partially applied server-side before the transport
-            # failed, so force a refresh before reporting the error upstream.
-            await self.async_refresh()
-        except Exception as refresh_error:  # pragma: no cover - defensive logging only
-            _LOGGER.debug(
-                "refresh after failed %s write failed: %s",
-                operation_name,
-                refresh_error,
-            )
+        await self._async_reconcile_failed_write(operation_name)
 
         if is_unauthorized_write:
             if should_escalate:
@@ -299,6 +289,24 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator):
         raise HomeAssistantError(
             "Carrier timed out while applying the request. Try again shortly."
         ) from error
+
+    async def _async_reconcile_failed_write(self, operation_name: str) -> None:
+        """Refresh coordinator state after a write may have partially applied.
+
+        Args:
+            operation_name: Friendly name for the write operation that failed.
+        """
+        self.data_flush = True
+        try:
+            # A write may have partially applied server-side before the transport
+            # failed, so force a refresh before reporting or re-raising upstream.
+            await self.async_refresh()
+        except Exception as refresh_error:  # pragma: no cover - defensive logging only
+            _LOGGER.debug(
+                "refresh after failed %s write failed: %s",
+                operation_name,
+                refresh_error,
+            )
 
     async def async_perform_api_call(
         self,
@@ -325,6 +333,7 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator):
                 result = await request()
             except (TransportServerError, TimeoutError) as error:
                 if not self._is_retryable_write_error(error):
+                    await self._async_reconcile_failed_write(operation_name)
                     raise
                 if await self._async_retry_write(attempt):
                     continue
