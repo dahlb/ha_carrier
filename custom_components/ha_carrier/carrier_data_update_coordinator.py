@@ -4,7 +4,7 @@ import asyncio
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
 from logging import Logger, getLogger
-from typing import Any
+from typing import Any, NoReturn
 
 from carrier_api import ApiConnectionGraphql, Energy, System
 from carrier_api.api_websocket_data_updater import WebsocketDataUpdater
@@ -25,6 +25,7 @@ _LOGGER: Logger = getLogger(__package__)
 DEFAULT_UPDATE_INTERVAL_MINUTES = 30
 UNAUTHORIZED_RETRY_THRESHOLD = 3
 WRITE_RETRY_DELAY_SECONDS = 1
+MAX_WRITE_ATTEMPTS = 2
 
 
 class CarrierUnauthorizedError(Exception):
@@ -184,10 +185,7 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator):
             bool: True when the error maps to an HTTP 401-style failure.
         """
         status_code = getattr(error, "code", None) or getattr(error, "status", None)
-        if status_code == 401:
-            return True
-        error_message = str(error)
-        return "401" in error_message and "Unauthorized" in error_message
+        return status_code == 401
 
     def _reset_unauthorized_tracking(self) -> None:
         """Clear the unauthorized counters after a successful Carrier request.
@@ -195,6 +193,9 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator):
         A successful read or write means the most recent authentication issue was
         transient, so subsequent failures should start a new outage window.
         """
+        if self._suppress_unauthorized_recording:
+            return
+
         self.consecutive_unauthorized_count = 0
         self.unauthorized_outage_logged = False
         self.unauthorized_escalated_logged = False
@@ -258,7 +259,7 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator):
         await asyncio.sleep(WRITE_RETRY_DELAY_SECONDS)
         return True
 
-    async def _async_handle_failed_write(self, operation_name: str, error: Exception) -> None:
+    async def _async_handle_failed_write(self, operation_name: str, error: Exception) -> NoReturn:
         """Recover from a failed write and raise a user-facing Home Assistant error.
 
         Forces a refresh so entity state is reconciled with the Carrier backend
@@ -336,20 +337,26 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator):
             HomeAssistantError: Raised after reconciliation for non-retryable
                 request failures.
         """
-        for attempt in range(2):
+        for attempt in range(MAX_WRITE_ATTEMPTS):
             try:
                 result = await request()
             except (TransportServerError, TimeoutError) as error:
                 if not self._is_retryable_write_error(error):
                     await self._async_reconcile_failed_write(operation_name)
-                    raise HomeAssistantError(str(error)) from error
+                    raise HomeAssistantError(
+                        "Failed to communicate with Carrier service — operation could not be completed. See logs for details."
+                    ) from error
                 if await self._async_retry_write(attempt):
                     continue
                 await self._async_handle_failed_write(operation_name, error)
-                raise
+                raise AssertionError("unreachable after failed write handling")
             else:
                 self._reset_unauthorized_tracking()
                 return result
+
+        raise HomeAssistantError(
+            "Carrier operation did not complete after the allowed retry attempts."
+        )
 
     def system(self, system_serial: str) -> System | None:
         for system in self.systems:
