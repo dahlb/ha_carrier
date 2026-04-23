@@ -133,17 +133,15 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator):
                     energy = Energy(raw=energy_response["infinityEnergy"])
                     system.energy = energy
                 if found_unauthorized:
-                    should_escalate = self._record_unauthorized("energy refresh cycle")
-                    if should_escalate:
+                    if self._record_unauthorized("energy refresh cycle"):
                         raise CarrierUnauthorizedError(
                             "Carrier API repeatedly rejected energy refresh requests; check credentials or service health."
                         )
-                if not found_unauthorized:
+                    self.update_interval = timedelta(minutes=1)
+                else:
                     self.timestamp_energy = datetime.now(UTC)
                     self._reset_unauthorized_tracking()
                     self.update_interval = timedelta(minutes=DEFAULT_UPDATE_INTERVAL_MINUTES)
-                else:
-                    self.update_interval = timedelta(minutes=1)
             return [system.__repr__() for system in self.systems]
         except CarrierUnauthorizedError as error:
             self.data_flush = True
@@ -193,9 +191,6 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator):
         A successful read or write means the most recent authentication issue was
         transient, so subsequent failures should start a new outage window.
         """
-        if self._suppress_unauthorized_recording:
-            return
-
         self.consecutive_unauthorized_count = 0
         self.unauthorized_outage_logged = False
         self.unauthorized_escalated_logged = False
@@ -246,7 +241,7 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator):
         return isinstance(error, TimeoutError)
 
     async def _async_retry_write(self, attempt: int) -> bool:
-        """Delay before retrying the first failed write attempt.
+        """Delay before retrying a failed write when attempts remain.
 
         Args:
             attempt: Zero-based attempt number for the current request.
@@ -254,7 +249,7 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator):
         Returns:
             bool: True when the caller should issue one more write attempt.
         """
-        if attempt != 0:
+        if attempt >= MAX_WRITE_ATTEMPTS - 1:
             return False
         await asyncio.sleep(WRITE_RETRY_DELAY_SECONDS)
         return True
@@ -280,7 +275,7 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator):
         if is_unauthorized_write:
             should_escalate = self._record_unauthorized(operation_name)
 
-        await self._async_reconcile_failed_write(operation_name)
+        await self._async_reconcile_failed_write(operation_name, error)
 
         if is_unauthorized_write:
             if should_escalate:
@@ -295,13 +290,18 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator):
             "Carrier timed out while applying the request. Try again shortly."
         ) from error
 
-    async def _async_reconcile_failed_write(self, operation_name: str) -> None:
+    async def _async_reconcile_failed_write(
+        self, operation_name: str, error: Exception | None = None
+    ) -> None:
         """Refresh coordinator state after a write may have partially applied.
 
         Args:
             operation_name: Friendly name for the write operation that failed.
+            error: Exception raised by the failed write, if available.
         """
-        self.data_flush = True
+        if isinstance(error, TransportServerError) and self._is_unauthorized_error(error):
+            self.data_flush = True
+
         self._suppress_unauthorized_recording = True
         try:
             # A write may have partially applied server-side before the transport
@@ -342,7 +342,7 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator):
                 result = await request()
             except (TransportServerError, TimeoutError) as error:
                 if not self._is_retryable_write_error(error):
-                    await self._async_reconcile_failed_write(operation_name)
+                    await self._async_reconcile_failed_write(operation_name, error)
                     raise HomeAssistantError(
                         "Failed to communicate with Carrier service — operation could not be completed."
                     ) from error

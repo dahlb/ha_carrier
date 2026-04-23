@@ -314,6 +314,7 @@ class Thermostat(CarrierEntity, ClimateEntity):
         else:
             activity_type = ActivityTypes(preset_mode.strip().lower())
             selected_activity = self._config_zone.find_activity(activity_type)
+            hold_until_sent = self._hold_until
             await self.coordinator.async_perform_api_call(
                 "set preset mode",
                 partial(
@@ -321,14 +322,14 @@ class Thermostat(CarrierEntity, ClimateEntity):
                     system_serial=self.carrier_system.profile.serial,
                     zone_id=self.zone_api_id,
                     activity_type=activity_type,
-                    hold_until=self._hold_until,
+                    hold_until=hold_until_sent,
                 ),
             )
             # Mirror the requested hold locally so the entity reflects the user's
             # selection immediately instead of waiting for the next coordinator poll.
             self._config_zone.hold = True
             self._config_zone.hold_activity = activity_type
-            self._config_zone.hold_until = self._hold_until
+            self._config_zone.hold_until = hold_until_sent
             if selected_activity is not None:
                 self._status_zone.heat_set_point = selected_activity.heat_set_point
                 self._status_zone.cool_set_point = selected_activity.cool_set_point
@@ -364,6 +365,10 @@ class Thermostat(CarrierEntity, ClimateEntity):
         cool_set_point = kwargs.get(ATTR_TARGET_TEMP_HIGH)
         temperature = kwargs.get(ATTR_TEMPERATURE)
         manual_activity = self._config_zone.find_activity(ActivityTypes.MANUAL)
+        if manual_activity is None:
+            raise HomeAssistantError("Manual activity unavailable, try again later")
+
+        hold_until_sent = self._hold_until
 
         if self.carrier_system.config.mode == SystemModes.COOL.value:
             heat_set_point = manual_activity.heat_set_point
@@ -377,18 +382,8 @@ class Thermostat(CarrierEntity, ClimateEntity):
         _LOGGER.debug(
             f"set_temperature; heat_set_point:{heat_set_point}, cool_set_point:{cool_set_point}, fan_mode:{fan_mode}"
         )
-        # Carrier applies manual temperature changes through two separate writes.
-        # Each write uses the coordinator's centralized retry/reconcile handling.
-        await self.coordinator.async_perform_api_call(
-            "set manual hold",
-            partial(
-                self.coordinator.api_connection.set_config_hold,
-                system_serial=self.carrier_system.profile.serial,
-                zone_id=self.zone_api_id,
-                activity_type=ActivityTypes.MANUAL,
-                hold_until=self._hold_until,
-            ),
-        )
+        # Apply setpoints before enabling the hold so a failed second write does
+        # not leave the thermostat pinned to MANUAL with stale temperatures.
         await self.coordinator.async_perform_api_call(
             "set manual activity",
             partial(
@@ -400,10 +395,20 @@ class Thermostat(CarrierEntity, ClimateEntity):
                 fan_mode=fan_mode,
             ),
         )
+        await self.coordinator.async_perform_api_call(
+            "set manual hold",
+            partial(
+                self.coordinator.api_connection.set_config_hold,
+                system_serial=self.carrier_system.profile.serial,
+                zone_id=self.zone_api_id,
+                activity_type=ActivityTypes.MANUAL,
+                hold_until=hold_until_sent,
+            ),
+        )
 
         self._config_zone.hold = True
         self._config_zone.hold_activity = ActivityTypes.MANUAL
-        self._config_zone.hold_until = self._hold_until
+        self._config_zone.hold_until = hold_until_sent
         manual_activity.cool_set_point = cool_set_point
         manual_activity.heat_set_point = heat_set_point
         self._status_zone.cool_set_point = cool_set_point
