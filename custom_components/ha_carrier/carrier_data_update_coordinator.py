@@ -69,6 +69,19 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator):
         )
 
     async def _async_update_data(self):
+        """Fetch the latest Carrier data for entities backed by the coordinator.
+
+        Performs either a full system refresh or a lighter energy-only refresh,
+        depending on whether the coordinator has been marked dirty. Unauthorized
+        responses are tracked separately so transient Carrier outages can be
+        retried quickly without immediately treating credentials as invalid.
+
+        Returns:
+            list[str]: String representations of the tracked systems.
+
+        Raises:
+            UpdateFailed: Raised when the refresh cannot complete successfully.
+        """
         refresh_context = "full data refresh" if self.data_flush else "energy refresh"
         try:
             if self.data_flush:
@@ -111,6 +124,8 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator):
                     except TransportServerError as server_error:
                         if not self._is_unauthorized_error(server_error):
                             raise
+                        # Preserve the last known energy payload while probing whether
+                        # the unauthorized response is just a transient Carrier outage.
                         found_unauthorized = True
                         continue
                     energy = Energy(raw=energy_response["infinityEnergy"])
@@ -159,7 +174,14 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator):
 
     @staticmethod
     def _is_unauthorized_error(error: Exception) -> bool:
-        """Return true when carrier rejected the request as unauthorized."""
+        """Determine whether an exception represents a Carrier unauthorized response.
+
+        Args:
+            error: Exception raised by the Carrier client or transport.
+
+        Returns:
+            bool: True when the error maps to an HTTP 401-style failure.
+        """
         status_code = getattr(error, "code", None) or getattr(error, "status", None)
         if status_code == 401:
             return True
@@ -167,13 +189,25 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator):
         return "401" in error_message and "Unauthorized" in error_message
 
     def _reset_unauthorized_tracking(self) -> None:
-        """Reset intermittent auth-blip tracking after a successful request."""
+        """Clear the unauthorized counters after a successful Carrier request.
+
+        A successful read or write means the most recent authentication issue was
+        transient, so subsequent failures should start a new outage window.
+        """
         self.consecutive_unauthorized_count = 0
         self.unauthorized_outage_logged = False
         self.unauthorized_escalated_logged = False
 
     def _record_unauthorized(self, context: str) -> bool:
-        """Track unauthorized responses and rate-limit log noise."""
+        """Record an unauthorized response and decide whether to escalate it.
+
+        Args:
+            context: Short description of the request path that failed.
+
+        Returns:
+            bool: True when repeated unauthorized responses have crossed the
+            escalation threshold.
+        """
         self.consecutive_unauthorized_count += 1
         if not self.unauthorized_outage_logged:
             _LOGGER.info(
@@ -193,20 +227,46 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator):
         return self.consecutive_unauthorized_count >= UNAUTHORIZED_RETRY_THRESHOLD
 
     def _is_retryable_write_error(self, error: Exception) -> bool:
-        """Return true when a write failure should be retried once."""
+        """Return whether a write failure should be retried once.
+
+        Args:
+            error: Exception raised while sending a Carrier write request.
+
+        Returns:
+            bool: True when the failure matches a transient unauthorized or
+            timeout condition.
+        """
         if isinstance(error, TransportServerError):
             return self._is_unauthorized_error(error)
         return isinstance(error, TimeoutError)
 
     async def _async_retry_write(self, attempt: int) -> bool:
-        """Delay and indicate whether another write attempt should be made."""
+        """Delay before retrying the first failed write attempt.
+
+        Args:
+            attempt: Zero-based attempt number for the current request.
+
+        Returns:
+            bool: True when the caller should issue one more write attempt.
+        """
         if attempt != 0:
             return False
         await asyncio.sleep(WRITE_RETRY_DELAY_SECONDS)
         return True
 
     async def _async_handle_failed_write(self, operation_name: str, error: Exception) -> None:
-        """Refresh after a write failure and raise a user-facing error."""
+        """Recover from a failed write and raise a user-facing Home Assistant error.
+
+        Forces a refresh so entity state is reconciled with the Carrier backend
+        before surfacing the failure to the user.
+
+        Args:
+            operation_name: Friendly name for the write operation that failed.
+            error: Exception raised by the Carrier API client.
+
+        Raises:
+            HomeAssistantError: Raised with a message tailored to the failure type.
+        """
         is_unauthorized_write = isinstance(
             error, TransportServerError
         ) and self._is_unauthorized_error(error)
@@ -217,6 +277,8 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator):
 
         self.data_flush = True
         try:
+            # A write may have partially applied server-side before the transport
+            # failed, so force a refresh before reporting the error upstream.
             await self.async_refresh()
         except Exception as refresh_error:  # pragma: no cover - defensive logging only
             _LOGGER.debug(
@@ -243,7 +305,21 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator):
         operation_name: str,
         request: Callable[[], Awaitable[Any]],
     ) -> Any:
-        """Perform a write call with a single retry for transient Carrier API failures."""
+        """Execute a Carrier write call with limited retry and recovery handling.
+
+        Args:
+            operation_name: Friendly name for the write operation, used in logs
+                and user-facing error messages.
+            request: Awaitable callback that performs the Carrier API write.
+
+        Returns:
+            Any: The result returned by the Carrier API request callback.
+
+        Raises:
+            HomeAssistantError: Raised after retry and refresh recovery are
+                exhausted for retryable failures.
+            Exception: Re-raises non-retryable request failures unchanged.
+        """
         for attempt in range(2):
             try:
                 result = await request()

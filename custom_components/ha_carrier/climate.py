@@ -298,7 +298,14 @@ class Thermostat(CarrierEntity, ClimateEntity):
         return None
 
     async def _async_refresh_after_write_failure(self, operation_name: str) -> None:
-        """Refresh coordinator state when a multi-step write may have partially applied."""
+        """Refresh coordinator state after a multi-step write fails.
+
+        Manual temperature updates are sent as separate Carrier API calls, so a
+        failure in the second step can leave Home Assistant with stale local state.
+
+        Args:
+            operation_name: Friendly name for the write sequence that failed.
+        """
         self.coordinator.data_flush = True
         try:
             await self.coordinator.async_refresh()
@@ -336,6 +343,8 @@ class Thermostat(CarrierEntity, ClimateEntity):
                     hold_until=self._hold_until,
                 ),
             )
+            # Mirror the requested hold locally so the entity reflects the user's
+            # selection immediately instead of waiting for the next coordinator poll.
             self._config_zone.hold = True
             self._config_zone.hold_activity = activity_type
             self._config_zone.hold_until = self._hold_until
@@ -387,6 +396,9 @@ class Thermostat(CarrierEntity, ClimateEntity):
         _LOGGER.debug(
             f"set_temperature; heat_set_point:{heat_set_point}, cool_set_point:{cool_set_point}, fan_mode:{fan_mode}"
         )
+        # Carrier applies manual temperature changes through two separate writes.
+        # If the second call fails after the hold is enabled, refresh to reconcile
+        # any partial server-side state before the next user action.
         try:
             await self.coordinator.async_perform_api_call(
                 "set manual hold",
