@@ -40,9 +40,6 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator):
     timestamp_all_data = None
     timestamp_websocket = None
     timestamp_energy = None
-    consecutive_unauthorized_count: int = 0
-    unauthorized_outage_logged: bool = False
-    unauthorized_escalated_logged: bool = False
 
     def __init__(
         self,
@@ -52,6 +49,9 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator):
         """Initialize the device."""
         self.hass: HomeAssistant = hass
         self.api_connection: ApiConnectionGraphql = api_connection
+        self.consecutive_unauthorized_count = 0
+        self.unauthorized_outage_logged = False
+        self.unauthorized_escalated_logged = False
 
         super().__init__(
             hass,
@@ -102,7 +102,6 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator):
                 self.update_interval = timedelta(minutes=DEFAULT_UPDATE_INTERVAL_MINUTES)
             else:
                 _LOGGER.debug("fetching energy data")
-                energy_refresh_successful = True
                 found_unauthorized = False
                 for system in self.systems:
                     try:
@@ -112,18 +111,17 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator):
                     except TransportServerError as server_error:
                         if not self._is_unauthorized_error(server_error):
                             raise
-                        energy_refresh_successful = False
                         found_unauthorized = True
                         continue
                     energy = Energy(raw=energy_response["infinityEnergy"])
                     system.energy = energy
-                if found_unauthorized and not energy_refresh_successful:
+                if found_unauthorized:
                     should_escalate = self._record_unauthorized("energy refresh cycle")
                     if should_escalate:
                         raise CarrierUnauthorizedError(
                             "Carrier API repeatedly rejected energy refresh requests; check credentials or service health."
                         )
-                if energy_refresh_successful:
+                if not found_unauthorized:
                     self.timestamp_energy = datetime.now(UTC)
                     self._reset_unauthorized_tracking()
                     self.update_interval = timedelta(minutes=DEFAULT_UPDATE_INTERVAL_MINUTES)
@@ -213,15 +211,9 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator):
             error, TransportServerError
         ) and self._is_unauthorized_error(error)
         should_escalate = False
-        unauthorized_count = 0
-        unauthorized_outage_logged = False
-        unauthorized_escalated_logged = False
 
         if is_unauthorized_write:
             should_escalate = self._record_unauthorized(operation_name)
-            unauthorized_count = self.consecutive_unauthorized_count
-            unauthorized_outage_logged = self.unauthorized_outage_logged
-            unauthorized_escalated_logged = self.unauthorized_escalated_logged
 
         self.data_flush = True
         try:
@@ -234,10 +226,6 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator):
             )
 
         if is_unauthorized_write:
-            self.consecutive_unauthorized_count = unauthorized_count
-            self.unauthorized_outage_logged = unauthorized_outage_logged
-            self.unauthorized_escalated_logged = unauthorized_escalated_logged
-
             if should_escalate:
                 raise HomeAssistantError(
                     "Carrier repeatedly rejected requests. Check credentials or Carrier service health."
@@ -265,6 +253,7 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator):
                 if await self._async_retry_write(attempt):
                     continue
                 await self._async_handle_failed_write(operation_name, error)
+                raise
             else:
                 self._reset_unauthorized_tracking()
                 return result

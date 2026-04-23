@@ -32,6 +32,7 @@ from homeassistant.const import (
     PRECISION_WHOLE,
     UnitOfTemperature,
 )
+from homeassistant.exceptions import HomeAssistantError
 
 from .carrier_data_update_coordinator import CarrierDataUpdateCoordinator
 from .carrier_entity import CarrierEntity
@@ -351,6 +352,8 @@ class Thermostat(CarrierEntity, ClimateEntity):
         else:
             fan_mode = FanModes(fan_mode)
         current_activity = self._current_activity()
+        if current_activity is None:
+            raise HomeAssistantError("Current activity unavailable, try again later")
         await self.coordinator.async_perform_api_call(
             "set fan mode",
             partial(
@@ -406,6 +409,8 @@ class Thermostat(CarrierEntity, ClimateEntity):
                     fan_mode=fan_mode,
                 ),
             )
+        except HomeAssistantError:
+            raise
         except Exception:
             await self._async_refresh_after_write_failure("manual temperature")
             raise
