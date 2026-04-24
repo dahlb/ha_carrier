@@ -1,0 +1,321 @@
+name: Update carrier-api
+
+on:
+  schedule:
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+    inputs:
+      carrier_api_release_owner:
+        description: Owner for carrier_api releases lookup
+        required: false
+        default: dahlb
+      carrier_api_release_repo:
+        description: Repository for carrier_api releases lookup
+        required: false
+        default: carrier_api
+
+concurrency:
+  group: update-carrier-api-dependency
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  update-carrier_api:
+    name: Update carrier-api
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Determine current and latest carrier-api versions
+        id: versions
+        run: |
+          set -euo pipefail
+
+          manifest_path="custom_components/ha_carrier/manifest.json"
+          pyproject_path="pyproject.toml"
+          package_name="carrier-api"
+          current_manifest_requirement_count="$(
+            jq -r --arg package_name "$package_name" '[.requirements[] | select(startswith($package_name + "=="))] | length' "$manifest_path"
+          )"
+          current_manifest_requirement="$(
+            jq -r --arg package_name "$package_name" '[.requirements[] | select(startswith($package_name + "=="))] | .[0] // empty' "$manifest_path"
+          )"
+          if [ "$current_manifest_requirement_count" -ne 1 ]; then
+            echo "Expected exactly one $package_name requirement in $manifest_path; found $current_manifest_requirement_count (current_manifest_requirement='$current_manifest_requirement')" >&2
+            exit 1
+          fi
+
+          current_pyproject_requirement_count="$(grep -Eo '"carrier-api==[^"]+"' "$pyproject_path" | wc -l | tr -d ' ')"
+          current_pyproject_requirement="$(grep -Eo '"carrier-api==[^"]+"' "$pyproject_path" | head -n1 | tr -d '"')"
+          current_pyproject_versions="$(grep -Eo '"carrier-api==[^"]+"' "$pyproject_path" | tr -d '"' | sed -E 's/^[^0-9]*//' | sort -Vu)"
+          current_pyproject_version_count="$(printf '%s\n' "$current_pyproject_versions" | sed '/^$/d' | wc -l | tr -d ' ')"
+          if [ "$current_pyproject_requirement_count" -lt 1 ]; then
+            echo "Expected at least one $package_name requirement in $pyproject_path; found none" >&2
+            exit 1
+          fi
+
+          current_version="$(printf '%s' "$current_manifest_requirement" | sed -E 's/^[^0-9]*//')"
+          pyproject_version="$(printf '%s' "$current_pyproject_requirement" | sed -E 's/^[^0-9]*//')"
+          latest_version="$(curl -fsSL https://pypi.org/pypi/carrier-api/json | jq -r '.info.version // empty')"
+          if [ -z "$latest_version" ] || [ "$latest_version" = "null" ]; then
+            echo "Unable to determine latest carrier-api version from PyPI response" >&2
+            exit 1
+          fi
+
+          update_needed="false"
+          if [ "$current_pyproject_version_count" -ne 1 ]; then
+            update_needed="true"
+          elif [ "$current_version" != "$pyproject_version" ]; then
+            update_needed="true"
+          elif [ "$(printf '%s\n%s\n' "$current_version" "$latest_version" | sort -V | tail -n1)" = "$latest_version" ] && [ "$current_version" != "$latest_version" ]; then
+            update_needed="true"
+          fi
+
+          {
+            echo "current_manifest=$current_version"
+            echo "current_pyproject=$pyproject_version"
+            echo "latest=$latest_version"
+            echo "update_needed=$update_needed"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Update carrier-api requirements
+        if: steps.versions.outputs.update_needed == 'true'
+        run: |
+          set -euo pipefail
+
+          manifest_path="custom_components/ha_carrier/manifest.json"
+          pyproject_path="pyproject.toml"
+          latest_version="${{ steps.versions.outputs.latest }}"
+          manifest_tmp_file="$(mktemp)"
+          pyproject_tmp_file="$(mktemp)"
+
+          jq --arg latest "$latest_version" '
+            .requirements |= map(
+              if startswith("carrier-api==")
+              then "carrier-api==" + $latest
+              else .
+              end
+            )
+          ' "$manifest_path" > "$manifest_tmp_file"
+
+          sed -E 's/"carrier-api==[^"]+"/"carrier-api=='"$latest_version"'"/g' "$pyproject_path" > "$pyproject_tmp_file"
+
+          mv "$manifest_tmp_file" "$manifest_path"
+          mv "$pyproject_tmp_file" "$pyproject_path"
+
+      - name: Build carrier-api release notes
+        if: steps.versions.outputs.update_needed == 'true'
+        id: release_notes
+        uses: actions/github-script@v9
+        env:
+          CURRENT_VERSION: ${{ steps.versions.outputs.current_manifest }}
+          LATEST_VERSION: ${{ steps.versions.outputs.latest }}
+          REPO_OWNER: ${{ github.event.inputs.carrier_api_release_owner || 'dahlb' }}
+          REPO_NAME: ${{ github.event.inputs.carrier_api_release_repo || 'carrier_api' }}
+        with:
+          script: |
+            const semver = require("semver");
+            const current = process.env.CURRENT_VERSION.replace(/^v/i, "");
+            const latest = process.env.LATEST_VERSION.replace(/^v/i, "");
+            const releaseOwner = process.env.REPO_OWNER;
+            const releaseRepo = process.env.REPO_NAME;
+
+            function normalizeTagVersion(version) {
+              const cleanedVersion = semver.clean(version.replace(/^v/i, ""));
+              return cleanedVersion ? semver.valid(cleanedVersion) : null;
+            }
+
+            function sanitizeReleaseBody(body) {
+              return body
+                .replace(/\[@([A-Za-z0-9-]+)\]\(https?:\/\/github\.com\/[A-Za-z0-9-]+\)/g, "$1")
+                .replace(/(?<![A-Za-z0-9_])@([A-Za-z0-9-]+)/g, "$1");
+            }
+
+            const normalizedCurrent = normalizeTagVersion(current);
+            const normalizedLatest = normalizeTagVersion(latest);
+            if (!normalizedCurrent || !normalizedLatest) {
+              core.setFailed(
+                `Unable to normalize version range current='${current}' latest='${latest}'`,
+              );
+              return;
+            }
+
+            const releases = await github.paginate(github.rest.repos.listReleases, {
+              owner: releaseOwner,
+              repo: releaseRepo,
+              per_page: 100,
+            });
+            if (releases.length === 0) {
+              core.setFailed(
+                `No releases found for ${releaseOwner}/${releaseRepo}. ` +
+                  "Check workflow inputs or repository variables " +
+                  "(CARRIER_API_RELEASE_OWNER/CARRIER_API_RELEASE_REPO).",
+              );
+              return;
+            }
+
+            const selected = releases
+              .filter((release) => {
+                const tagVersion = normalizeTagVersion(release.tag_name);
+                if (!tagVersion) {
+                  return false;
+                }
+                return (
+                  semver.compare(tagVersion, normalizedCurrent) > 0 &&
+                  semver.compare(tagVersion, normalizedLatest) <= 0
+                );
+              })
+              .sort((a, b) => semver.compare(
+                normalizeTagVersion(a.tag_name),
+                normalizeTagVersion(b.tag_name),
+              ));
+
+            let notes = "";
+            if (selected.length === 0) {
+              notes =
+                "No matching GitHub release notes were found for this version range.";
+            } else {
+              notes = selected
+                .map((release) => {
+                  const body = sanitizeReleaseBody(
+                    (release.body || "No release body provided.").trim(),
+                  );
+                  return [
+                    `### ${release.name || release.tag_name} (${release.tag_name})`,
+                    release.html_url,
+                    "",
+                    body,
+                  ].join("\n");
+                })
+                .join("\n\n---\n\n");
+            }
+
+            core.setOutput("notes", notes);
+
+      - name: Create or update carrier-api update PR
+        if: steps.versions.outputs.update_needed == 'true'
+        id: cpr
+        uses: peter-evans/create-pull-request@v8
+        with:
+          branch: chore/update-carrier-api-dependency
+          delete-branch: true
+          commit-message: 'Bump carrier-api to ${{ steps.versions.outputs.latest }}'
+          title: 'Bump carrier-api to ${{ steps.versions.outputs.latest }}'
+          author: github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>
+          labels: carrier-api-auto-update
+          body: |
+            Automated update of `pyproject.toml` and `custom_components/ha_carrier/manifest.json`.
+
+            - Previous manifest pin: `carrier-api==${{ steps.versions.outputs.current_manifest }}`
+            - Previous pyproject pin: `carrier-api==${{ steps.versions.outputs.current_pyproject }}`
+            - Updated pinned version: `carrier-api==${{ steps.versions.outputs.latest }}`
+
+            ## carrier-api release notes in range
+            ${{ steps.release_notes.outputs.notes }}
+          add-paths: |
+            pyproject.toml
+            custom_components/ha_carrier/manifest.json
+
+      - name: Close extra auto-generated PRs
+        if: steps.versions.outputs.update_needed == 'true' && steps.cpr.outputs.pull-request-number != ''
+        uses: actions/github-script@v9
+        env:
+          KEEP_PR_NUMBER: ${{ steps.cpr.outputs.pull-request-number }}
+        with:
+          script: |
+            const keep = Number(process.env.KEEP_PR_NUMBER);
+            const branch = "chore/update-carrier-api-dependency";
+            const pulls = await github.paginate(github.rest.pulls.list, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: "open",
+              per_page: 100,
+              head: `${context.repo.owner}:${branch}`,
+            });
+
+            for (const pr of pulls) {
+              if (pr.number === keep) {
+                continue;
+              }
+              const hasAutoLabel = pr.labels.some(
+                (label) => label.name === "carrier-api-auto-update",
+              );
+              if (!hasAutoLabel) {
+                continue;
+              }
+              if (pr.head.ref !== branch) {
+                continue;
+              }
+              await github.rest.pulls.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: pr.number,
+                state: "closed",
+              });
+            }
+
+      - name: Log when no update is required
+        if: steps.versions.outputs.update_needed != 'true'
+        run: echo "carrier-api is already at the latest version; checking for stale update PRs."
+
+      - name: Close stale carrier-api update PRs
+        if: steps.versions.outputs.update_needed != 'true'
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const branch = "chore/update-carrier-api-dependency";
+            const labelName = "carrier-api-auto-update";
+
+            const pulls = await github.paginate(github.rest.pulls.list, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: "open",
+              per_page: 100,
+              head: `${context.repo.owner}:${branch}`,
+            });
+
+            const stalePulls = pulls.filter(
+              (pr) =>
+                pr.head.ref === branch &&
+                pr.labels.some((label) => label.name === labelName),
+            );
+
+            if (stalePulls.length === 0) {
+              core.info(
+                `No open ${labelName} PRs found for branch ${branch}.`,
+              );
+            } else {
+              for (const pr of stalePulls) {
+                await github.rest.pulls.update({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  pull_number: pr.number,
+                  state: "closed",
+                });
+
+                core.info(`Closed stale carrier-api update PR #${pr.number}.`);
+              }
+            }
+
+            try {
+              await github.rest.git.deleteRef({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                ref: `heads/${branch}`,
+              });
+              core.info(`Deleted stale branch ${branch}.`);
+            } catch (error) {
+              const status = error.status ?? error.response?.status;
+
+              if (status === 404) {
+                core.info(`Branch ${branch} was already deleted.`);
+                return;
+              }
+
+              throw error;
+            }
