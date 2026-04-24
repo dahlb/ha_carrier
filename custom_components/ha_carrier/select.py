@@ -1,4 +1,4 @@
-"""Create select for heat source."""
+"""Expose Carrier heat source selection as Home Assistant select entities."""
 
 from __future__ import annotations
 
@@ -23,7 +23,16 @@ _LOGGER: Logger = getLogger(__package__)
 
 
 async def async_setup_entry(hass, config_entry: ConfigEntry, async_add_entities):
-    """Create instances of binary sensors."""
+    """Create and register heat source select entities for each system.
+
+    Args:
+        hass: Home Assistant instance.
+        config_entry: Carrier integration config entry.
+        async_add_entities: Callback used to register entity instances.
+
+    Returns:
+        None: Entities are registered through the callback.
+    """
     updater: CarrierDataUpdateCoordinator = hass.data[DOMAIN][config_entry.entry_id][
         DATA_UPDATE_COORDINATOR
     ]
@@ -38,12 +47,17 @@ async def async_setup_entry(hass, config_entry: ConfigEntry, async_add_entities)
 
 
 class HeatSourceSelect(CarrierEntity, SelectEntity):
-    """select for heat source."""
+    """Select entity that controls which unit provides primary heating."""
 
     _attr_icon = "mdi:heat-pump"
 
     def __init__(self, updater: CarrierDataUpdateCoordinator, system_serial: str):
-        """Declare device class and identifiers."""
+        """Initialize selectable heat source options for one system.
+
+        Args:
+            updater: Coordinator that provides Carrier system state.
+            system_serial: Unique Carrier system serial number.
+        """
         super().__init__("Heat Source", updater, system_serial)
         if self.carrier_system.profile.outdoor_unit_type in [
             "hp2stg",
@@ -63,6 +77,11 @@ class HeatSourceSelect(CarrierEntity, SelectEntity):
         )
 
     def idu_only_label(self) -> str:
+        """Return the label for indoor-unit-only heat source mode.
+
+        Returns:
+            str: Human-readable option label with the indoor fuel source when available.
+        """
         if self.carrier_system.profile.indoor_unit_source is None:
             return HEAT_SOURCE_IDU_ONLY_LABEL
         return HEAT_SOURCE_IDU_ONLY_LABEL.replace(
@@ -71,21 +90,32 @@ class HeatSourceSelect(CarrierEntity, SelectEntity):
 
     @property
     def current_option(self) -> str | None:
-        """Return true if the binary sensor is on."""
+        """Return the currently selected heat source option label.
+
+        Returns:
+            str | None: Matching option label for the active Carrier heat source.
+        """
         return {
             HeatSourceTypes.IDU_ONLY.value: self.idu_only_label(),
             HeatSourceTypes.ODU_ONLY.value: HEAT_SOURCE_ODU_ONLY_LABEL,
             HeatSourceTypes.SYSTEM.value: HEAT_SOURCE_SYSTEM_LABEL,
-        }.get(self.carrier_system.config.heat_source, None)
+        }.get(self.carrier_system.config.heat_source)
 
     async def async_select_option(self, option: str) -> None:
-        """Change the selected option."""
+        """Apply a new heat source option to the Carrier system.
+
+        Args:
+            option: Selected Home Assistant option label.
+
+        Returns:
+            None: The state is updated in-place and written to Home Assistant.
+        """
         new_heat_source: HeatSourceTypes = {
             self.idu_only_label(): HeatSourceTypes.IDU_ONLY,
             HEAT_SOURCE_ODU_ONLY_LABEL: HeatSourceTypes.ODU_ONLY,
             HEAT_SOURCE_SYSTEM_LABEL: HeatSourceTypes.SYSTEM,
         }.get(option, HeatSourceTypes.SYSTEM)
-        _LOGGER.debug(f"Selected heat source: {new_heat_source}")
+        _LOGGER.debug("Selected heat source: %s", new_heat_source)
         await self.coordinator.async_perform_api_call(
             "set heat source",
             partial(
@@ -99,5 +129,9 @@ class HeatSourceSelect(CarrierEntity, SelectEntity):
 
     @property
     def available(self) -> bool:
-        """Return true if sensor is ready for display."""
+        """Indicate whether the select can present a valid option.
+
+        Returns:
+            bool: True when a current option can be resolved.
+        """
         return self.current_option is not None

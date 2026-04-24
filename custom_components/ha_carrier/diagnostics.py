@@ -1,4 +1,4 @@
-"""Create diagnostics."""
+"""Diagnostics payload builder for the Carrier integration."""
 
 from __future__ import annotations
 
@@ -27,7 +27,20 @@ LOGGER: Logger = getLogger(__package__)
 async def async_get_config_entry_diagnostics(
     hass: HomeAssistant, config_entry: ConfigEntry
 ) -> dict[str, dict[str, Any]]:
-    """Return diagnostics for a config entry."""
+    """Collect redacted integration diagnostics for a config entry.
+
+    The diagnostics include config entry data, mapped system snapshots, raw
+    Carrier payloads, and Home Assistant device/entity state linked to each
+    Carrier serial.
+
+    Args:
+        hass: Home Assistant instance.
+        config_entry: Config entry for which diagnostics were requested.
+
+    Returns:
+        dict[str, dict[str, Any]]: Redacted diagnostics keyed by section name
+        and system serial.
+    """
     updater: CarrierDataUpdateCoordinator = hass.data[DOMAIN][config_entry.entry_id][
         DATA_UPDATE_COORDINATOR
     ]

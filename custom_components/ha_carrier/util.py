@@ -1,3 +1,5 @@
+"""Utility helpers shared across Carrier integration modules."""
+
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
@@ -10,12 +12,20 @@ REDACTED = "**REDACTED**"
 
 @callback
 def async_redact_data[T](data: T, to_redact: Iterable[Any]) -> T:
-    """Redact sensitive data in a dict."""
+    """Recursively redact selected keys from mapping and list structures.
+
+    Args:
+        data: Original value that may contain nested mappings or lists.
+        to_redact: Iterable of keys that should be replaced with a redaction marker.
+
+    Returns:
+        T: Copy of the original data with sensitive values redacted.
+    """
     if not isinstance(data, Mapping | list):
         return data
 
     if isinstance(data, list):
-        return cast(T, [async_redact_data(val, to_redact) for val in data])
+        return cast("T", [async_redact_data(val, to_redact) for val in data])
 
     redacted = {**data}
 
@@ -31,4 +41,4 @@ def async_redact_data[T](data: T, to_redact: Iterable[Any]) -> T:
         elif isinstance(value, list):
             redacted[key] = [async_redact_data(item, to_redact) for item in value]
 
-    return cast(T, redacted)
+    return cast("T", redacted)

@@ -1,4 +1,4 @@
-"""Create constants for reference."""
+"""Centralized constants used throughout the Carrier integration."""
 
 from homeassistant.const import CONF_PASSWORD, CONF_UNIQUE_ID, CONF_USERNAME, Platform
 
