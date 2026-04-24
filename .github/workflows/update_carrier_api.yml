@@ -108,6 +108,10 @@ jobs:
           mv "$manifest_tmp_file" "$manifest_path"
           mv "$pyproject_tmp_file" "$pyproject_path"
 
+      - name: Install semver for release notes generation
+        if: steps.versions.outputs.update_needed == 'true'
+        run: npm install semver
+
       - name: Build carrier-api release notes
         if: steps.versions.outputs.update_needed == 'true'
         id: release_notes
@@ -126,8 +130,7 @@ jobs:
             const releaseRepo = process.env.REPO_NAME;
 
             function normalizeTagVersion(version) {
-              const cleanedVersion = semver.clean(version.replace(/^v/i, ""));
-              return cleanedVersion ? semver.valid(cleanedVersion) : null;
+              return semver.clean(version, { loose: true });
             }
 
             function sanitizeReleaseBody(body) {
