@@ -160,7 +160,7 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator):
                 ) from server_error
             _LOGGER.exception(server_error)
             _LOGGER.debug("transport error likely carrier api maintenance so retrying in 1 minute.")
-            self.update_interval = timedelta(minutes=1)  # type: ignore[misc]
+            self.update_interval = timedelta(minutes=1)
             raise UpdateFailed(server_error) from server_error
         except Exception as error:
             _LOGGER.exception(error)
