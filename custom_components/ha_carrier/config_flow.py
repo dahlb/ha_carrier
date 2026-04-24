@@ -3,24 +3,15 @@
 from logging import Logger, getLogger
 from typing import Any
 
-import voluptuous as vol
-import homeassistant.helpers.config_validation as cv
-from homeassistant.exceptions import ConfigEntryAuthFailed
-from homeassistant import config_entries
-from homeassistant.core import callback
-from homeassistant.const import (
-    CONF_USERNAME,
-    CONF_PASSWORD,
-)
-
-from .const import (
-    DOMAIN,
-    CONFIG_FLOW_VERSION,
-    CONF_INFINITE_HOLDS,
-    DEFAULT_INFINITE_HOLDS,
-)
-
 from carrier_api import ApiConnectionGraphql
+from homeassistant import config_entries
+from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
+from homeassistant.core import callback
+from homeassistant.exceptions import ConfigEntryAuthFailed
+import homeassistant.helpers.config_validation as cv
+import voluptuous as vol
+
+from .const import CONF_INFINITE_HOLDS, CONFIG_FLOW_VERSION, DEFAULT_INFINITE_HOLDS, DOMAIN
 
 _LOGGER: Logger = getLogger(__package__)
 
@@ -34,9 +25,7 @@ class OptionFlowHandler(config_entries.OptionsFlow):
             {
                 vol.Required(
                     CONF_INFINITE_HOLDS,
-                    default=config_entry.options.get(
-                        CONF_INFINITE_HOLDS, DEFAULT_INFINITE_HOLDS
-                    ),
+                    default=config_entry.options.get(CONF_INFINITE_HOLDS, DEFAULT_INFINITE_HOLDS),
                 ): cv.boolean,
             }
         )
@@ -57,17 +46,17 @@ class ConfigFlowHandler(config_entries.ConfigFlow):
     VERSION = CONFIG_FLOW_VERSION
     CONNECTION_CLASS = config_entries.CONN_CLASS_CLOUD_POLL
 
-    data: dict[str, Any] | None = {}
+    data: dict[str, Any]
 
     @staticmethod
     @callback
-    def async_get_options_flow(config_entry):
+    def async_get_options_flow(config_entry: config_entries.ConfigEntry) -> OptionFlowHandler:
         """Return preferences handler."""
         return OptionFlowHandler(config_entry)
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Create instance of integration through UI."""
-        pass
+        self.data = {}
 
     async def async_step_user(self, user_input: dict[str, Any] | None = None):
         """Display auth interface."""

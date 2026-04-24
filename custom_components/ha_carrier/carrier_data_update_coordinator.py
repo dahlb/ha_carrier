@@ -35,13 +35,6 @@ class CarrierUnauthorizedError(Exception):
 class CarrierDataUpdateCoordinator(DataUpdateCoordinator):
     """Update data from carrier api."""
 
-    systems: list[System] = None
-    websocket_data_updater: WebsocketDataUpdater = None
-    data_flush: bool = True
-    timestamp_all_data = None
-    timestamp_websocket = None
-    timestamp_energy = None
-
     def __init__(
         self,
         hass: HomeAssistant,
@@ -54,6 +47,12 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator):
         self.unauthorized_outage_logged = False
         self.unauthorized_escalated_logged = False
         self._suppress_unauthorized_recording = False
+        self.systems: list[System] = []
+        self.websocket_data_updater: WebsocketDataUpdater | None = None
+        self.data_flush = True
+        self.timestamp_all_data: datetime | None = None
+        self.timestamp_websocket: datetime | None = None
+        self.timestamp_energy: datetime | None = None
 
         super().__init__(
             hass,
@@ -89,7 +88,7 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator):
             if self.data_flush:
                 _LOGGER.debug("fetching fresh all data")
                 fresh_systems: list[System] = await self.api_connection.load_data()
-                if self.systems is None:
+                if not self.systems:
                     self.systems = fresh_systems
                     self.websocket_data_updater = WebsocketDataUpdater(systems=self.systems)
                     self.api_connection.api_websocket.callback_add(
@@ -109,7 +108,7 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator):
                             related_stale_system.config = fresh_system.config
                             related_stale_system.energy = fresh_system.energy
                 for system in self.systems:
-                    _LOGGER.debug(async_redact_data(system.__repr__(), TO_REDACT_MAPPED))
+                    _LOGGER.debug(async_redact_data(repr(system), TO_REDACT_MAPPED))
                 self.timestamp_all_data = datetime.now(UTC)
                 self.timestamp_energy = self.timestamp_all_data
                 self.data_flush = False
@@ -142,7 +141,7 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator):
                     self.timestamp_energy = datetime.now(UTC)
                     self._reset_unauthorized_tracking()
                     self.update_interval = timedelta(minutes=DEFAULT_UPDATE_INTERVAL_MINUTES)
-            return [system.__repr__() for system in self.systems]
+            return [repr(system) for system in self.systems]
         except CarrierUnauthorizedError as error:
             self.data_flush = True
             self.update_interval = timedelta(minutes=1)
@@ -161,7 +160,7 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator):
                 ) from server_error
             _LOGGER.exception(server_error)
             _LOGGER.debug("transport error likely carrier api maintenance so retrying in 1 minute.")
-            self.update_interval = timedelta(minutes=1)
+            self.update_interval = timedelta(minutes=1)  # type: ignore[misc]
             raise UpdateFailed(server_error) from server_error
         except Exception as error:
             _LOGGER.exception(error)
@@ -362,10 +361,11 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator):
         for system in self.systems:
             if system.profile.serial == system_serial:
                 return system
+        return None
 
     async def updated_callback(self, _message: str) -> None:
         self.timestamp_websocket = datetime.now(UTC)
         _LOGGER.debug("websocket updated system")
         for system in self.systems:
-            _LOGGER.debug(async_redact_data(system.__repr__(), TO_REDACT_MAPPED))
+            _LOGGER.debug(async_redact_data(repr(system), TO_REDACT_MAPPED))
         self.async_update_listeners()

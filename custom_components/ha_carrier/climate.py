@@ -139,7 +139,7 @@ class Thermostat(CarrierEntity, ClimateEntity):
             return UnitOfTemperature.CELSIUS
 
     @property
-    def hvac_mode(self) -> HVACMode | str | None:
+    def hvac_mode(self) -> HVACMode | None:
         """Return hvac mode."""
         ha_mode = None
         match self.carrier_system.config.mode:
@@ -156,7 +156,7 @@ class Thermostat(CarrierEntity, ClimateEntity):
         return ha_mode
 
     @property
-    def hvac_action(self) -> HVACAction | str | None:
+    def hvac_action(self) -> HVACAction | None:
         """Return hvac action."""
         if self.hvac_mode == HVACMode.OFF:
             return HVACAction.OFF

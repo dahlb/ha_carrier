@@ -1,34 +1,41 @@
 """Create sensors."""
 
 from __future__ import annotations
+
+from collections.abc import Mapping
+from datetime import datetime
 from logging import Logger, getLogger
 from typing import Any
-from collections.abc import Mapping
 
-from homeassistant.components.sensor import SensorEntity, SensorDeviceClass, SensorEntityDescription, SensorStateClass
-from homeassistant.const import (
-    UnitOfTemperature,
-    PERCENTAGE,
-    UnitOfVolumeFlowRate,
-    UnitOfEnergy,
-    UnitOfVolume, UnitOfPressure,
+from carrier_api import TemperatureUnits
+from homeassistant.components.sensor import (
+    SensorDeviceClass,
+    SensorEntity,
+    SensorEntityDescription,
+    SensorStateClass,
 )
 from homeassistant.config_entries import ConfigEntry
-from carrier_api import TemperatureUnits
+from homeassistant.const import (
+    PERCENTAGE,
+    UnitOfEnergy,
+    UnitOfPressure,
+    UnitOfTemperature,
+    UnitOfVolume,
+    UnitOfVolumeFlowRate,
+)
 
-
-from .const import DOMAIN, DATA_UPDATE_COORDINATOR
 from .carrier_data_update_coordinator import CarrierDataUpdateCoordinator
 from .carrier_entity import CarrierEntity
+from .const import DATA_UPDATE_COORDINATOR, DOMAIN
 
 _LOGGER: Logger = getLogger(__package__)
 
 
 async def async_setup_entry(hass, config_entry: ConfigEntry, async_add_entities):
     """Create sensors."""
-    updater: CarrierDataUpdateCoordinator = hass.data[DOMAIN][
-        config_entry.entry_id
-    ][DATA_UPDATE_COORDINATOR]
+    updater: CarrierDataUpdateCoordinator = hass.data[DOMAIN][config_entry.entry_id][
+        DATA_UPDATE_COORDINATOR
+    ]
     entities = []
     for carrier_system in updater.systems:
         entities.extend(
@@ -44,26 +51,48 @@ async def async_setup_entry(hass, config_entry: ConfigEntry, async_add_entities)
                 IndoorUnitOperationalStatusSensor(updater, carrier_system.profile.serial),
             ]
         )
-        if carrier_system.profile.outdoor_unit_type in ["varcaphp","varcapac"]:
+        if carrier_system.profile.outdoor_unit_type in ["varcaphp", "varcapac"]:
             entities.append(OutDoorUnitVarSensor(updater, carrier_system.profile.serial))
         if carrier_system.config.humidifier_enabled:
             entities.append(HumidifierRemainingSensor(updater, carrier_system.profile.serial))
         if carrier_system.config.uv_enabled:
             entities.append(UVLampRemainingSensor(updater, carrier_system.profile.serial))
-        for electric_metric in ["cooling", "hp_heat", "fan", "electric_heat", "reheat", "fan_gas", "loop_pump"]:
+        for electric_metric in [
+            "cooling",
+            "hp_heat",
+            "fan",
+            "electric_heat",
+            "reheat",
+            "fan_gas",
+            "loop_pump",
+        ]:
             if getattr(carrier_system.energy, electric_metric):
-                entities.append(EnergyMeasurementSensor(updater, carrier_system.profile.serial, electric_metric))
-                entities.append(DailyEnergyMeasurementSensor(updater, carrier_system.profile.serial, electric_metric))
-                entities.append(MonthlyEnergyMeasurementSensor(updater, carrier_system.profile.serial, electric_metric))
+                entities.append(
+                    EnergyMeasurementSensor(updater, carrier_system.profile.serial, electric_metric)
+                )
+                entities.append(
+                    DailyEnergyMeasurementSensor(
+                        updater, carrier_system.profile.serial, electric_metric
+                    )
+                )
+                entities.append(
+                    MonthlyEnergyMeasurementSensor(
+                        updater, carrier_system.profile.serial, electric_metric
+                    )
+                )
         if carrier_system.energy.gas:
             entities.append(GasMeasurementSensor(updater, carrier_system.profile.serial, "gas"))
-            if carrier_system.config.fuel_type == 'propane':
+            if carrier_system.config.fuel_type == "propane":
                 entities.append(PropaneMeasurementSensor(updater, carrier_system.profile.serial))
         for zone in carrier_system.config.zones:
             entities.extend(
                 [
-                    ZoneTemperatureSensor(updater, carrier_system.profile.serial, zone_api_id=zone.api_id),
-                    ZoneHumiditySensor(updater, carrier_system.profile.serial, zone_api_id=zone.api_id),
+                    ZoneTemperatureSensor(
+                        updater, carrier_system.profile.serial, zone_api_id=zone.api_id
+                    ),
+                    ZoneHumiditySensor(
+                        updater, carrier_system.profile.serial, zone_api_id=zone.api_id
+                    ),
                 ]
             )
     async_add_entities(entities)
@@ -71,6 +100,7 @@ async def async_setup_entry(hass, config_entry: ConfigEntry, async_add_entities)
 
 class ZoneHumiditySensor(CarrierEntity, SensorEntity):
     """Displays humidity at zone."""
+
     _attr_device_class = SensorDeviceClass.HUMIDITY
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_native_unit_of_measurement = PERCENTAGE
@@ -92,10 +122,16 @@ class ZoneHumiditySensor(CarrierEntity, SensorEntity):
         """Return true if sensor is ready for display."""
         return self.native_value is not None
 
+
 class GasMeasurementSensor(CarrierEntity, SensorEntity):
-    def __init__(self, updater: CarrierDataUpdateCoordinator, system_serial: str, metric: str):
-        self.fuel_type = updater.system(system_serial=system_serial).config.fuel_type
-        unit_of_measurement = UnitOfVolume.CUBIC_METERS # for therms
+    def __init__(
+        self, updater: CarrierDataUpdateCoordinator, system_serial: str, metric: str
+    ) -> None:
+        carrier_system = updater.system(system_serial=system_serial)
+        if carrier_system is None:
+            return None
+        self.fuel_type = carrier_system.config.fuel_type
+        unit_of_measurement = UnitOfVolume.CUBIC_METERS  # for therms
         if self.fuel_type == "propane":
             unit_of_measurement = UnitOfVolume.CUBIC_FEET
         self.entity_description = SensorEntityDescription(
@@ -112,17 +148,24 @@ class GasMeasurementSensor(CarrierEntity, SensorEntity):
         value = self.carrier_system.energy.current_year_measurements().gas
         match self.carrier_system.config.gas_unit:
             case "gallon":
-                value = value / 2.54998 # Convert kBTU to cubic feet (1 cubic foot = 2,549.98 BTU, so divide by 2.54998)
+                value = (
+                    value / 2.54998
+                )  # Convert kBTU to cubic feet (1 cubic foot = 2,549.98 BTU, so divide by 2.54998)
             case "therm":
-                value = value / 100 * 2.8328611898017 # /100 to therms then * to convert from therms to cubic meters
+                value = (
+                    value / 100 * 2.8328611898017
+                )  # /100 to therms then * to convert from therms to cubic meters
             case "gjoule":
-                value = value / 100 * 25.5  # /100 to gjoules (because carrier keeps it an integer in the api response even though it is a float) then * to convert from gjoules to cubic meters
+                value = (
+                    value / 100 * 25.5
+                )  # /100 to gjoules (because carrier keeps it an integer in the api response even though it is a float) then * to convert from gjoules to cubic meters
         return value
 
     @property
     def available(self) -> bool:
         """Return true if sensor is ready for display."""
         return self.native_value is not None
+
 
 class PropaneMeasurementSensor(CarrierEntity, SensorEntity):
     def __init__(self, updater: CarrierDataUpdateCoordinator, system_serial: str):
@@ -138,12 +181,15 @@ class PropaneMeasurementSensor(CarrierEntity, SensorEntity):
     @property
     def native_value(self) -> float:
         value = self.carrier_system.energy.current_year_measurements().gas
-        return value / 91.69 # Convert kBTU to gallons (1 gallon LPG = 91,690 BTU, so divide by 91.69)
+        return (
+            value / 91.69
+        )  # Convert kBTU to gallons (1 gallon LPG = 91,690 BTU, so divide by 91.69)
 
     @property
     def available(self) -> bool:
         """Return true if sensor is ready for display."""
         return self.native_value is not None
+
 
 class EnergyMeasurementSensor(CarrierEntity, SensorEntity):
     def __init__(self, updater: CarrierDataUpdateCoordinator, system_serial: str, metric: str):
@@ -158,7 +204,9 @@ class EnergyMeasurementSensor(CarrierEntity, SensorEntity):
 
     @property
     def native_value(self) -> float:
-        return getattr(self.carrier_system.energy.current_year_measurements(), self.entity_description.key)
+        return getattr(
+            self.carrier_system.energy.current_year_measurements(), self.entity_description.key
+        )
 
     @property
     def available(self) -> bool:
@@ -168,6 +216,7 @@ class EnergyMeasurementSensor(CarrierEntity, SensorEntity):
 
 class DailyEnergyMeasurementSensor(CarrierEntity, SensorEntity):
     """Sensor for daily energy consumption (yesterday's usage)."""
+
     def __init__(self, updater: CarrierDataUpdateCoordinator, system_serial: str, metric: str):
         # Map metric names to API field names
         self.metric_map = {
@@ -178,7 +227,7 @@ class DailyEnergyMeasurementSensor(CarrierEntity, SensorEntity):
             "reheat": "reheatKwh",
             "fan_gas": "fanGasKwh",
             "loop_pump": "loopPumpKwh",
-            "gas": "gasKwh"
+            "gas": "gasKwh",
         }
         self.metric = metric
         self.entity_description = SensorEntityDescription(
@@ -208,6 +257,7 @@ class DailyEnergyMeasurementSensor(CarrierEntity, SensorEntity):
 
 class MonthlyEnergyMeasurementSensor(CarrierEntity, SensorEntity):
     """Sensor for monthly energy consumption (last month's usage)."""
+
     def __init__(self, updater: CarrierDataUpdateCoordinator, system_serial: str, metric: str):
         # Map metric names to API field names
         self.metric_map = {
@@ -218,7 +268,7 @@ class MonthlyEnergyMeasurementSensor(CarrierEntity, SensorEntity):
             "reheat": "reheatKwh",
             "fan_gas": "fanGasKwh",
             "loop_pump": "loopPumpKwh",
-            "gas": "gasKwh"
+            "gas": "gasKwh",
         }
         self.metric = metric
         self.entity_description = SensorEntityDescription(
@@ -248,6 +298,7 @@ class MonthlyEnergyMeasurementSensor(CarrierEntity, SensorEntity):
 
 class ZoneTemperatureSensor(CarrierEntity, SensorEntity):
     """Displays temperature at zone."""
+
     _attr_device_class = SensorDeviceClass.TEMPERATURE
     _attr_state_class = SensorStateClass.MEASUREMENT
 
@@ -261,10 +312,7 @@ class ZoneTemperatureSensor(CarrierEntity, SensorEntity):
     @property
     def native_unit_of_measurement(self) -> str | None:
         """Returns unit of temperature."""
-        if (
-            self.carrier_system.status.temperature_unit
-            == TemperatureUnits.FAHRENHEIT
-        ):
+        if self.carrier_system.status.temperature_unit == TemperatureUnits.FAHRENHEIT:
             return UnitOfTemperature.FAHRENHEIT
         else:
             return UnitOfTemperature.CELSIUS
@@ -282,6 +330,7 @@ class ZoneTemperatureSensor(CarrierEntity, SensorEntity):
 
 class OutdoorTemperatureSensor(CarrierEntity, SensorEntity):
     """Temperature sensor."""
+
     _attr_device_class = SensorDeviceClass.TEMPERATURE
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_native_unit_of_measurement = UnitOfTemperature.FAHRENHEIT
@@ -303,6 +352,7 @@ class OutdoorTemperatureSensor(CarrierEntity, SensorEntity):
 
 class FilterUsedSensor(CarrierEntity, SensorEntity):
     """Filter used sensor, mimics battery for easy testing."""
+
     _attr_device_class = SensorDeviceClass.BATTERY
     _attr_native_unit_of_measurement = PERCENTAGE
     _attr_state_class = SensorStateClass.MEASUREMENT
@@ -313,10 +363,11 @@ class FilterUsedSensor(CarrierEntity, SensorEntity):
         super().__init__("Filter Remaining", updater, system_serial)
 
     @property
-    def native_value(self) -> float:
+    def native_value(self) -> float | None:
         """Return percentage remaining."""
         if self.carrier_system.status.filter_used is not None:
             return 100 - self.carrier_system.status.filter_used
+        return None
 
     @property
     def available(self) -> bool:
@@ -326,6 +377,7 @@ class FilterUsedSensor(CarrierEntity, SensorEntity):
 
 class HumidifierRemainingSensor(CarrierEntity, SensorEntity):
     """Humidifier remaining sensor, mimics battery for easy testing."""
+
     _attr_device_class = SensorDeviceClass.BATTERY
     _attr_native_unit_of_measurement = PERCENTAGE
     _attr_state_class = SensorStateClass.MEASUREMENT
@@ -336,10 +388,11 @@ class HumidifierRemainingSensor(CarrierEntity, SensorEntity):
         super().__init__("Humidifier Remaining", updater, system_serial)
 
     @property
-    def native_value(self) -> float:
+    def native_value(self) -> float | None:
         """Return percentage remaining."""
         if self.carrier_system.status.humidity_level is not None:
             return 100 - self.carrier_system.status.humidity_level
+        return None
 
     @property
     def available(self) -> bool:
@@ -349,6 +402,7 @@ class HumidifierRemainingSensor(CarrierEntity, SensorEntity):
 
 class UVLampRemainingSensor(CarrierEntity, SensorEntity):
     """UV Lamp remaining sensor, mimics battery for easy testing."""
+
     _attr_device_class = SensorDeviceClass.BATTERY
     _attr_native_unit_of_measurement = PERCENTAGE
     _attr_state_class = SensorStateClass.MEASUREMENT
@@ -359,10 +413,11 @@ class UVLampRemainingSensor(CarrierEntity, SensorEntity):
         super().__init__("UV Lamp Remaining", updater, system_serial)
 
     @property
-    def native_value(self) -> float:
+    def native_value(self) -> float | None:
         """Return percentage remaining."""
         if self.carrier_system.status.uv_lamp_level is not None:
             return 100 - self.carrier_system.status.uv_lamp_level
+        return None
 
     @property
     def available(self) -> bool:
@@ -378,7 +433,7 @@ class TimestampSensor(CarrierEntity, SensorEntity):
         self.key = key
 
     @property
-    def native_value(self) -> float:
+    def native_value(self) -> datetime | None:
         return getattr(self.coordinator, f"timestamp_{self.key}")
 
     @property
@@ -389,6 +444,7 @@ class TimestampSensor(CarrierEntity, SensorEntity):
 
 class AirflowSensor(CarrierEntity, SensorEntity):
     """Airflow sensor."""
+
     _attr_device_class = SensorDeviceClass.VOLUME_FLOW_RATE
     _attr_native_unit_of_measurement = UnitOfVolumeFlowRate.CUBIC_FEET_PER_MINUTE
     _attr_state_class = SensorStateClass.MEASUREMENT
@@ -399,10 +455,11 @@ class AirflowSensor(CarrierEntity, SensorEntity):
         super().__init__("Airflow", updater, system_serial)
 
     @property
-    def native_value(self) -> float:
+    def native_value(self) -> float | None:
         """Return airflow in cfm."""
         if self.carrier_system.status.airflow_cfm is not None:
             return int(self.carrier_system.status.airflow_cfm)
+        return None
 
     @property
     def available(self) -> bool:
@@ -412,6 +469,7 @@ class AirflowSensor(CarrierEntity, SensorEntity):
 
 class StaticPressureSensor(CarrierEntity, SensorEntity):
     """Static Pressure sensor."""
+
     _attr_device_class = SensorDeviceClass.PRESSURE
     _attr_native_unit_of_measurement = UnitOfPressure.INH2O
     _attr_state_class = SensorStateClass.MEASUREMENT
@@ -422,10 +480,10 @@ class StaticPressureSensor(CarrierEntity, SensorEntity):
         super().__init__("Static Pressure", updater, system_serial)
 
     @property
-    def native_value(self) -> float:
+    def native_value(self) -> float | None:
         """Return Static Pressure in psi."""
         if self.carrier_system.status.static_pressure is not None:
-           return self.carrier_system.status.static_pressure
+            return self.carrier_system.status.static_pressure
         return None
 
     @property
@@ -438,12 +496,15 @@ class OutdoorUnitOperationalStatusSensor(CarrierEntity, SensorEntity):
     """Outdoor unit operational status sensor.
     Maps numeric string values to 'on' for improved logbook phrasing in Home Assistant.
     """
+
     _attr_icon = "mdi:hvac"
 
     def __init__(self, updater: CarrierDataUpdateCoordinator, system_serial: str):
         """Create outdoor unit operational status sensor."""
         super().__init__("ODU Status", updater, system_serial)
-        self.entity_description = SensorEntityDescription(key="ODU Status", device_class=SensorDeviceClass.ENUM)
+        self.entity_description = SensorEntityDescription(
+            key="ODU Status", device_class=SensorDeviceClass.ENUM
+        )
 
     @property
     def native_value(self) -> Any | None:
@@ -456,6 +517,7 @@ class OutdoorUnitOperationalStatusSensor(CarrierEntity, SensorEntity):
             if isinstance(value, str) and value.isdigit():
                 return "on"
             return value
+        return None
 
     @property
     def available(self) -> bool:
@@ -469,6 +531,7 @@ class OutdoorUnitOperationalStatusSensor(CarrierEntity, SensorEntity):
 
 class IndoorUnitOperationalStatusSensor(CarrierEntity, SensorEntity):
     """Indoor unit operational status sensor."""
+
     _attr_device_class = SensorDeviceClass.ENUM
     _attr_icon = "mdi:hvac"
 
@@ -481,6 +544,7 @@ class IndoorUnitOperationalStatusSensor(CarrierEntity, SensorEntity):
         """Return indoor unit operational status."""
         if self.carrier_system.status.indoor_unit_operational_status is not None:
             return self.carrier_system.status.indoor_unit_operational_status
+        return None
 
     @property
     def available(self) -> bool:
@@ -496,8 +560,9 @@ class OutDoorUnitVarSensor(CarrierEntity, SensorEntity):
     """Outdoor Unit Var sensor for variable capacity odu percentage.
     Only registered for systems with outdoor_unit_type == 'varcaphp' or 'varcapac'.
     Returns the percentage as a float if the value is a numeric string (including decimals),
-    or 0 for any non-numeric value.
+    or None for any non-numeric or missing value.
     """
+
     _attr_icon = "mdi:percent-box"
     _attr_native_unit_of_measurement = PERCENTAGE
     _attr_state_class = SensorStateClass.MEASUREMENT
@@ -510,15 +575,17 @@ class OutDoorUnitVarSensor(CarrierEntity, SensorEntity):
     def native_value(self) -> float | None:
         """
         Return ODU Var percentage as a float if the value is a numeric string (including decimals).
-        Returns 0 for any non-numeric value.
+        Returns None for any non-numeric or missing value.
         """
         value = self.carrier_system.status.outdoor_unit_operational_status
+        if value is None:
+            return None
         if isinstance(value, str):
             try:
                 return float(value)
             except ValueError:
-                pass
-        return 0
+                return None
+        return None
 
     @property
     def available(self) -> bool:

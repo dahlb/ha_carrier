@@ -1,26 +1,28 @@
 """Base entity for carrier devices."""
-from logging import getLogger, Logger
 
-from carrier_api import StatusZone, ConfigZone, System
+from logging import Logger, getLogger
+
+from carrier_api import ConfigZone, StatusZone, System
 from homeassistant.helpers.entity import DeviceInfo
-from homeassistant.helpers.update_coordinator import (
-    CoordinatorEntity,
-)
+from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import DOMAIN
 from .carrier_data_update_coordinator import CarrierDataUpdateCoordinator
+from .const import DOMAIN
 
 _LOGGER: Logger = getLogger(__package__)
 
 
 class CarrierEntity(CoordinatorEntity[CarrierDataUpdateCoordinator]):
     """Base entity for carrier devices."""
+
+    zone_api_id: str | None = None
+
     def __init__(
-            self,
-            entity_type: str,
-            updater: CarrierDataUpdateCoordinator,
-            context: str,
-            **kwargs,
+        self,
+        entity_type: str,
+        updater: CarrierDataUpdateCoordinator,
+        context: str,
+        **kwargs,
     ) -> None:
         """Create unique_id and access to api data."""
         super().__init__(updater, context)
@@ -33,7 +35,7 @@ class CarrierEntity(CoordinatorEntity[CarrierDataUpdateCoordinator]):
 
     @property
     def _status_zone(self) -> StatusZone:
-        if getattr(self, "zone_api_id", None) is not None:
+        if self.zone_api_id is not None:
             for zone in self.carrier_system.status.zones:
                 if zone.api_id == self.zone_api_id:
                     return zone
@@ -43,7 +45,7 @@ class CarrierEntity(CoordinatorEntity[CarrierDataUpdateCoordinator]):
 
     @property
     def _config_zone(self) -> ConfigZone:
-        if getattr(self, "zone_api_id", None) is not None:
+        if self.zone_api_id is not None:
             for zone in self.carrier_system.config.zones:
                 if zone.api_id == self.zone_api_id:
                     return zone

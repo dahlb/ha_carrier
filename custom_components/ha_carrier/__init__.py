@@ -1,26 +1,18 @@
 """Setup integration ha_carrier."""
-import asyncio
 
-import voluptuous as vol
+import asyncio
 from logging import Logger, getLogger
-from homeassistant.core import HomeAssistant
-from homeassistant.const import (
-    CONF_USERNAME,
-    CONF_PASSWORD,
-)
-from homeassistant.config_entries import ConfigEntry
-import homeassistant.helpers.config_validation as cv
-from homeassistant.exceptions import ConfigEntryNotReady
 
 from carrier_api import ApiConnectionGraphql
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
+from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import ConfigEntryNotReady
+import homeassistant.helpers.config_validation as cv
+import voluptuous as vol
 
 from .carrier_data_update_coordinator import CarrierDataUpdateCoordinator
-from .const import (
-    DOMAIN,
-    PLATFORMS,
-    TO_REDACT,
-    DATA_UPDATE_COORDINATOR,
-)
+from .const import DATA_UPDATE_COORDINATOR, DOMAIN, PLATFORMS, TO_REDACT
 from .util import async_redact_data
 
 _LOGGER: Logger = getLogger(__package__)
@@ -60,6 +52,7 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry):
             api_connection=api_connection,
         )
         await data[DATA_UPDATE_COORDINATOR].async_config_entry_first_refresh()
+
         async def ws_updates():
             running = True
             while running:
@@ -74,6 +67,7 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry):
                     _LOGGER.exception("websocket task exception", exc_info=websocket_error)
                     data[DATA_UPDATE_COORDINATOR].data_flush = True
                     await data[DATA_UPDATE_COORDINATOR].async_request_refresh()
+
         hass.async_create_background_task(ws_updates(), "ha_carrier_ws")
     except Exception as error:
         _LOGGER.exception(error)
@@ -97,9 +91,7 @@ async def async_update_options(hass: HomeAssistant, config_entry: ConfigEntry):
 async def async_unload_entry(hass: HomeAssistant, config_entry: ConfigEntry):
     """Cleanup instance of integration."""
     _LOGGER.debug("unload entry")
-    unload_ok = await hass.config_entries.async_unload_platforms(
-        config_entry, PLATFORMS
-    )
+    unload_ok = await hass.config_entries.async_unload_platforms(config_entry, PLATFORMS)
 
     if unload_ok:
         hass.data[DOMAIN][config_entry.entry_id] = None

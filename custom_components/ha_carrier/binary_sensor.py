@@ -1,6 +1,7 @@
 """Create binary sensors."""
 
 from __future__ import annotations
+
 from logging import Logger, getLogger
 
 from homeassistant.components.binary_sensor import (
@@ -10,18 +11,18 @@ from homeassistant.components.binary_sensor import (
 )
 from homeassistant.config_entries import ConfigEntry
 
-from .const import DOMAIN, DATA_UPDATE_COORDINATOR
 from .carrier_data_update_coordinator import CarrierDataUpdateCoordinator
 from .carrier_entity import CarrierEntity
+from .const import DATA_UPDATE_COORDINATOR, DOMAIN
 
 _LOGGER: Logger = getLogger(__package__)
 
 
 async def async_setup_entry(hass, config_entry: ConfigEntry, async_add_entities):
     """Create instances of binary sensors."""
-    updater: CarrierDataUpdateCoordinator = hass.data[DOMAIN][
-        config_entry.entry_id
-    ][DATA_UPDATE_COORDINATOR]
+    updater: CarrierDataUpdateCoordinator = hass.data[DOMAIN][config_entry.entry_id][
+        DATA_UPDATE_COORDINATOR
+    ]
     entities = []
     for carrier_system in updater.systems:
         entities.extend(
@@ -34,7 +35,9 @@ async def async_setup_entry(hass, config_entry: ConfigEntry, async_add_entities)
             if zone.occupancy_enabled:
                 entities.extend(
                     [
-                        OccupancySensor(updater, carrier_system.profile.serial, zone_api_id=zone.api_id),
+                        OccupancySensor(
+                            updater, carrier_system.profile.serial, zone_api_id=zone.api_id
+                        ),
                     ]
                 )
     async_add_entities(entities)
@@ -42,6 +45,7 @@ async def async_setup_entry(hass, config_entry: ConfigEntry, async_add_entities)
 
 class OnlineSensor(CarrierEntity, BinarySensorEntity):
     """Indicates if thermostat is online."""
+
     def __init__(self, updater: CarrierDataUpdateCoordinator, system_serial: str):
         """Declare device class and identifiers."""
         super().__init__("Online", updater, system_serial)
@@ -72,6 +76,7 @@ class OnlineSensor(CarrierEntity, BinarySensorEntity):
 
 class OccupancySensor(CarrierEntity, BinarySensorEntity):
     """Displays occupancy state."""
+
     _attr_device_class = BinarySensorDeviceClass.MOTION
 
     def __init__(self, updater: CarrierDataUpdateCoordinator, system_serial: str, zone_api_id: str):
@@ -94,6 +99,7 @@ class OccupancySensor(CarrierEntity, BinarySensorEntity):
 
 class HumidifierSensor(CarrierEntity, BinarySensorEntity):
     """Displays humidifier running state."""
+
     _attr_device_class = BinarySensorDeviceClass.RUNNING
 
     def __init__(self, updater: CarrierDataUpdateCoordinator, system_serial: str):
@@ -103,6 +109,7 @@ class HumidifierSensor(CarrierEntity, BinarySensorEntity):
     def is_on(self) -> bool | None:
         if self.carrier_system.status.humidifier_on is not None:
             return self.carrier_system.status.humidifier_on
+        return None
 
     @property
     def icon(self) -> str | None:
