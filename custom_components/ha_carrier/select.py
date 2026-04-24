@@ -1,6 +1,8 @@
 """Create select for heat source."""
 
 from __future__ import annotations
+
+from functools import partial
 from logging import Logger, getLogger
 
 from carrier_api.const import HeatSourceTypes
@@ -10,24 +12,24 @@ from homeassistant.components.select import (
 )
 from homeassistant.config_entries import ConfigEntry
 
-from .const import (
-    DOMAIN,
-    DATA_UPDATE_COORDINATOR,
-    HEAT_SOURCE_ODU_ONLY_LABEL,
-    HEAT_SOURCE_SYSTEM_LABEL,
-    HEAT_SOURCE_IDU_ONLY_LABEL,
-)
 from .carrier_data_update_coordinator import CarrierDataUpdateCoordinator
 from .carrier_entity import CarrierEntity
+from .const import (
+    DATA_UPDATE_COORDINATOR,
+    DOMAIN,
+    HEAT_SOURCE_IDU_ONLY_LABEL,
+    HEAT_SOURCE_ODU_ONLY_LABEL,
+    HEAT_SOURCE_SYSTEM_LABEL,
+)
 
 _LOGGER: Logger = getLogger(__package__)
 
 
 async def async_setup_entry(hass, config_entry: ConfigEntry, async_add_entities):
     """Create instances of binary sensors."""
-    updater: CarrierDataUpdateCoordinator = hass.data[DOMAIN][
-        config_entry.entry_id
-    ][DATA_UPDATE_COORDINATOR]
+    updater: CarrierDataUpdateCoordinator = hass.data[DOMAIN][config_entry.entry_id][
+        DATA_UPDATE_COORDINATOR
+    ]
     entities = []
     for system in updater.systems:
         entities.extend(
@@ -46,22 +48,32 @@ class HeatSourceSelect(CarrierEntity, SelectEntity):
     def __init__(self, updater: CarrierDataUpdateCoordinator, system_serial: str):
         """Declare device class and identifiers."""
         super().__init__("Heat Source", updater, system_serial)
-        if self.carrier_system.profile.outdoor_unit_type in ["hp2stg", "varcaphp", "multistghp",  "GeoHP"]:
-            options = [self.idu_only_label(), HEAT_SOURCE_ODU_ONLY_LABEL, HEAT_SOURCE_SYSTEM_LABEL]
+        if self.carrier_system.profile.outdoor_unit_type in [
+            "hp2stg",
+            "varcaphp",
+            "multistghp",
+            "GeoHP",
+        ]:
+            options = [
+                self.idu_only_label(),
+                HEAT_SOURCE_ODU_ONLY_LABEL,
+                HEAT_SOURCE_SYSTEM_LABEL,
+            ]
         else:
             options = [self.idu_only_label(), HEAT_SOURCE_SYSTEM_LABEL]
         self.entity_description = SelectEntityDescription(
-            key=f"#{self.carrier_system.profile.serial}-heat_source",
-            options=options
+            key=f"#{self.carrier_system.profile.serial}-heat_source", options=options
         )
 
     def idu_only_label(self) -> str | None:
         if self.carrier_system.profile.indoor_unit_source is None:
             return HEAT_SOURCE_IDU_ONLY_LABEL
-        return HEAT_SOURCE_IDU_ONLY_LABEL.replace("gas", self.carrier_system.profile.indoor_unit_source)
+        return HEAT_SOURCE_IDU_ONLY_LABEL.replace(
+            "gas", self.carrier_system.profile.indoor_unit_source
+        )
 
     @property
-    def current_option(self) -> str| None:
+    def current_option(self) -> str | None:
         """Return true if the binary sensor is on."""
         return {
             HeatSourceTypes.IDU_ONLY.value: self.idu_only_label(),
@@ -77,10 +89,16 @@ class HeatSourceSelect(CarrierEntity, SelectEntity):
             HEAT_SOURCE_SYSTEM_LABEL: HeatSourceTypes.SYSTEM,
         }.get(option, HeatSourceTypes.SYSTEM)
         _LOGGER.debug(f"Selected heat source: {new_heat_source}")
-        await self.coordinator.api_connection.set_heat_source(
-            system_serial=self.carrier_system.profile.serial,
-            heat_source=new_heat_source
+        await self.coordinator.async_perform_api_call(
+            "set heat source",
+            partial(
+                self.coordinator.api_connection.set_heat_source,
+                system_serial=self.carrier_system.profile.serial,
+                heat_source=new_heat_source,
+            ),
         )
+        self.carrier_system.config.heat_source = new_heat_source.value
+        self.async_write_ha_state()
 
     @property
     def available(self) -> bool:
