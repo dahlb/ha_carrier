@@ -49,6 +49,7 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator):
         self._suppress_unauthorized_recording = False
         self.systems: list[System] = []
         self.websocket_data_updater: WebsocketDataUpdater | None = None
+        self._websocket_initialized = False
         self.data_flush = True
         self.timestamp_all_data: datetime | None = None
         self.timestamp_websocket: datetime | None = None
@@ -90,11 +91,13 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator):
                 fresh_systems: list[System] = await self.api_connection.load_data()
                 if not self.systems:
                     self.systems = fresh_systems
+                if not self._websocket_initialized:
                     self.websocket_data_updater = WebsocketDataUpdater(systems=self.systems)
                     self.api_connection.api_websocket.callback_add(
                         self.websocket_data_updater.message_handler
                     )
                     self.api_connection.api_websocket.callback_add(self.updated_callback)
+                    self._websocket_initialized = True
                 else:
                     for fresh_system in fresh_systems:
                         related_stale_system = self.system(fresh_system.profile.serial)
