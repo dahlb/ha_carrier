@@ -7,13 +7,7 @@ from functools import partial
 from logging import Logger, getLogger
 from typing import Any
 
-from carrier_api import (
-    ActivityTypes,
-    ConfigZoneActivity,
-    FanModes,
-    SystemModes,
-    TemperatureUnits,
-)
+from carrier_api import ActivityTypes, ConfigZoneActivity, FanModes, SystemModes, TemperatureUnits
 from homeassistant.components.climate import (
     ClimateEntity,
     ClimateEntityDescription,
@@ -21,10 +15,7 @@ from homeassistant.components.climate import (
     HVACAction,
     HVACMode,
 )
-from homeassistant.components.climate.const import (
-    ATTR_TARGET_TEMP_HIGH,
-    ATTR_TARGET_TEMP_LOW,
-)
+from homeassistant.components.climate.const import ATTR_TARGET_TEMP_HIGH, ATTR_TARGET_TEMP_LOW
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
     ATTR_TEMPERATURE,
