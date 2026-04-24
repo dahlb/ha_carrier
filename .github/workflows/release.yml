@@ -1,16 +1,20 @@
 name: Release
+
 on:
   push:
     branches:
       - main
+
 permissions:
   contents: write
   deployments: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - name: Checkout the repository
+        uses: actions/checkout@v6
       - name: Gets semantic release info
         id: semantic_release_info
         uses: jossef/action-semantic-release-info@v3.0.0
@@ -20,7 +24,8 @@ jobs:
         if: ${{steps.semantic_release_info.outputs.version != ''}}
         run: |
           echo "Version: ${{steps.semantic_release_info.outputs.version}}"
-          sed -i "s/\"version\": \".*\"/\"version\": \"${{steps.semantic_release_info.outputs.version}}\"/g" custom_components/ha_carrier/manifest.json 
+          sed -i "s/^VERSION: str = \".*\"/VERSION: str = \"${{steps.semantic_release_info.outputs.version}}\"/g" custom_components/ha_carrier/const.py
+          sed -i "s/\"version\": \".*\"/\"version\": \"${{steps.semantic_release_info.outputs.version}}\"/g" custom_components/ha_carrier/manifest.json
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
           git diff
@@ -29,19 +34,17 @@ jobs:
           git tag ${{ steps.semantic_release_info.outputs.git_tag }}
       - name: Push changes
         if: ${{steps.semantic_release_info.outputs.version != ''}}
-        uses: ad-m/github-push-action@v1.1.0
+        uses: ad-m/github-push-action@v1
         with:
           github_token: ${{secrets.GITHUB_TOKEN}}
           branch: ${{ github.ref }}
           tags: true
       - name: Create GitHub Release
         if: ${{steps.semantic_release_info.outputs.version != ''}}
-        uses: actions/create-release@v1
-        env:
-          GITHUB_TOKEN: ${{secrets.GITHUB_TOKEN}}
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ steps.semantic_release_info.outputs.git_tag }}
-          release_name: ${{ steps.semantic_release_info.outputs.git_tag }}
+          name: ${{ steps.semantic_release_info.outputs.git_tag }}
           body: ${{ steps.semantic_release_info.outputs.notes }}
           draft: false
           prerelease: false

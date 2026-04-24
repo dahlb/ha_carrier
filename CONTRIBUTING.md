@@ -44,7 +44,7 @@ People *love* thorough bug reports. I'm not even kidding.
 
 ## Use a Consistent Coding Style
 
-Use [black](https://github.com/ambv/black) to make sure the code follows the style.
+Use [prek](https://prek.j178.dev) and [mypy](https://mypy-lang.org) to make sure the code follows the style.
 
 ## Test your code modification
 

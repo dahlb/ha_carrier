@@ -4,13 +4,16 @@ __pycache__
 *.egg-info
 */build/*
 */dist/*
-
+.mypy_cache
+.ruff_cache
+.venv
 
 # misc
 .coverage
 .vscode
 .idea
 coverage.xml
+uv.lock
 
 
 # Home Assistant configuration
