@@ -31,7 +31,10 @@ class CarrierEntity(CoordinatorEntity[CarrierDataUpdateCoordinator]):
 
     @property
     def carrier_system(self) -> System:
-        return self.coordinator.system(system_serial=self.coordinator_context)
+        csystem = self.coordinator.system(system_serial=self.coordinator_context)
+        if csystem is None:
+            raise ValueError(f"Carrier System not found: {self.coordinator_context}")
+        return csystem
 
     @property
     def _status_zone(self) -> StatusZone:
