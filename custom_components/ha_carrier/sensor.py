@@ -81,7 +81,8 @@ async def async_setup_entry(hass, config_entry: ConfigEntry, async_add_entities)
                     )
                 )
         if carrier_system.energy.gas:
-            entities.append(GasMeasurementSensor(updater, carrier_system.profile.serial, "gas"))
+            if updater.system(carrier_system.profile.serial) is not None:
+                entities.append(GasMeasurementSensor(updater, carrier_system.profile.serial, "gas"))
             if carrier_system.config.fuel_type == "propane":
                 entities.append(PropaneMeasurementSensor(updater, carrier_system.profile.serial))
         for zone in carrier_system.config.zones:
@@ -129,7 +130,10 @@ class GasMeasurementSensor(CarrierEntity, SensorEntity):
     ) -> None:
         carrier_system = updater.system(system_serial=system_serial)
         if carrier_system is None:
-            return None
+            raise ValueError(
+                f"No carrier system found for serial {system_serial!r}; "
+                "cannot initialize GasMeasurementSensor."
+            )
         self.fuel_type = carrier_system.config.fuel_type
         unit_of_measurement = UnitOfVolume.CUBIC_METERS  # for therms
         if self.fuel_type == "propane":
@@ -227,7 +231,6 @@ class DailyEnergyMeasurementSensor(CarrierEntity, SensorEntity):
             "reheat": "reheatKwh",
             "fan_gas": "fanGasKwh",
             "loop_pump": "loopPumpKwh",
-            "gas": "gasKwh",
         }
         self.metric = metric
         self.entity_description = SensorEntityDescription(
@@ -268,7 +271,6 @@ class MonthlyEnergyMeasurementSensor(CarrierEntity, SensorEntity):
             "reheat": "reheatKwh",
             "fan_gas": "fanGasKwh",
             "loop_pump": "loopPumpKwh",
-            "gas": "gasKwh",
         }
         self.metric = metric
         self.entity_description = SensorEntityDescription(
