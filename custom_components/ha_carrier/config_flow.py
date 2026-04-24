@@ -1,4 +1,4 @@
-"""Add and configure integration from UI."""
+"""UI-driven setup and options flow for the Carrier integration."""
 
 from logging import Logger, getLogger
 from typing import Any
@@ -17,10 +17,14 @@ _LOGGER: Logger = getLogger(__package__)
 
 
 class OptionFlowHandler(config_entries.OptionsFlow):
-    """Display preferences UI."""
+    """Handle options updates for an existing Carrier config entry."""
 
     def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
-        """Display preferences UI."""
+        """Build the options schema presented to the user.
+
+        Args:
+            config_entry: Existing config entry whose options are being edited.
+        """
         self.schema = vol.Schema(
             {
                 vol.Required(
@@ -31,7 +35,14 @@ class OptionFlowHandler(config_entries.OptionsFlow):
         )
 
     async def async_step_init(self, user_input: dict[str, Any] | None = None):
-        """Display preferences UI."""
+        """Render and process the initial options step.
+
+        Args:
+            user_input: Submitted option values when the form is posted.
+
+        Returns:
+            FlowResult: Form response or created options entry.
+        """
         if user_input is not None:
             _LOGGER.debug("user input in option flow : %s", user_input)
             return self.async_create_entry(title="", data=user_input)
@@ -41,7 +52,7 @@ class OptionFlowHandler(config_entries.OptionsFlow):
 
 @config_entries.HANDLERS.register(DOMAIN)
 class ConfigFlowHandler(config_entries.ConfigFlow):
-    """Create instance of integration through UI."""
+    """Authenticate a Carrier account and create a config entry."""
 
     VERSION = CONFIG_FLOW_VERSION
     CONNECTION_CLASS = config_entries.CONN_CLASS_CLOUD_POLL
@@ -51,15 +62,29 @@ class ConfigFlowHandler(config_entries.ConfigFlow):
     @staticmethod
     @callback
     def async_get_options_flow(config_entry: config_entries.ConfigEntry) -> OptionFlowHandler:
-        """Return preferences handler."""
+        """Return the options flow handler for this integration entry.
+
+        Args:
+            config_entry: Config entry requesting options management.
+
+        Returns:
+            OptionFlowHandler: Options flow implementation for this integration.
+        """
         return OptionFlowHandler(config_entry)
 
     def __init__(self) -> None:
-        """Create instance of integration through UI."""
+        """Initialize mutable state used while the flow runs."""
         self.data = {}
 
     async def async_step_user(self, user_input: dict[str, Any] | None = None):
-        """Display auth interface."""
+        """Handle username/password input and validate Carrier credentials.
+
+        Args:
+            user_input: Submitted credentials for the Carrier account.
+
+        Returns:
+            FlowResult: Form response with errors or a created config entry.
+        """
         data_schema = {
             vol.Required(CONF_USERNAME): str,
             vol.Required(CONF_PASSWORD): str,

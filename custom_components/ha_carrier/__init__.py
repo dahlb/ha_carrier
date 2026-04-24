@@ -1,4 +1,4 @@
-"""Setup integration ha_carrier."""
+"""Initialize and manage the Home Assistant Carrier integration lifecycle."""
 
 import asyncio
 from logging import Logger, getLogger
@@ -31,15 +31,42 @@ CONFIG_SCHEMA = vol.Schema(
 
 
 async def async_setup(hass: HomeAssistant, config_entry: ConfigEntry) -> bool:
-    """Create global variables for integration."""
+    """Initialize domain storage used by this integration.
+
+    Args:
+        hass: Home Assistant instance.
+        config_entry: Loaded configuration entry for this integration.
+
+    Returns:
+        bool: True when setup bookkeeping has completed.
+    """
     hass.data.setdefault(DOMAIN, {})
     _LOGGER.debug("async setup")
     return True
 
 
 async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry):
-    """Create instance of integration."""
-    _LOGGER.debug(f"async setup entry: {async_redact_data(config_entry.as_dict(), TO_REDACT)}")
+    """Set up one Carrier config entry and start platform forwarding.
+
+    The setup creates a Carrier API connection, initializes the data
+    coordinator, performs the first refresh, and starts a long-running
+    websocket listener task for near-real-time updates.
+
+    Args:
+        hass: Home Assistant instance.
+        config_entry: Configuration entry containing Carrier credentials.
+
+    Returns:
+        bool: True when setup succeeds.
+
+    Raises:
+        ConfigEntryNotReady: Raised when authentication or initial data loading
+            fails and Home Assistant should retry setup later.
+    """
+    _LOGGER.debug(
+        "async setup entry: %s",
+        async_redact_data(config_entry.as_dict(), TO_REDACT),
+    )
     username = config_entry.data[CONF_USERNAME]
     password = config_entry.data[CONF_PASSWORD]
 
@@ -54,6 +81,14 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry):
         await data[DATA_UPDATE_COORDINATOR].async_config_entry_first_refresh()
 
         async def ws_updates():
+            """Keep websocket updates running for this config entry.
+
+            The loop exits on cancellation and forces a coordinator refresh if
+            websocket handling fails so entity state can recover gracefully.
+
+            Returns:
+                None: This coroutine runs until cancelled.
+            """
             running = True
             while running:
                 try:
@@ -84,12 +119,28 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry):
 
 
 async def async_update_options(hass: HomeAssistant, config_entry: ConfigEntry):
-    """Update preferences for integration instance."""
+    """Reload the integration when options are changed.
+
+    Args:
+        hass: Home Assistant instance.
+        config_entry: Updated configuration entry.
+
+    Returns:
+        None: This coroutine schedules and awaits the entry reload.
+    """
     await hass.config_entries.async_reload(config_entry.entry_id)
 
 
 async def async_unload_entry(hass: HomeAssistant, config_entry: ConfigEntry):
-    """Cleanup instance of integration."""
+    """Unload one Carrier config entry and all forwarded platforms.
+
+    Args:
+        hass: Home Assistant instance.
+        config_entry: Configuration entry being unloaded.
+
+    Returns:
+        bool: True when all platforms were unloaded cleanly.
+    """
     _LOGGER.debug("unload entry")
     unload_ok = await hass.config_entries.async_unload_platforms(config_entry, PLATFORMS)
 
