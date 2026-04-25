@@ -91,13 +91,6 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator):
                 fresh_systems: list[System] = await self.api_connection.load_data()
                 if not self.systems:
                     self.systems = fresh_systems
-                if not self._websocket_initialized:
-                    self.websocket_data_updater = WebsocketDataUpdater(systems=self.systems)
-                    self.api_connection.api_websocket.callback_add(
-                        self.websocket_data_updater.message_handler
-                    )
-                    self.api_connection.api_websocket.callback_add(self.updated_callback)
-                    self._websocket_initialized = True
                 else:
                     for fresh_system in fresh_systems:
                         related_stale_system = self.system(fresh_system.profile.serial)
@@ -110,6 +103,13 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator):
                             related_stale_system.status = fresh_system.status
                             related_stale_system.config = fresh_system.config
                             related_stale_system.energy = fresh_system.energy
+                if not self._websocket_initialized:
+                    self.websocket_data_updater = WebsocketDataUpdater(systems=self.systems)
+                    self.api_connection.api_websocket.callback_add(
+                        self.websocket_data_updater.message_handler
+                    )
+                    self.api_connection.api_websocket.callback_add(self.updated_callback)
+                    self._websocket_initialized = True
                 for system in self.systems:
                     _LOGGER.debug(async_redact_data(repr(system), TO_REDACT_MAPPED))
                 self.timestamp_all_data = datetime.now(UTC)
