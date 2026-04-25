@@ -50,7 +50,7 @@ async def async_get_config_entry_diagnostics(
     for carrier_system in updater.systems:
         system_data = {
             "mapped_data": async_redact_data(
-                updater._mapped_system_data(carrier_system), TO_REDACT_MAPPED
+                updater.mapped_system_data(carrier_system), TO_REDACT_MAPPED
             ),
             "profile_raw": async_redact_data(carrier_system.profile.raw, TO_REDACT_RAW),
             "status_raw": async_redact_data(carrier_system.status.raw, TO_REDACT_RAW),

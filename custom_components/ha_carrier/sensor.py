@@ -23,6 +23,8 @@ from homeassistant.const import (
     UnitOfVolume,
     UnitOfVolumeFlowRate,
 )
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .carrier_data_update_coordinator import CarrierDataUpdateCoordinator
 from .carrier_entity import CarrierEntity
@@ -31,7 +33,11 @@ from .const import DATA_UPDATE_COORDINATOR, DOMAIN
 _LOGGER: Logger = getLogger(__package__)
 
 
-async def async_setup_entry(hass, config_entry: ConfigEntry, async_add_entities):
+async def async_setup_entry(
+    hass: HomeAssistant,
+    config_entry: ConfigEntry,
+    async_add_entities: AddEntitiesCallback,
+) -> None:
     """Create and register Carrier sensor entities for each discovered system.
 
     Args:
@@ -115,7 +121,9 @@ class ZoneHumiditySensor(CarrierEntity, SensorEntity):
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_native_unit_of_measurement = PERCENTAGE
 
-    def __init__(self, updater: CarrierDataUpdateCoordinator, system_serial: str, zone_api_id: str):
+    def __init__(
+        self, updater: CarrierDataUpdateCoordinator, system_serial: str, zone_api_id: str
+    ) -> None:
         """Initialize a zone humidity sensor.
 
         Args:
@@ -200,10 +208,10 @@ class GasMeasurementSensor(CarrierEntity, SensorEntity):
                     value / 100 * 2.8328611898017
                 )  # /100 to therms then * to convert from therms to cubic meters
             case "gjoule":
+                # /100 to gjoules (because carrier keeps it an integer in the api
+                # response even though it is a float) then * to convert from gjoules
+                # to cubic meters
                 value = value / 100 * 25.5
-            # /100 to gjoules (because carrier keeps it an integer in the api
-            # response even though it is a float) then * to convert from gjoules
-            # to cubic meters
         return value
 
     @property
@@ -219,7 +227,7 @@ class GasMeasurementSensor(CarrierEntity, SensorEntity):
 class PropaneMeasurementSensor(CarrierEntity, SensorEntity):
     """Yearly propane usage sensor expressed in gallons."""
 
-    def __init__(self, updater: CarrierDataUpdateCoordinator, system_serial: str):
+    def __init__(self, updater: CarrierDataUpdateCoordinator, system_serial: str) -> None:
         """Initialize a yearly propane consumption sensor.
 
         Args:
@@ -260,7 +268,9 @@ class PropaneMeasurementSensor(CarrierEntity, SensorEntity):
 class EnergyMeasurementSensor(CarrierEntity, SensorEntity):
     """Yearly electrical energy consumption sensor for a Carrier metric."""
 
-    def __init__(self, updater: CarrierDataUpdateCoordinator, system_serial: str, metric: str):
+    def __init__(
+        self, updater: CarrierDataUpdateCoordinator, system_serial: str, metric: str
+    ) -> None:
         """Initialize a yearly energy measurement sensor.
 
         Args:
@@ -301,7 +311,9 @@ class EnergyMeasurementSensor(CarrierEntity, SensorEntity):
 class DailyEnergyMeasurementSensor(CarrierEntity, SensorEntity):
     """Sensor for yesterday's energy usage by Carrier metric."""
 
-    def __init__(self, updater: CarrierDataUpdateCoordinator, system_serial: str, metric: str):
+    def __init__(
+        self, updater: CarrierDataUpdateCoordinator, system_serial: str, metric: str
+    ) -> None:
         """Initialize a daily energy sensor for a specific metric.
 
         Args:
@@ -356,7 +368,9 @@ class DailyEnergyMeasurementSensor(CarrierEntity, SensorEntity):
 class MonthlyEnergyMeasurementSensor(CarrierEntity, SensorEntity):
     """Sensor for last month's energy usage by Carrier metric."""
 
-    def __init__(self, updater: CarrierDataUpdateCoordinator, system_serial: str, metric: str):
+    def __init__(
+        self, updater: CarrierDataUpdateCoordinator, system_serial: str, metric: str
+    ) -> None:
         """Initialize a monthly energy sensor for a specific metric.
 
         Args:
@@ -414,7 +428,9 @@ class ZoneTemperatureSensor(CarrierEntity, SensorEntity):
     _attr_device_class = SensorDeviceClass.TEMPERATURE
     _attr_state_class = SensorStateClass.MEASUREMENT
 
-    def __init__(self, updater: CarrierDataUpdateCoordinator, system_serial: str, zone_api_id: str):
+    def __init__(
+        self, updater: CarrierDataUpdateCoordinator, system_serial: str, zone_api_id: str
+    ) -> None:
         """Initialize a zone temperature sensor.
 
         Args:
@@ -464,7 +480,7 @@ class OutdoorTemperatureSensor(CarrierEntity, SensorEntity):
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_native_unit_of_measurement = UnitOfTemperature.FAHRENHEIT
 
-    def __init__(self, updater: CarrierDataUpdateCoordinator, system_serial: str):
+    def __init__(self, updater: CarrierDataUpdateCoordinator, system_serial: str) -> None:
         """Initialize an outdoor temperature sensor.
 
         Args:
@@ -500,7 +516,7 @@ class FilterUsedSensor(CarrierEntity, SensorEntity):
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_icon = "mdi:air-filter"
 
-    def __init__(self, updater: CarrierDataUpdateCoordinator, system_serial: str):
+    def __init__(self, updater: CarrierDataUpdateCoordinator, system_serial: str) -> None:
         """Initialize a filter remaining-life sensor.
 
         Args:
@@ -538,7 +554,7 @@ class HumidifierRemainingSensor(CarrierEntity, SensorEntity):
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_icon = "mdi:air-filter"
 
-    def __init__(self, updater: CarrierDataUpdateCoordinator, system_serial: str):
+    def __init__(self, updater: CarrierDataUpdateCoordinator, system_serial: str) -> None:
         """Initialize a humidifier remaining-life sensor.
 
         Args:
@@ -576,7 +592,7 @@ class UVLampRemainingSensor(CarrierEntity, SensorEntity):
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_icon = "mdi:lightbulb-fluorescent-tube-outline"
 
-    def __init__(self, updater: CarrierDataUpdateCoordinator, system_serial: str):
+    def __init__(self, updater: CarrierDataUpdateCoordinator, system_serial: str) -> None:
         """Initialize a UV lamp remaining-life sensor.
 
         Args:
@@ -611,7 +627,7 @@ class TimestampSensor(CarrierEntity, SensorEntity):
 
     _attr_device_class = SensorDeviceClass.TIMESTAMP
 
-    def __init__(self, updater: CarrierDataUpdateCoordinator, system_serial: str, key: str):
+    def __init__(self, updater: CarrierDataUpdateCoordinator, system_serial: str, key: str) -> None:
         """Initialize a timestamp sensor bound to one coordinator timestamp key.
 
         Args:
@@ -649,7 +665,7 @@ class AirflowSensor(CarrierEntity, SensorEntity):
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_icon = "mdi:fan"
 
-    def __init__(self, updater: CarrierDataUpdateCoordinator, system_serial: str):
+    def __init__(self, updater: CarrierDataUpdateCoordinator, system_serial: str) -> None:
         """Initialize an airflow sensor.
 
         Args:
@@ -687,7 +703,7 @@ class StaticPressureSensor(CarrierEntity, SensorEntity):
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_icon = "mdi:air-filter"
 
-    def __init__(self, updater: CarrierDataUpdateCoordinator, system_serial: str):
+    def __init__(self, updater: CarrierDataUpdateCoordinator, system_serial: str) -> None:
         """Initialize a static pressure sensor.
 
         Args:
@@ -722,7 +738,7 @@ class OutdoorUnitOperationalStatusSensor(CarrierEntity, SensorEntity):
 
     _attr_icon = "mdi:hvac"
 
-    def __init__(self, updater: CarrierDataUpdateCoordinator, system_serial: str):
+    def __init__(self, updater: CarrierDataUpdateCoordinator, system_serial: str) -> None:
         """Initialize an outdoor unit operational status sensor.
 
         Args:
@@ -776,7 +792,7 @@ class IndoorUnitOperationalStatusSensor(CarrierEntity, SensorEntity):
     _attr_device_class = SensorDeviceClass.ENUM
     _attr_icon = "mdi:hvac"
 
-    def __init__(self, updater: CarrierDataUpdateCoordinator, system_serial: str):
+    def __init__(self, updater: CarrierDataUpdateCoordinator, system_serial: str) -> None:
         """Initialize an indoor unit operational status sensor.
 
         Args:
@@ -822,7 +838,7 @@ class OutDoorUnitVarSensor(CarrierEntity, SensorEntity):
     _attr_native_unit_of_measurement = PERCENTAGE
     _attr_state_class = SensorStateClass.MEASUREMENT
 
-    def __init__(self, updater: CarrierDataUpdateCoordinator, system_serial: str):
+    def __init__(self, updater: CarrierDataUpdateCoordinator, system_serial: str) -> None:
         """Initialize a variable outdoor unit percentage sensor.
 
         Args:

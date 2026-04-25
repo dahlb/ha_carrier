@@ -5,6 +5,7 @@ from typing import Any
 
 from carrier_api import ApiConnectionGraphql
 from homeassistant import config_entries
+from homeassistant.config_entries import ConfigFlowResult
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 from homeassistant.core import callback
 from homeassistant.exceptions import ConfigEntryAuthFailed
@@ -34,14 +35,14 @@ class OptionFlowHandler(config_entries.OptionsFlow):
             }
         )
 
-    async def async_step_init(self, user_input: dict[str, Any] | None = None):
+    async def async_step_init(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         """Render and process the initial options step.
 
         Args:
             user_input: Submitted option values when the form is posted.
 
         Returns:
-            FlowResult: Form response or created options entry.
+            ConfigFlowResult: Form response or created options entry.
         """
         if user_input is not None:
             _LOGGER.debug("user input in option flow : %s", user_input)
@@ -76,14 +77,14 @@ class ConfigFlowHandler(config_entries.ConfigFlow):
         """Initialize mutable state used while the flow runs."""
         self.data = {}
 
-    async def async_step_user(self, user_input: dict[str, Any] | None = None):
+    async def async_step_user(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         """Handle username/password input and validate Carrier credentials.
 
         Args:
             user_input: Submitted credentials for the Carrier account.
 
         Returns:
-            FlowResult: Form response with errors or a created config entry.
+            ConfigFlowResult: Form response with errors or a created config entry.
         """
         data_schema = {
             vol.Required(CONF_USERNAME): str,

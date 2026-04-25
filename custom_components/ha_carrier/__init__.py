@@ -8,8 +8,6 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryNotReady
-import homeassistant.helpers.config_validation as cv
-import voluptuous as vol
 
 from .carrier_data_update_coordinator import CarrierDataUpdateCoordinator
 from .const import DATA_UPDATE_COORDINATOR, DOMAIN, PLATFORMS, TO_REDACT
@@ -17,35 +15,8 @@ from .util import async_redact_data
 
 _LOGGER: Logger = getLogger(__package__)
 
-CONFIG_SCHEMA = vol.Schema(
-    {
-        DOMAIN: vol.Schema(
-            {
-                vol.Required(CONF_USERNAME): cv.string,
-                vol.Required(CONF_PASSWORD): cv.string,
-            }
-        )
-    },
-    extra=vol.ALLOW_EXTRA,
-)
 
-
-async def async_setup(hass: HomeAssistant, config_entry: ConfigEntry) -> bool:
-    """Initialize domain storage used by this integration.
-
-    Args:
-        hass: Home Assistant instance.
-        config_entry: Loaded configuration entry for this integration.
-
-    Returns:
-        bool: True when setup bookkeeping has completed.
-    """
-    hass.data.setdefault(DOMAIN, {})
-    _LOGGER.debug("async setup")
-    return True
-
-
-async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry):
+async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> bool:
     """Set up one Carrier config entry and start platform forwarding.
 
     The setup creates a Carrier API connection, initializes the data
@@ -67,6 +38,7 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry):
         "async setup entry: %s",
         async_redact_data(config_entry.as_dict(), TO_REDACT),
     )
+    hass.data.setdefault(DOMAIN, {})
     username = config_entry.data[CONF_USERNAME]
     password = config_entry.data[CONF_PASSWORD]
 
@@ -80,7 +52,7 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry):
         )
         await data[DATA_UPDATE_COORDINATOR].async_config_entry_first_refresh()
 
-        async def ws_updates():
+        async def ws_updates() -> None:
             """Keep websocket updates running for this config entry.
 
             The loop exits on cancellation and forces a coordinator refresh if
@@ -105,7 +77,7 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry):
 
         hass.async_create_background_task(ws_updates(), "ha_carrier_ws")
     except Exception as error:
-        _LOGGER.exception(error)
+        _LOGGER.exception("failed to set up Carrier integration")
         raise ConfigEntryNotReady(error) from error
 
     hass.data[DOMAIN][config_entry.entry_id] = data
@@ -118,7 +90,7 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry):
     return True
 
 
-async def async_update_options(hass: HomeAssistant, config_entry: ConfigEntry):
+async def async_update_options(hass: HomeAssistant, config_entry: ConfigEntry) -> None:
     """Reload the integration when options are changed.
 
     Args:
@@ -131,7 +103,7 @@ async def async_update_options(hass: HomeAssistant, config_entry: ConfigEntry):
     await hass.config_entries.async_reload(config_entry.entry_id)
 
 
-async def async_unload_entry(hass: HomeAssistant, config_entry: ConfigEntry):
+async def async_unload_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> bool:
     """Unload one Carrier config entry and all forwarded platforms.
 
     Args:

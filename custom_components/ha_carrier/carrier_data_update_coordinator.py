@@ -32,7 +32,7 @@ class CarrierUnauthorizedError(Exception):
     """Raised when unauthorized responses stop looking transient."""
 
 
-class CarrierDataUpdateCoordinator(DataUpdateCoordinator):
+class CarrierDataUpdateCoordinator(DataUpdateCoordinator[list[str]]):
     """Maintain synchronized Carrier system data for all integration entities."""
 
     def __init__(
@@ -75,7 +75,7 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator):
             ),
         )
 
-    async def _async_update_data(self):
+    async def _async_update_data(self) -> list[str]:
         """Fetch the latest Carrier data for entities backed by the coordinator.
 
         Performs either a full system refresh or a lighter energy-only refresh,
@@ -119,7 +119,7 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator):
                 for system in self.systems:
                     _LOGGER.debug(
                         "%s",
-                        async_redact_data(self._mapped_system_data(system), TO_REDACT_MAPPED),
+                        async_redact_data(self.mapped_system_data(system), TO_REDACT_MAPPED),
                     )
                 self.timestamp_all_data = datetime.now(UTC)
                 self.timestamp_energy = self.timestamp_all_data
@@ -154,7 +154,7 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator):
                     self.timestamp_energy = datetime.now(UTC)
                     self._reset_unauthorized_tracking()
                     self.update_interval = timedelta(minutes=DEFAULT_UPDATE_INTERVAL_MINUTES)
-            return [self._mapped_system_data(system) for system in self.systems]
+            return [self.mapped_system_data(system) for system in self.systems]
         except CarrierUnauthorizedError as error:
             self.data_flush = True
             self.update_interval = timedelta(minutes=1)
@@ -172,12 +172,12 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator):
                 raise UpdateFailed(
                     "Carrier API temporarily rejected the refresh; retrying soon."
                 ) from server_error
-            _LOGGER.exception(server_error)
+            _LOGGER.exception("Carrier refresh hit a transport server error")
             _LOGGER.debug("transport error likely carrier api maintenance so retrying in 1 minute.")
             self.update_interval = timedelta(minutes=1)
             raise UpdateFailed(server_error) from server_error
-        except Exception as error:
-            _LOGGER.exception(error)
+        except Exception as error:  # pragma: no cover - defensive logging only
+            _LOGGER.exception("Carrier refresh failed with an unexpected error")
             self.data_flush = True
             self.update_interval = timedelta(minutes=DEFAULT_UPDATE_INTERVAL_MINUTES)
             _LOGGER.debug(
@@ -322,7 +322,13 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator):
             # A write may have partially applied server-side before the transport
             # failed, so force a refresh before reporting or re-raising upstream.
             await self.async_refresh()
-        except Exception as refresh_error:  # pragma: no cover - defensive logging only
+        except (
+            CarrierUnauthorizedError,
+            HomeAssistantError,
+            TimeoutError,
+            TransportServerError,
+            UpdateFailed,
+        ) as refresh_error:  # pragma: no cover - defensive logging only
             _LOGGER.debug(
                 "refresh after failed %s write failed: %s",
                 operation_name,
@@ -365,7 +371,7 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator):
                 if await self._async_retry_write(attempt):
                     continue
                 await self._async_handle_failed_write(operation_name, error)
-                raise AssertionError("unreachable after failed write handling")
+                raise AssertionError("unreachable after failed write handling") from error
             else:
                 self._reset_unauthorized_tracking()
                 return result
@@ -387,21 +393,18 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator):
             if system.profile.serial == system_serial:
                 return system
         return None
-<<<<<<< HEAD
 
     @staticmethod
-    def _mapped_system_data(system: System) -> Any:
+    def mapped_system_data(system: System) -> str:
         """Return a stable mapped representation used for logging payloads.
 
         Args:
             system: Carrier system object to map.
 
         Returns:
-            Any: System mapping emitted by the Carrier model repr helper.
+            str: System mapping emitted by the Carrier model repr helper.
         """
         return system.__repr__()
-=======
->>>>>>> c78080d (Refactor typing, formatting, and bug fixes)
 
     async def updated_callback(self, _message: str) -> None:
         """Handle websocket updates and notify Home Assistant listeners.
@@ -415,12 +418,8 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator):
         self.timestamp_websocket = datetime.now(UTC)
         _LOGGER.debug("websocket updated system")
         for system in self.systems:
-<<<<<<< HEAD
             _LOGGER.debug(
                 "%s",
-                async_redact_data(self._mapped_system_data(system), TO_REDACT_MAPPED),
+                async_redact_data(self.mapped_system_data(system), TO_REDACT_MAPPED),
             )
-=======
-            _LOGGER.debug(async_redact_data(repr(system), TO_REDACT_MAPPED))
->>>>>>> c78080d (Refactor typing, formatting, and bug fixes)
         self.async_update_listeners()

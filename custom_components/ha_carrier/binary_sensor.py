@@ -10,6 +10,8 @@ from homeassistant.components.binary_sensor import (
     BinarySensorEntityDescription,
 )
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .carrier_data_update_coordinator import CarrierDataUpdateCoordinator
 from .carrier_entity import CarrierEntity
@@ -18,7 +20,11 @@ from .const import DATA_UPDATE_COORDINATOR, DOMAIN
 _LOGGER: Logger = getLogger(__package__)
 
 
-async def async_setup_entry(hass, config_entry: ConfigEntry, async_add_entities):
+async def async_setup_entry(
+    hass: HomeAssistant,
+    config_entry: ConfigEntry,
+    async_add_entities: AddEntitiesCallback,
+) -> None:
     """Create and register Carrier binary sensor entities for one config entry.
 
     Args:
@@ -55,7 +61,7 @@ async def async_setup_entry(hass, config_entry: ConfigEntry, async_add_entities)
 class OnlineSensor(CarrierEntity, BinarySensorEntity):
     """Binary sensor that reports whether the Carrier system is reachable."""
 
-    def __init__(self, updater: CarrierDataUpdateCoordinator, system_serial: str):
+    def __init__(self, updater: CarrierDataUpdateCoordinator, system_serial: str) -> None:
         """Initialize connectivity metadata for a Carrier system.
 
         Args:
@@ -104,7 +110,9 @@ class OccupancySensor(CarrierEntity, BinarySensorEntity):
 
     _attr_device_class = BinarySensorDeviceClass.MOTION
 
-    def __init__(self, updater: CarrierDataUpdateCoordinator, system_serial: str, zone_api_id: str):
+    def __init__(
+        self, updater: CarrierDataUpdateCoordinator, system_serial: str, zone_api_id: str
+    ) -> None:
         """Initialize an occupancy entity tied to one zone.
 
         Args:
@@ -141,7 +149,7 @@ class HumidifierSensor(CarrierEntity, BinarySensorEntity):
 
     _attr_device_class = BinarySensorDeviceClass.RUNNING
 
-    def __init__(self, updater: CarrierDataUpdateCoordinator, system_serial: str):
+    def __init__(self, updater: CarrierDataUpdateCoordinator, system_serial: str) -> None:
         """Initialize a humidifier runtime sensor for one Carrier system.
 
         Args:
@@ -157,9 +165,7 @@ class HumidifierSensor(CarrierEntity, BinarySensorEntity):
         Returns:
             bool | None: Runtime status reported by the Carrier API.
         """
-        if self.carrier_system.status.humidifier_on is not None:
-            return self.carrier_system.status.humidifier_on
-        return None
+        return self.carrier_system.status.humidifier_on
 
     @property
     def icon(self) -> str | None:
