@@ -111,7 +111,10 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator):
                     self.api_connection.api_websocket.callback_add(self.updated_callback)
                     self._websocket_initialized = True
                 for system in self.systems:
-                    _LOGGER.debug(async_redact_data(repr(system), TO_REDACT_MAPPED))
+                    _LOGGER.debug(
+                        "%s",
+                        async_redact_data(self._mapped_system_data(system), TO_REDACT_MAPPED),
+                    )
                 self.timestamp_all_data = datetime.now(UTC)
                 self.timestamp_energy = self.timestamp_all_data
                 self.data_flush = False
@@ -144,7 +147,7 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator):
                     self.timestamp_energy = datetime.now(UTC)
                     self._reset_unauthorized_tracking()
                     self.update_interval = timedelta(minutes=DEFAULT_UPDATE_INTERVAL_MINUTES)
-            return [repr(system) for system in self.systems]
+            return [self._mapped_system_data(system) for system in self.systems]
         except CarrierUnauthorizedError as error:
             self.data_flush = True
             self.update_interval = timedelta(minutes=1)
@@ -366,9 +369,17 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator):
                 return system
         return None
 
+    @staticmethod
+    def _mapped_system_data(system: System) -> Any:
+        """Return mapped system data without invoking the built-in repr()."""
+        return system.__repr__()
+
     async def updated_callback(self, _message: str) -> None:
         self.timestamp_websocket = datetime.now(UTC)
         _LOGGER.debug("websocket updated system")
         for system in self.systems:
-            _LOGGER.debug(async_redact_data(repr(system), TO_REDACT_MAPPED))
+            _LOGGER.debug(
+                "%s",
+                async_redact_data(self._mapped_system_data(system), TO_REDACT_MAPPED),
+            )
         self.async_update_listeners()
