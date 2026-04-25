@@ -105,5 +105,8 @@ split-on-trailing-comma = false
 [tool.ruff.lint.mccabe]
 max-complexity = 25
 
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
 [tool.codespell]
 ignore-words-list = "hass"

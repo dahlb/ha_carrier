@@ -510,8 +510,7 @@ class OutdoorUnitOperationalStatusSensor(CarrierEntity, SensorEntity):
 
     @property
     def native_value(self) -> Any | None:
-        """
-        Return outdoor unit operational status. Numeric strings (e.g., '1') are mapped to 'on'.
+        """Return outdoor unit operational status. Numeric strings (e.g., '1') are mapped to 'on'.
         This improves logbook phrasing in Home Assistant.
         """
         value = self.carrier_system.status.outdoor_unit_operational_status
@@ -575,8 +574,7 @@ class OutDoorUnitVarSensor(CarrierEntity, SensorEntity):
 
     @property
     def native_value(self) -> float | None:
-        """
-        Return ODU Var percentage as a float if the value is a numeric string (including decimals).
+        """Return ODU Var percentage as a float if the value is a numeric string (including decimals).
         Returns None for any non-numeric or missing value.
         """
         value = self.carrier_system.status.outdoor_unit_operational_status
