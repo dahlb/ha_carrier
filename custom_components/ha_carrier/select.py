@@ -8,6 +8,8 @@ from logging import Logger, getLogger
 from carrier_api.const import HeatSourceTypes
 from homeassistant.components.select import SelectEntity, SelectEntityDescription
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .carrier_data_update_coordinator import CarrierDataUpdateCoordinator
 from .carrier_entity import CarrierEntity
@@ -22,7 +24,11 @@ from .const import (
 _LOGGER: Logger = getLogger(__package__)
 
 
-async def async_setup_entry(hass, config_entry: ConfigEntry, async_add_entities):
+async def async_setup_entry(
+    hass: HomeAssistant,
+    config_entry: ConfigEntry,
+    async_add_entities: AddEntitiesCallback,
+) -> None:
     """Create and register heat source select entities for each system.
 
     Args:
@@ -51,7 +57,7 @@ class HeatSourceSelect(CarrierEntity, SelectEntity):
 
     _attr_icon = "mdi:heat-pump"
 
-    def __init__(self, updater: CarrierDataUpdateCoordinator, system_serial: str):
+    def __init__(self, updater: CarrierDataUpdateCoordinator, system_serial: str) -> None:
         """Initialize selectable heat source options for one system.
 
         Args:

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from datetime import datetime
 from functools import partial
 from logging import Logger, getLogger
 from typing import Any
@@ -23,7 +24,9 @@ from homeassistant.const import (
     PRECISION_WHOLE,
     UnitOfTemperature,
 )
+from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .carrier_data_update_coordinator import CarrierDataUpdateCoordinator
 from .carrier_entity import CarrierEntity
@@ -47,7 +50,11 @@ SUPPORT_FLAGS = (
 )
 
 
-async def async_setup_entry(hass, config_entry: ConfigEntry, async_add_entities):
+async def async_setup_entry(
+    hass: HomeAssistant,
+    config_entry: ConfigEntry,
+    async_add_entities: AddEntitiesCallback,
+) -> None:
     """Create and register thermostat entities for every configured zone.
 
     Args:
@@ -93,7 +100,7 @@ class Thermostat(CarrierEntity, ClimateEntity):
         system_serial: str,
         infinite_hold: bool,
         zone_api_id: str,
-    ):
+    ) -> None:
         """Initialize thermostat state and supported controls for one zone.
 
         Args:
@@ -369,7 +376,7 @@ class Thermostat(CarrierEntity, ClimateEntity):
         self.async_write_ha_state()
 
     @property
-    def _hold_until(self):
+    def _hold_until(self) -> datetime | None:
         """Return hold end time based on integration hold preference.
 
         Returns:
