@@ -12,7 +12,6 @@ from homeassistant.helpers import device_registry as dr, entity_registry as er
 
 from .carrier_data_update_coordinator import CarrierDataUpdateCoordinator
 from .const import (
-    DATA_UPDATE_COORDINATOR,
     DOMAIN,
     TO_REDACT,
     TO_REDACT_DEVICE,
@@ -41,9 +40,7 @@ async def async_get_config_entry_diagnostics(
         dict[str, dict[str, Any]]: Redacted diagnostics keyed by section name
         and system serial.
     """
-    updater: CarrierDataUpdateCoordinator = hass.data[DOMAIN][config_entry.entry_id][
-        DATA_UPDATE_COORDINATOR
-    ]
+    updater: CarrierDataUpdateCoordinator = config_entry.runtime_data
     data = {
         "entry": async_redact_data(config_entry.as_dict(), TO_REDACT),
     }

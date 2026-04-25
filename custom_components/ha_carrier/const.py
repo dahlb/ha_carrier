@@ -16,9 +16,6 @@ PLATFORMS: list[Platform] = [
     Platform.SELECT,
 ]
 
-# Home Assistant Data Storage Constants
-DATA_UPDATE_COORDINATOR: str = "update_coordinator"
-
 CONF_INFINITE_HOLDS: str = "infinite_holds"
 DEFAULT_INFINITE_HOLDS: bool = True
 

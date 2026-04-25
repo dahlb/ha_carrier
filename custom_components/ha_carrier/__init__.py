@@ -8,12 +8,14 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryNotReady
+from homeassistant.helpers import config_validation as cv
 
 from .carrier_data_update_coordinator import CarrierDataUpdateCoordinator
-from .const import DATA_UPDATE_COORDINATOR, DOMAIN, PLATFORMS, TO_REDACT
+from .const import DOMAIN, PLATFORMS, TO_REDACT
 from .util import async_redact_data
 
 _LOGGER: Logger = getLogger(__package__)
+CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
 
 async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> bool:
@@ -38,19 +40,17 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> b
         "async setup entry: %s",
         async_redact_data(config_entry.as_dict(), TO_REDACT),
     )
-    hass.data.setdefault(DOMAIN, {})
     username = config_entry.data[CONF_USERNAME]
     password = config_entry.data[CONF_PASSWORD]
 
-    data = {}
-
     try:
         api_connection = ApiConnectionGraphql(username=username, password=password)
-        data[DATA_UPDATE_COORDINATOR] = CarrierDataUpdateCoordinator(
+        coordinator = CarrierDataUpdateCoordinator(
             hass=hass,
             api_connection=api_connection,
         )
-        await data[DATA_UPDATE_COORDINATOR].async_config_entry_first_refresh()
+        await coordinator.async_config_entry_first_refresh()
+        config_entry.runtime_data = coordinator
 
         async def ws_updates() -> None:
             """Keep websocket updates running for this config entry.
@@ -65,27 +65,33 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> b
             while running:
                 try:
                     _LOGGER.debug("websocket task listening")
-                    await data[DATA_UPDATE_COORDINATOR].api_connection.api_websocket.listener()
+                    await coordinator.api_connection.api_websocket.listener()
                     _LOGGER.debug("websocket task ending")
                 except asyncio.CancelledError:
                     running = False
                     _LOGGER.debug("websocket task cancelled")
                 except Exception as websocket_error:
                     _LOGGER.exception("websocket task exception", exc_info=websocket_error)
-                    data[DATA_UPDATE_COORDINATOR].data_flush = True
-                    await data[DATA_UPDATE_COORDINATOR].async_request_refresh()
+                    coordinator.data_flush = True
+                    await coordinator.async_request_refresh()
 
-        hass.async_create_background_task(ws_updates(), "ha_carrier_ws")
+        websocket_task = hass.async_create_background_task(
+            ws_updates(),
+            f"{DOMAIN}_ws_{config_entry.entry_id}",
+        )
+
+        def cancel_websocket_task() -> None:
+            """Cancel the websocket listener task during entry unload."""
+            websocket_task.cancel()
+
+        config_entry.async_on_unload(cancel_websocket_task)
     except Exception as error:
         _LOGGER.exception("failed to set up Carrier integration")
         raise ConfigEntryNotReady(error) from error
 
-    hass.data[DOMAIN][config_entry.entry_id] = data
-
     await hass.config_entries.async_forward_entry_setups(config_entry, PLATFORMS)
 
-    if not config_entry.update_listeners:
-        config_entry.add_update_listener(async_update_options)
+    config_entry.async_on_unload(config_entry.add_update_listener(async_update_options))
 
     return True
 
@@ -114,9 +120,4 @@ async def async_unload_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> 
         bool: True when all platforms were unloaded cleanly.
     """
     _LOGGER.debug("unload entry")
-    unload_ok = await hass.config_entries.async_unload_platforms(config_entry, PLATFORMS)
-
-    if unload_ok:
-        hass.data[DOMAIN][config_entry.entry_id] = None
-
-    return unload_ok
+    return await hass.config_entries.async_unload_platforms(config_entry, PLATFORMS)
