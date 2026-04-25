@@ -30,13 +30,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .carrier_data_update_coordinator import CarrierDataUpdateCoordinator
 from .carrier_entity import CarrierEntity
-from .const import (
-    CONF_INFINITE_HOLDS,
-    DATA_UPDATE_COORDINATOR,
-    DEFAULT_INFINITE_HOLDS,
-    DOMAIN,
-    FAN_AUTO,
-)
+from .const import CONF_INFINITE_HOLDS, DEFAULT_INFINITE_HOLDS, FAN_AUTO
 
 _LOGGER: Logger = getLogger(__package__)
 
@@ -67,9 +61,7 @@ async def async_setup_entry(
     """
     _LOGGER.debug("setting up climate entry")
     infinite_hold = config_entry.options.get(CONF_INFINITE_HOLDS, DEFAULT_INFINITE_HOLDS)
-    updater: CarrierDataUpdateCoordinator = hass.data[DOMAIN][config_entry.entry_id][
-        DATA_UPDATE_COORDINATOR
-    ]
+    updater: CarrierDataUpdateCoordinator = config_entry.runtime_data
     entities = []
     for carrier_system in updater.systems:
         for zone in carrier_system.config.zones:

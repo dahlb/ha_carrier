@@ -15,7 +15,6 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .carrier_data_update_coordinator import CarrierDataUpdateCoordinator
 from .carrier_entity import CarrierEntity
-from .const import DATA_UPDATE_COORDINATOR, DOMAIN
 
 _LOGGER: Logger = getLogger(__package__)
 
@@ -35,9 +34,7 @@ async def async_setup_entry(
     Returns:
         None: Entities are added through the callback.
     """
-    updater: CarrierDataUpdateCoordinator = hass.data[DOMAIN][config_entry.entry_id][
-        DATA_UPDATE_COORDINATOR
-    ]
+    updater: CarrierDataUpdateCoordinator = config_entry.runtime_data
     entities = []
     for carrier_system in updater.systems:
         entities.extend(
