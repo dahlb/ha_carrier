@@ -3,7 +3,7 @@
 import asyncio
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
-from logging import Logger, getLogger
+import logging
 from typing import Any, NoReturn
 
 from carrier_api import ApiConnectionGraphql, Energy, System
@@ -21,7 +21,7 @@ from homeassistant.helpers.update_coordinator import (
 from .const import DOMAIN, TO_REDACT_MAPPED
 from .util import async_redact_data
 
-_LOGGER: Logger = getLogger(__package__)
+_LOGGER: logging.Logger = logging.getLogger(__package__)
 DEFAULT_UPDATE_INTERVAL_MINUTES = 30
 UNAUTHORIZED_RETRY_THRESHOLD = 3
 WRITE_RETRY_DELAY_SECONDS = 1
@@ -32,7 +32,7 @@ class CarrierUnauthorizedError(Exception):
     """Raised when unauthorized responses stop looking transient."""
 
 
-class CarrierDataUpdateCoordinator(DataUpdateCoordinator[list[str]]):
+class CarrierDataUpdateCoordinator(DataUpdateCoordinator[list[dict[str, Any]]]):
     """Maintain synchronized Carrier system data for all integration entities."""
 
     def __init__(
@@ -75,7 +75,7 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator[list[str]]):
             ),
         )
 
-    async def _async_update_data(self) -> list[str]:
+    async def _async_update_data(self) -> list[dict[str, Any]]:
         """Fetch the latest Carrier data for entities backed by the coordinator.
 
         Performs either a full system refresh or a lighter energy-only refresh,
@@ -84,7 +84,7 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator[list[str]]):
         retried quickly without immediately treating credentials as invalid.
 
         Returns:
-            list[str]: String representations of the tracked systems.
+            list[dict[str, Any]]: Mapping representation of tracked systems.
 
         Raises:
             UpdateFailed: Raised when the refresh cannot complete successfully.
@@ -116,11 +116,12 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator[list[str]]):
                     )
                     self.api_connection.api_websocket.callback_add(self.updated_callback)
                     self._websocket_initialized = True
-                for system in self.systems:
-                    _LOGGER.debug(
-                        "%s",
-                        async_redact_data(self.mapped_system_data(system), TO_REDACT_MAPPED),
-                    )
+                if _LOGGER.isEnabledFor(logging.DEBUG):
+                    for system in self.systems:
+                        _LOGGER.debug(
+                            "%s",
+                            async_redact_data(self.mapped_system_data(system), TO_REDACT_MAPPED),
+                        )
                 self.timestamp_all_data = datetime.now(UTC)
                 self.timestamp_energy = self.timestamp_all_data
                 self.data_flush = False
@@ -395,16 +396,27 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator[list[str]]):
         return None
 
     @staticmethod
-    def mapped_system_data(system: System) -> str:
+    def mapped_system_data(system: System) -> dict[str, Any]:
         """Return a stable mapped representation used for logging payloads.
 
         Args:
             system: Carrier system object to map.
 
         Returns:
-            str: System mapping emitted by the Carrier model repr helper.
+            dict[str, Any]: System mapping emitted by the Carrier model helper.
+
+        Raises:
+            TypeError: Raised when the Carrier model returns a non-mapping
+                payload unexpectedly.
         """
-        return system.__repr__()
+        # carrier_api.System.__repr__ intentionally returns a dict-like payload,
+        # while Python's built-in repr(system) expects __repr__ to return a str.
+        # Call the model helper directly so we keep a mapping for recursive
+        # redaction instead of flattening sensitive keys into an opaque string.
+        mapped_data = system.__repr__()
+        if not isinstance(mapped_data, dict):
+            raise TypeError("carrier_api System.__repr__ returned a non-mapping payload")
+        return mapped_data
 
     async def updated_callback(self, _message: str) -> None:
         """Handle websocket updates and notify Home Assistant listeners.
@@ -417,9 +429,10 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator[list[str]]):
         """
         self.timestamp_websocket = datetime.now(UTC)
         _LOGGER.debug("websocket updated system")
-        for system in self.systems:
-            _LOGGER.debug(
-                "%s",
-                async_redact_data(self.mapped_system_data(system), TO_REDACT_MAPPED),
-            )
+        if _LOGGER.isEnabledFor(logging.DEBUG):
+            for system in self.systems:
+                _LOGGER.debug(
+                    "%s",
+                    async_redact_data(self.mapped_system_data(system), TO_REDACT_MAPPED),
+                )
         self.async_update_listeners()
