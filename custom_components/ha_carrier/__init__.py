@@ -28,6 +28,29 @@ _LOGGER: logging.Logger = logging.getLogger(__name__)
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
 
+async def _async_await_websocket_task(websocket_task: asyncio.Task[None]) -> None:
+    """Await websocket task shutdown after cancellation.
+
+    Args:
+        websocket_task: Background websocket listener task to await.
+
+    Returns:
+        None: The task is fully drained before unload continues.
+    """
+    try:
+        await websocket_task
+    except asyncio.CancelledError:
+        pass
+    except (
+        CarrierUnauthorizedError,
+        ClientError,
+        TimeoutError,
+        OSError,
+        TransportError,
+    ):
+        _LOGGER.exception("websocket task raised during cancellation")
+
+
 async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntryCarrier) -> bool:
     """Set up one Carrier config entry and start platform forwarding.
 
@@ -81,6 +104,9 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntryCarrie
                     _LOGGER.debug("websocket task listening")
                     await coordinator.api_connection.api_websocket.listener()
                     _LOGGER.debug("websocket task ending")
+                    coordinator.data_flush = True
+                    await coordinator.async_request_refresh()
+                    await asyncio.sleep(retry_delay_seconds)
                     retry_delay_seconds = WEBSOCKET_RETRY_INITIAL_DELAY_SECONDS
                 except asyncio.CancelledError:
                     _LOGGER.debug("websocket task cancelled")
@@ -106,9 +132,16 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntryCarrie
             ws_updates(),
             f"{DOMAIN}_ws_{config_entry.entry_id}",
         )
+        coordinator.websocket_task = websocket_task
 
         def cancel_websocket_task() -> None:
-            """Cancel the websocket listener task during entry unload."""
+            """Request websocket listener shutdown during entry unload.
+
+            ConfigEntry.async_on_unload expects a synchronous callback.
+            Only cancel the task here; the coordinator keeps the task reference
+            and async_unload_entry awaits it so websocket cleanup actually
+            finishes before teardown completes.
+            """
             websocket_task.cancel()
 
         config_entry.async_on_unload(cancel_websocket_task)
@@ -160,4 +193,11 @@ async def async_unload_entry(hass: HomeAssistant, config_entry: ConfigEntryCarri
         bool: True when all platforms were unloaded cleanly.
     """
     _LOGGER.debug("unload entry")
+    websocket_task = config_entry.runtime_data.websocket_task
+
+    if websocket_task is not None:
+        websocket_task.cancel()
+        await _async_await_websocket_task(websocket_task)
+        config_entry.runtime_data.websocket_task = None
+
     return await hass.config_entries.async_unload_platforms(config_entry, PLATFORMS)

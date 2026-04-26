@@ -64,6 +64,7 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator[list[dict[str, Any]]]):
         self._suppress_unauthorized_recording = False
         self.systems: list[System] = []
         self.websocket_data_updater: WebsocketDataUpdater | None = None
+        self.websocket_task: asyncio.Task[None] | None = None
         self._websocket_initialized = False
         self.data_flush = True
         self.timestamp_all_data: datetime | None = None
@@ -94,7 +95,7 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator[list[dict[str, Any]]]):
         retried quickly without immediately treating credentials as invalid.
 
         Returns:
-            list[dict[str, Any]]: Mapping representation of tracked systems.
+            list[dict[str, Any]]: List of mappings representing tracked systems.
 
         Raises:
             UpdateFailed: Raised when the refresh cannot complete successfully.
