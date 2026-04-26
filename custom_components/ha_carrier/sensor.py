@@ -134,11 +134,11 @@ class ZoneHumiditySensor(CarrierEntity, SensorEntity):
         super().__init__(f"{self._config_zone.name} Humidity", updater, system_serial)
 
     @property
-    def native_value(self) -> float:
+    def native_value(self) -> int | None:
         """Return current zone humidity.
 
         Returns:
-            float: Relative humidity percentage for the zone.
+            int | None: Relative humidity percentage for the zone, or None when unavailable.
         """
         return self._status_zone.humidity
 
@@ -452,11 +452,11 @@ class ZoneTemperatureSensor(CarrierEntity, SensorEntity):
         return UnitOfTemperature.CELSIUS
 
     @property
-    def native_value(self) -> float:
+    def native_value(self) -> float | None:
         """Return current zone temperature.
 
         Returns:
-            float: Temperature reported for the zone.
+            float | None: Temperature reported for the zone, or None when unavailable.
         """
         return self._status_zone.temperature
 
@@ -487,11 +487,11 @@ class OutdoorTemperatureSensor(CarrierEntity, SensorEntity):
         super().__init__("Outdoor Temperature", updater, system_serial)
 
     @property
-    def native_value(self) -> float:
+    def native_value(self) -> float | None:
         """Return current outdoor temperature.
 
         Returns:
-            float: Outdoor temperature reported by Carrier.
+            float | None: Outdoor temperature reported by Carrier, or None when unavailable.
         """
         return self.carrier_system.status.outdoor_temperature
 
