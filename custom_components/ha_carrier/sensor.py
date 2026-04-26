@@ -188,13 +188,17 @@ class GasMeasurementSensor(CarrierEntity, SensorEntity):
         super().__init__(f"{self.fuel_type.capitalize()} Yearly", updater, system_serial)
 
     @property
-    def native_value(self) -> float:
+    def native_value(self) -> float | None:
         """Return yearly gas usage converted to the configured gas unit.
 
         Returns:
-            float: Converted yearly gas consumption value.
+            float | None: Converted yearly gas consumption value, or None when unavailable.
         """
-        value = self.carrier_system.energy.current_year_measurements().gas
+        gas = self.carrier_system.energy.current_year_measurements().gas
+        if gas is None:
+            return None
+
+        value = gas
         match self.carrier_system.config.gas_unit:
             case "gallon":
                 value = (
@@ -241,15 +245,18 @@ class PropaneMeasurementSensor(CarrierEntity, SensorEntity):
         super().__init__("Propane Yearly Gallons", updater, system_serial)
 
     @property
-    def native_value(self) -> float:
+    def native_value(self) -> float | None:
         """Return yearly propane usage converted from kBTU to gallons.
 
         Returns:
-            float: Converted yearly propane volume in gallons.
+            float | None: Converted yearly propane volume in gallons, or None when unavailable.
         """
-        value = self.carrier_system.energy.current_year_measurements().gas
+        gas = self.carrier_system.energy.current_year_measurements().gas
+        if gas is None:
+            return None
+
         return (
-            value / 91.69
+            gas / 91.69
         )  # Convert kBTU to gallons (1 gallon LPG = 91,690 BTU, so divide by 91.69)
 
     @property
@@ -259,7 +266,7 @@ class PropaneMeasurementSensor(CarrierEntity, SensorEntity):
         Returns:
             bool: True when a propane value is available.
         """
-        return self.native_value is not None
+        return self.carrier_system.energy.current_year_measurements().gas is not None
 
 
 class EnergyMeasurementSensor(CarrierEntity, SensorEntity):
@@ -780,7 +787,13 @@ class OutdoorUnitOperationalStatusSensor(CarrierEntity, SensorEntity):
         Returns:
             Mapping[str, Any] | None: Raw outdoor-unit subsection from status data.
         """
-        return self.carrier_system.status.raw["odu"]
+        status_raw = self.carrier_system.status.raw
+        if status_raw is None:
+            return None
+        outdoor_unit_attributes = status_raw.get("odu")
+        if isinstance(outdoor_unit_attributes, Mapping):
+            return outdoor_unit_attributes
+        return None
 
 
 class IndoorUnitOperationalStatusSensor(CarrierEntity, SensorEntity):
@@ -825,7 +838,13 @@ class IndoorUnitOperationalStatusSensor(CarrierEntity, SensorEntity):
         Returns:
             Mapping[str, Any] | None: Raw indoor-unit subsection from status data.
         """
-        return self.carrier_system.status.raw["idu"]
+        status_raw = self.carrier_system.status.raw
+        if status_raw is None:
+            return None
+        indoor_unit_attributes = status_raw.get("idu")
+        if isinstance(indoor_unit_attributes, Mapping):
+            return indoor_unit_attributes
+        return None
 
 
 class OutDoorUnitVarSensor(CarrierEntity, SensorEntity):
