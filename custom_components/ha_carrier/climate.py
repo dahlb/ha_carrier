@@ -462,7 +462,7 @@ class Thermostat(CarrierEntity, ClimateEntity):
         current_activity.fan = fan_mode
         self.async_write_ha_state()
 
-    async def async_set_temperature(self, **kwargs) -> None:
+    async def async_set_temperature(self, **kwargs: Any) -> None:
         """Update target setpoints and apply a manual hold.
 
         Args:

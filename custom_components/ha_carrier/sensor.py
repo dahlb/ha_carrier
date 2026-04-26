@@ -345,12 +345,16 @@ class DailyEnergyMeasurementSensor(CarrierEntity, SensorEntity):
         super().__init__(f"{metric} Energy Yesterday", updater, system_serial)
 
     @property
-    def native_value(self) -> float:
+    def native_value(self) -> float | None:
         """Return yesterday's energy consumption for this metric.
 
         Returns:
-            float: Previous-day consumption in kWh.
+            float | None: Previous-day consumption in kWh, or None when raw
+                energy data is unavailable.
         """
+        if self.carrier_system.energy.raw is None:
+            return None
+
         energy_periods = self.carrier_system.energy.raw.get("energyPeriods", [])
         for period in energy_periods:
             if period.get("energyPeriodType") == "day1":
@@ -402,12 +406,16 @@ class MonthlyEnergyMeasurementSensor(CarrierEntity, SensorEntity):
         super().__init__(f"{metric} Energy Last Month", updater, system_serial)
 
     @property
-    def native_value(self) -> float:
+    def native_value(self) -> float | None:
         """Return last month's energy consumption for this metric.
 
         Returns:
-            float: Previous-month consumption in kWh.
+            float | None: Previous-month consumption in kWh, or None when raw
+                energy data is unavailable.
         """
+        if self.carrier_system.energy.raw is None:
+            return None
+
         energy_periods = self.carrier_system.energy.raw.get("energyPeriods", [])
         for period in energy_periods:
             if period.get("energyPeriodType") == "month1":

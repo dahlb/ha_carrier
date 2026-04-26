@@ -6,9 +6,16 @@ from datetime import UTC, datetime, timedelta
 import logging
 from typing import Any, NoReturn
 
-from carrier_api import ApiConnectionGraphql, Energy, System
+from aiohttp import ClientError
+from carrier_api import ApiConnectionGraphql, AuthError, BaseError, Energy, System
 from carrier_api.api_websocket_data_updater import WebsocketDataUpdater
-from gql.transport.exceptions import TransportServerError
+from gql.transport.exceptions import (
+    TransportConnectionFailed,
+    TransportError,
+    TransportProtocolError,
+    TransportQueryError,
+    TransportServerError,
+)
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.debounce import Debouncer
@@ -182,7 +189,18 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator[list[dict[str, Any]]]):
             raise UpdateFailed(
                 f"Carrier transport server error during refresh: {server_error}"
             ) from server_error
-        except Exception as error:  # pragma: no cover - defensive logging only
+        except asyncio.CancelledError, KeyboardInterrupt, SystemExit:
+            raise
+        except (
+            AuthError,
+            BaseError,
+            ClientError,
+            TimeoutError,
+            TransportConnectionFailed,
+            TransportError,
+            TransportProtocolError,
+            TransportQueryError,
+        ) as error:
             _LOGGER.exception("Carrier refresh failed with an unexpected error")
             self.data_flush = True
             self.update_interval = timedelta(minutes=DEFAULT_UPDATE_INTERVAL_MINUTES)

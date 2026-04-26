@@ -86,6 +86,7 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntryCarrie
                 except asyncio.CancelledError:
                     running = False
                     _LOGGER.debug("websocket task cancelled")
+                    raise
                 except (
                     CarrierUnauthorizedError,
                     ClientError,
@@ -140,7 +141,7 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntryCarrie
         if isinstance(error.__cause__, CarrierUnauthorizedError):
             unauthorized_error = error.__cause__
             _LOGGER.exception("Carrier unauthorized during setup")
-            raise unauthorized_error from unauthorized_error
+            raise unauthorized_error from error
         raise
 
     await hass.config_entries.async_forward_entry_setups(config_entry, PLATFORMS)
