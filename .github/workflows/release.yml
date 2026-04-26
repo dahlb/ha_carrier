@@ -18,7 +18,7 @@ jobs:
         uses: actions/checkout@v6
         with:
           fetch-depth: 0
-      - name: Gets semantic release info
+      - name: Get semantic release info
         id: semantic_release_info
         uses: cycjimmy/semantic-release-action@v6
         with:
