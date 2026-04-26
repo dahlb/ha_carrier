@@ -1,6 +1,6 @@
 """Shared entity base for Carrier systems and zones."""
 
-from logging import Logger, getLogger
+import logging
 
 from carrier_api import ConfigZone, StatusZone, System
 from homeassistant.helpers.entity import DeviceInfo
@@ -9,7 +9,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from .carrier_data_update_coordinator import CarrierDataUpdateCoordinator
 from .const import DOMAIN
 
-_LOGGER: Logger = getLogger(__package__)
+_LOGGER: logging.Logger = logging.getLogger(__name__)
 
 
 class CarrierEntity(CoordinatorEntity[CarrierDataUpdateCoordinator]):

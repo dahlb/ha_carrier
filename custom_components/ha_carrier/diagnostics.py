@@ -2,15 +2,14 @@
 
 from __future__ import annotations
 
-from logging import Logger, getLogger
+import logging
 from typing import Any
 
 from homeassistant.components.diagnostics import async_redact_data
-from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr, entity_registry as er
 
-from .carrier_data_update_coordinator import CarrierDataUpdateCoordinator
+from . import ConfigEntryCarrier
 from .const import (
     DOMAIN,
     TO_REDACT,
@@ -20,11 +19,11 @@ from .const import (
     TO_REDACT_RAW,
 )
 
-LOGGER: Logger = getLogger(__package__)
+_LOGGER: logging.Logger = logging.getLogger(__name__)
 
 
 async def async_get_config_entry_diagnostics(
-    hass: HomeAssistant, config_entry: ConfigEntry
+    hass: HomeAssistant, config_entry: ConfigEntryCarrier
 ) -> dict[str, dict[str, Any]]:
     """Collect redacted integration diagnostics for a config entry.
 
@@ -40,7 +39,7 @@ async def async_get_config_entry_diagnostics(
         dict[str, dict[str, Any]]: Redacted diagnostics keyed by section name
         and system serial.
     """
-    updater: CarrierDataUpdateCoordinator = config_entry.runtime_data
+    updater = config_entry.runtime_data
     data = {
         "entry": async_redact_data(config_entry.as_dict(), TO_REDACT),
     }

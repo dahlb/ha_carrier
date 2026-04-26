@@ -18,14 +18,17 @@ from homeassistant.helpers.update_coordinator import (
     UpdateFailed,
 )
 
-from .const import DOMAIN, TO_REDACT_MAPPED
+from .const import (
+    DEFAULT_UPDATE_INTERVAL_MINUTES,
+    DOMAIN,
+    MAX_WRITE_ATTEMPTS,
+    TO_REDACT_MAPPED,
+    UNAUTHORIZED_RETRY_THRESHOLD,
+    WRITE_RETRY_DELAY_SECONDS,
+)
 from .util import async_redact_data
 
-_LOGGER: logging.Logger = logging.getLogger(__package__)
-DEFAULT_UPDATE_INTERVAL_MINUTES = 30
-UNAUTHORIZED_RETRY_THRESHOLD = 3
-WRITE_RETRY_DELAY_SECONDS = 1
-MAX_WRITE_ATTEMPTS = 2
+_LOGGER: logging.Logger = logging.getLogger(__name__)
 
 
 class CarrierUnauthorizedError(Exception):
@@ -176,7 +179,9 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator[list[dict[str, Any]]]):
             _LOGGER.exception("Carrier refresh hit a transport server error")
             _LOGGER.debug("transport error likely carrier api maintenance so retrying in 1 minute.")
             self.update_interval = timedelta(minutes=1)
-            raise UpdateFailed(server_error) from server_error
+            raise UpdateFailed(
+                f"Carrier transport server error during refresh: {server_error}"
+            ) from server_error
         except Exception as error:  # pragma: no cover - defensive logging only
             _LOGGER.exception("Carrier refresh failed with an unexpected error")
             self.data_flush = True
@@ -184,7 +189,7 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator[list[dict[str, Any]]]):
             _LOGGER.debug(
                 "unrecognized error so retrying in default 30 minutes but refreshing all data then."
             )
-            raise UpdateFailed(error) from error
+            raise UpdateFailed(f"Unexpected error during Carrier refresh: {error}") from error
 
     @staticmethod
     def _is_unauthorized_error(error: Exception) -> bool:

@@ -3,24 +3,24 @@
 from __future__ import annotations
 
 from functools import partial
-from logging import Logger, getLogger
+import logging
 
 from carrier_api.const import HeatSourceTypes
 from homeassistant.components.select import SelectEntity, SelectEntityDescription
-from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
+from . import ConfigEntryCarrier
 from .carrier_data_update_coordinator import CarrierDataUpdateCoordinator
 from .carrier_entity import CarrierEntity
 from .const import HEAT_SOURCE_IDU_ONLY_LABEL, HEAT_SOURCE_ODU_ONLY_LABEL, HEAT_SOURCE_SYSTEM_LABEL
 
-_LOGGER: Logger = getLogger(__package__)
+_LOGGER: logging.Logger = logging.getLogger(__name__)
 
 
 async def async_setup_entry(
     hass: HomeAssistant,
-    config_entry: ConfigEntry,
+    config_entry: ConfigEntryCarrier,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Create and register heat source select entities for each system.
@@ -33,7 +33,7 @@ async def async_setup_entry(
     Returns:
         None: Entities are registered through the callback.
     """
-    updater: CarrierDataUpdateCoordinator = config_entry.runtime_data
+    updater = config_entry.runtime_data
     entities = []
     for system in updater.systems:
         entities.extend(

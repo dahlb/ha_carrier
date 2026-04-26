@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from datetime import datetime
 from functools import partial
-from logging import Logger, getLogger
+import logging
 from typing import Any
 
 from carrier_api import ActivityTypes, ConfigZoneActivity, FanModes, SystemModes, TemperatureUnits
@@ -17,7 +17,6 @@ from homeassistant.components.climate import (
     HVACMode,
 )
 from homeassistant.components.climate.const import ATTR_TARGET_TEMP_HIGH, ATTR_TARGET_TEMP_LOW
-from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
     ATTR_TEMPERATURE,
     PRECISION_HALVES,
@@ -28,11 +27,12 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
+from . import ConfigEntryCarrier
 from .carrier_data_update_coordinator import CarrierDataUpdateCoordinator
 from .carrier_entity import CarrierEntity
 from .const import CONF_INFINITE_HOLDS, DEFAULT_INFINITE_HOLDS, FAN_AUTO
 
-_LOGGER: Logger = getLogger(__package__)
+_LOGGER: logging.Logger = logging.getLogger(__name__)
 
 SUPPORT_FLAGS = (
     ClimateEntityFeature.TURN_ON
@@ -46,7 +46,7 @@ SUPPORT_FLAGS = (
 
 async def async_setup_entry(
     hass: HomeAssistant,
-    config_entry: ConfigEntry,
+    config_entry: ConfigEntryCarrier,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Create and register thermostat entities for every configured zone.
@@ -61,7 +61,7 @@ async def async_setup_entry(
     """
     _LOGGER.debug("setting up climate entry")
     infinite_hold = config_entry.options.get(CONF_INFINITE_HOLDS, DEFAULT_INFINITE_HOLDS)
-    updater: CarrierDataUpdateCoordinator = config_entry.runtime_data
+    updater = config_entry.runtime_data
     entities = []
     for carrier_system in updater.systems:
         for zone in carrier_system.config.zones:

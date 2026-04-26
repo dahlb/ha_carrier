@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from datetime import datetime
-from logging import Logger, getLogger
+import logging
 from typing import Any
 
 from carrier_api import TemperatureUnits
@@ -14,7 +14,6 @@ from homeassistant.components.sensor import (
     SensorEntityDescription,
     SensorStateClass,
 )
-from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
     PERCENTAGE,
     UnitOfEnergy,
@@ -26,15 +25,16 @@ from homeassistant.const import (
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
+from . import ConfigEntryCarrier
 from .carrier_data_update_coordinator import CarrierDataUpdateCoordinator
 from .carrier_entity import CarrierEntity
 
-_LOGGER: Logger = getLogger(__package__)
+_LOGGER: logging.Logger = logging.getLogger(__name__)
 
 
 async def async_setup_entry(
     hass: HomeAssistant,
-    config_entry: ConfigEntry,
+    config_entry: ConfigEntryCarrier,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Create and register Carrier sensor entities for each discovered system.
@@ -47,7 +47,7 @@ async def async_setup_entry(
     Returns:
         None: Entities are registered through the callback.
     """
-    updater: CarrierDataUpdateCoordinator = config_entry.runtime_data
+    updater = config_entry.runtime_data
     entities = []
     for carrier_system in updater.systems:
         entities.extend(
@@ -93,8 +93,7 @@ async def async_setup_entry(
                     )
                 )
         if carrier_system.energy.gas:
-            if updater.system(carrier_system.profile.serial) is not None:
-                entities.append(GasMeasurementSensor(updater, carrier_system.profile.serial, "gas"))
+            entities.append(GasMeasurementSensor(updater, carrier_system.profile.serial, "gas"))
             if carrier_system.config.fuel_type == "propane":
                 entities.append(PropaneMeasurementSensor(updater, carrier_system.profile.serial))
         for zone in carrier_system.config.zones:
