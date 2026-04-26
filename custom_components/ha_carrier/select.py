@@ -6,10 +6,7 @@ from functools import partial
 from logging import Logger, getLogger
 
 from carrier_api.const import HeatSourceTypes
-from homeassistant.components.select import (
-    SelectEntity,
-    SelectEntityDescription,
-)
+from homeassistant.components.select import SelectEntity, SelectEntityDescription
 from homeassistant.config_entries import ConfigEntry
 
 from .carrier_data_update_coordinator import CarrierDataUpdateCoordinator
@@ -65,7 +62,7 @@ class HeatSourceSelect(CarrierEntity, SelectEntity):
             key=f"#{self.carrier_system.profile.serial}-heat_source", options=options
         )
 
-    def idu_only_label(self) -> str | None:
+    def idu_only_label(self) -> str:
         if self.carrier_system.profile.indoor_unit_source is None:
             return HEAT_SOURCE_IDU_ONLY_LABEL
         return HEAT_SOURCE_IDU_ONLY_LABEL.replace(

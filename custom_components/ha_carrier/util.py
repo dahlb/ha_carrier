@@ -1,23 +1,21 @@
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
-from typing import Any, TypeVar, cast
+from typing import Any, cast
 
 from homeassistant.core import callback
-
-_T = TypeVar("_T")
 
 REDACTED = "**REDACTED**"
 
 
 @callback
-def async_redact_data(data: _T, to_redact: Iterable[Any]) -> _T:
+def async_redact_data[T](data: T, to_redact: Iterable[Any]) -> T:
     """Redact sensitive data in a dict."""
     if not isinstance(data, Mapping | list):
         return data
 
     if isinstance(data, list):
-        return cast(_T, [async_redact_data(val, to_redact) for val in data])
+        return cast(T, [async_redact_data(val, to_redact) for val in data])
 
     redacted = {**data}
 
@@ -33,4 +31,4 @@ def async_redact_data(data: _T, to_redact: Iterable[Any]) -> _T:
         elif isinstance(value, list):
             redacted[key] = [async_redact_data(item, to_redact) for item in value]
 
-    return cast(_T, redacted)
+    return cast(T, redacted)

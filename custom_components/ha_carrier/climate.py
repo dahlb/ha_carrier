@@ -7,13 +7,7 @@ from functools import partial
 from logging import Logger, getLogger
 from typing import Any
 
-from carrier_api import (
-    ActivityTypes,
-    ConfigZoneActivity,
-    FanModes,
-    SystemModes,
-    TemperatureUnits,
-)
+from carrier_api import ActivityTypes, ConfigZoneActivity, FanModes, SystemModes, TemperatureUnits
 from homeassistant.components.climate import (
     ClimateEntity,
     ClimateEntityDescription,
@@ -21,10 +15,7 @@ from homeassistant.components.climate import (
     HVACAction,
     HVACMode,
 )
-from homeassistant.components.climate.const import (
-    ATTR_TARGET_TEMP_HIGH,
-    ATTR_TARGET_TEMP_LOW,
-)
+from homeassistant.components.climate.const import ATTR_TARGET_TEMP_HIGH, ATTR_TARGET_TEMP_LOW
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
     ATTR_TEMPERATURE,
@@ -139,7 +130,7 @@ class Thermostat(CarrierEntity, ClimateEntity):
             return UnitOfTemperature.CELSIUS
 
     @property
-    def hvac_mode(self) -> HVACMode | str | None:
+    def hvac_mode(self) -> HVACMode | None:
         """Return hvac mode."""
         ha_mode = None
         match self.carrier_system.config.mode:
@@ -156,7 +147,7 @@ class Thermostat(CarrierEntity, ClimateEntity):
         return ha_mode
 
     @property
-    def hvac_action(self) -> HVACAction | str | None:
+    def hvac_action(self) -> HVACAction | None:
         """Return hvac action."""
         if self.hvac_mode == HVACMode.OFF:
             return HVACAction.OFF
