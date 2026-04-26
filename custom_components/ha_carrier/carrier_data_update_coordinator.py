@@ -1,7 +1,7 @@
 """Coordinate polling, websocket updates, and writes for Carrier systems."""
 
 import asyncio
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Mapping
 from datetime import UTC, datetime, timedelta
 import logging
 from typing import Any, NoReturn
@@ -414,9 +414,9 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator[list[dict[str, Any]]]):
         # Call the model helper directly so we keep a mapping for recursive
         # redaction instead of flattening sensitive keys into an opaque string.
         mapped_data = system.__repr__()
-        if not isinstance(mapped_data, dict):
+        if not isinstance(mapped_data, Mapping):
             raise TypeError("carrier_api System.__repr__ returned a non-mapping payload")
-        return mapped_data
+        return dict(mapped_data)
 
     async def updated_callback(self, _message: str) -> None:
         """Handle websocket updates and notify Home Assistant listeners.
