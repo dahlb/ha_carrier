@@ -291,11 +291,11 @@ class EnergyMeasurementSensor(CarrierEntity, SensorEntity):
         super().__init__(f"{self.entity_description.key} Energy Yearly", updater, system_serial)
 
     @property
-    def native_value(self) -> float:
+    def native_value(self) -> float | None:
         """Return yearly energy value for the configured metric.
 
         Returns:
-            float: Yearly kWh total for the metric.
+            float | None: Yearly kWh total for the metric, or None when unavailable.
         """
         return getattr(
             self.carrier_system.energy.current_year_measurements(), self.entity_description.key
