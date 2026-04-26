@@ -2,26 +2,26 @@
 
 from __future__ import annotations
 
-from logging import Logger, getLogger
+import logging
 
 from homeassistant.components.binary_sensor import (
     BinarySensorDeviceClass,
     BinarySensorEntity,
     BinarySensorEntityDescription,
 )
-from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
+from . import ConfigEntryCarrier
 from .carrier_data_update_coordinator import CarrierDataUpdateCoordinator
 from .carrier_entity import CarrierEntity
 
-_LOGGER: Logger = getLogger(__package__)
+_LOGGER: logging.Logger = logging.getLogger(__name__)
 
 
 async def async_setup_entry(
     hass: HomeAssistant,
-    config_entry: ConfigEntry,
+    config_entry: ConfigEntryCarrier,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Create and register Carrier binary sensor entities for one config entry.
@@ -34,7 +34,7 @@ async def async_setup_entry(
     Returns:
         None: Entities are added through the callback.
     """
-    updater: CarrierDataUpdateCoordinator = config_entry.runtime_data
+    updater = config_entry.runtime_data
     entities = []
     for carrier_system in updater.systems:
         entities.extend(

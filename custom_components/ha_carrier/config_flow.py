@@ -1,6 +1,6 @@
 """UI-driven setup and options flow for the Carrier integration."""
 
-from logging import Logger, getLogger
+import logging
 from typing import Any
 
 from carrier_api import ApiConnectionGraphql
@@ -14,7 +14,7 @@ import voluptuous as vol
 
 from .const import CONF_INFINITE_HOLDS, CONFIG_FLOW_VERSION, DEFAULT_INFINITE_HOLDS, DOMAIN
 
-_LOGGER: Logger = getLogger(__package__)
+_LOGGER: logging.Logger = logging.getLogger(__name__)
 
 
 class OptionFlowHandler(config_entries.OptionsFlow):

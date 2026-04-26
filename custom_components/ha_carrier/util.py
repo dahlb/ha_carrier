@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
+import logging
 from typing import Any, overload
 
 from homeassistant.core import callback
 
+_LOGGER: logging.Logger = logging.getLogger(__name__)
 REDACTED = "**REDACTED**"
 
 
