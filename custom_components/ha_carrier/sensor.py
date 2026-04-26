@@ -355,10 +355,14 @@ class DailyEnergyMeasurementSensor(CarrierEntity, SensorEntity):
         if self.carrier_system.energy.raw is None:
             return None
 
+        api_field = self.metric_map.get(self.metric)
+        if api_field is None:
+            _LOGGER.debug("Unknown daily energy metric requested: %s", self.metric)
+            return None
+
         energy_periods = self.carrier_system.energy.raw.get("energyPeriods", [])
         for period in energy_periods:
             if period.get("energyPeriodType") == "day1":
-                api_field = self.metric_map.get(self.metric)
                 return period.get(api_field, 0)
         return 0
 
@@ -416,10 +420,14 @@ class MonthlyEnergyMeasurementSensor(CarrierEntity, SensorEntity):
         if self.carrier_system.energy.raw is None:
             return None
 
+        api_field = self.metric_map.get(self.metric)
+        if api_field is None:
+            _LOGGER.debug("Unknown monthly energy metric requested: %s", self.metric)
+            return None
+
         energy_periods = self.carrier_system.energy.raw.get("energyPeriods", [])
         for period in energy_periods:
             if period.get("energyPeriodType") == "month1":
-                api_field = self.metric_map.get(self.metric)
                 return period.get(api_field, 0)
         return 0
 

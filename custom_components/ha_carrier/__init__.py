@@ -5,7 +5,7 @@ import logging
 
 from aiohttp import ClientError
 from carrier_api import ApiConnectionGraphql
-from gql.transport.exceptions import TransportServerError
+from gql.transport.exceptions import TransportError, TransportServerError
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 from homeassistant.core import HomeAssistant
@@ -75,46 +75,31 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntryCarrie
             Returns:
                 None: This coroutine runs until cancelled.
             """
-            running = True
             retry_delay_seconds = WEBSOCKET_RETRY_INITIAL_DELAY_SECONDS
-            while running:
+            while True:
                 try:
                     _LOGGER.debug("websocket task listening")
                     await coordinator.api_connection.api_websocket.listener()
                     _LOGGER.debug("websocket task ending")
                     retry_delay_seconds = WEBSOCKET_RETRY_INITIAL_DELAY_SECONDS
                 except asyncio.CancelledError:
-                    running = False
                     _LOGGER.debug("websocket task cancelled")
                     raise
                 except (
                     CarrierUnauthorizedError,
                     ClientError,
                     TimeoutError,
-                    TransportServerError,
+                    OSError,
+                    TransportError,
                 ):
                     _LOGGER.exception(
-                        "websocket task exception; retrying in %s seconds",
-                        retry_delay_seconds,
+                        "websocket task exception; retrying in %s seconds", retry_delay_seconds
                     )
                     coordinator.data_flush = True
                     await coordinator.async_request_refresh()
                     await asyncio.sleep(retry_delay_seconds)
                     retry_delay_seconds = min(
-                        retry_delay_seconds * 2,
-                        WEBSOCKET_RETRY_MAX_DELAY_SECONDS,
-                    )
-                except Exception:  # pragma: no cover - defensive logging only
-                    _LOGGER.exception(
-                        "unexpected websocket task exception; retrying in %s seconds",
-                        retry_delay_seconds,
-                    )
-                    coordinator.data_flush = True
-                    await coordinator.async_request_refresh()
-                    await asyncio.sleep(retry_delay_seconds)
-                    retry_delay_seconds = min(
-                        retry_delay_seconds * 2,
-                        WEBSOCKET_RETRY_MAX_DELAY_SECONDS,
+                        retry_delay_seconds * 2, WEBSOCKET_RETRY_MAX_DELAY_SECONDS
                     )
 
         websocket_task = hass.async_create_background_task(

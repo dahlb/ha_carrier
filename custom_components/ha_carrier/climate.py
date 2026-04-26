@@ -195,11 +195,12 @@ class Thermostat(CarrierEntity, ClimateEntity):
             return HVACAction.IDLE
         return HVACAction.FAN
 
-    def _current_activity(self) -> ConfigZoneActivity:
+    def _current_activity(self) -> ConfigZoneActivity | None:
         """Return the current Carrier activity profile for this zone.
 
         Returns:
-            ConfigZoneActivity: Activity associated with current zone state.
+            ConfigZoneActivity | None: Activity associated with current zone
+                state, if available.
         """
         return self._config_zone.find_activity(self._status_zone.current_activity)
 
@@ -286,9 +287,17 @@ class Thermostat(CarrierEntity, ClimateEntity):
             self._config_zone.name,
             actual_heat,
             actual_cool,
-            self._current_activity().type.value,
+            self._status_zone.current_activity,
         )
-        return self._current_activity().type.value
+        current_activity = self._current_activity()
+        if current_activity is None:
+            _LOGGER.debug(
+                "Zone %s: Current activity %s was not found in the zone config",
+                self._config_zone.name,
+                self._status_zone.current_activity,
+            )
+            return self._status_zone.current_activity
+        return current_activity.type.value
 
     @property
     def fan_mode(self) -> str | None:
@@ -297,9 +306,17 @@ class Thermostat(CarrierEntity, ClimateEntity):
         Returns:
             str | None: Explicit fan speed or auto mode label.
         """
-        if self._current_activity().fan == FanModes.OFF:
+        current_activity = self._current_activity()
+        if current_activity is None:
+            _LOGGER.debug(
+                "Zone %s: Current activity %s unavailable while reading fan mode",
+                self._config_zone.name,
+                self._status_zone.current_activity,
+            )
+            return None
+        if current_activity.fan == FanModes.OFF:
             return FAN_AUTO
-        return self._current_activity().fan.value
+        return current_activity.fan.value
 
     async def async_set_humidity(self, humidity: int) -> None:
         """Set and normalize a new target humidity value.
