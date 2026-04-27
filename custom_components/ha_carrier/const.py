@@ -1,4 +1,4 @@
-"""Create constants for reference."""
+"""Centralized constants used throughout the Carrier integration."""
 
 from homeassistant.const import CONF_PASSWORD, CONF_UNIQUE_ID, CONF_USERNAME, Platform
 
@@ -15,9 +15,6 @@ PLATFORMS: list[Platform] = [
     Platform.CLIMATE,
     Platform.SELECT,
 ]
-
-# Home Assistant Data Storage Constants
-DATA_UPDATE_COORDINATOR: str = "update_coordinator"
 
 CONF_INFINITE_HOLDS: str = "infinite_holds"
 DEFAULT_INFINITE_HOLDS: bool = True
@@ -45,3 +42,11 @@ TO_REDACT_ENTITIES: set[str] = set()
 HEAT_SOURCE_IDU_ONLY_LABEL = "gas heat only"
 HEAT_SOURCE_ODU_ONLY_LABEL = "heat pump only"
 HEAT_SOURCE_SYSTEM_LABEL = "system in control"
+
+DEFAULT_UPDATE_INTERVAL_MINUTES: int = 30
+UNAUTHORIZED_RETRY_THRESHOLD: int = 3
+WRITE_RETRY_DELAY_SECONDS: int = 1
+MAX_WRITE_ATTEMPTS: int = 2
+
+WEBSOCKET_RETRY_INITIAL_DELAY_SECONDS: int = 1
+WEBSOCKET_RETRY_MAX_DELAY_SECONDS: int = 30

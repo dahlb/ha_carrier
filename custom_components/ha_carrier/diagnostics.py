@@ -1,18 +1,16 @@
-"""Create diagnostics."""
+"""Diagnostics payload builder for the Carrier integration."""
 
 from __future__ import annotations
 
-from logging import Logger, getLogger
+import logging
 from typing import Any
 
 from homeassistant.components.diagnostics import async_redact_data
-from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr, entity_registry as er
 
-from .carrier_data_update_coordinator import CarrierDataUpdateCoordinator
+from . import ConfigEntryCarrier
 from .const import (
-    DATA_UPDATE_COORDINATOR,
     DOMAIN,
     TO_REDACT,
     TO_REDACT_DEVICE,
@@ -21,23 +19,34 @@ from .const import (
     TO_REDACT_RAW,
 )
 
-LOGGER: Logger = getLogger(__package__)
+_LOGGER: logging.Logger = logging.getLogger(__name__)
 
 
 async def async_get_config_entry_diagnostics(
-    hass: HomeAssistant, config_entry: ConfigEntry
+    hass: HomeAssistant, config_entry: ConfigEntryCarrier
 ) -> dict[str, dict[str, Any]]:
-    """Return diagnostics for a config entry."""
-    updater: CarrierDataUpdateCoordinator = hass.data[DOMAIN][config_entry.entry_id][
-        DATA_UPDATE_COORDINATOR
-    ]
+    """Collect redacted integration diagnostics for a config entry.
+
+    The diagnostics include config entry data, mapped system snapshots, raw
+    Carrier payloads, and Home Assistant device/entity state linked to each
+    Carrier serial.
+
+    Args:
+        hass: Home Assistant instance.
+        config_entry: Config entry for which diagnostics were requested.
+
+    Returns:
+        dict[str, dict[str, Any]]: Redacted diagnostics keyed by section name
+        and system serial.
+    """
+    updater = config_entry.runtime_data
     data = {
         "entry": async_redact_data(config_entry.as_dict(), TO_REDACT),
     }
     for carrier_system in updater.systems:
         system_data = {
             "mapped_data": async_redact_data(
-                updater._mapped_system_data(carrier_system), TO_REDACT_MAPPED
+                updater.mapped_system_data(carrier_system), TO_REDACT_MAPPED
             ),
             "profile_raw": async_redact_data(carrier_system.profile.raw, TO_REDACT_RAW),
             "status_raw": async_redact_data(carrier_system.status.raw, TO_REDACT_RAW),
