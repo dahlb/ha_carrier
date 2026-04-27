@@ -3,19 +3,13 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from datetime import datetime
 import logging
-from typing import Any
 
 from carrier_api import TemperatureUnits
-from homeassistant.components.sensor import (
-    SensorDeviceClass,
-    SensorEntity,
-    SensorEntityDescription,
-    SensorStateClass,
-)
+from homeassistant.components.sensor import SensorDeviceClass, SensorEntity, SensorStateClass
 from homeassistant.const import (
     PERCENTAGE,
+    EntityCategory,
     UnitOfEnergy,
     UnitOfPressure,
     UnitOfTemperature,
@@ -27,9 +21,19 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import ConfigEntryCarrier
 from .carrier_data_update_coordinator import CarrierDataUpdateCoordinator
-from .carrier_entity import CarrierEntity
+from .carrier_entity import CarrierEntity, CarrierZoneEntity
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
+
+ENERGY_METRIC_MAP: dict[str, str] = {
+    "cooling": "coolingKwh",
+    "hp_heat": "hPHeatKwh",
+    "fan": "fanKwh",
+    "electric_heat": "eHeatKwh",
+    "reheat": "reheatKwh",
+    "fan_gas": "fanGasKwh",
+    "loop_pump": "loopPumpKwh",
+}
 
 
 async def async_setup_entry(
@@ -43,74 +47,183 @@ async def async_setup_entry(
         hass: Home Assistant instance.
         config_entry: Carrier integration config entry.
         async_add_entities: Callback used to register created entities.
-
-    Returns:
-        None: Entities are registered through the callback.
     """
-    updater = config_entry.runtime_data
-    entities = []
-    for carrier_system in updater.systems:
+    coordinator = config_entry.runtime_data
+    entities: list[SensorEntity] = []
+    for carrier_system in coordinator.systems:
         entities.extend(
             [
-                OutdoorTemperatureSensor(updater, carrier_system.profile.serial),
-                FilterUsedSensor(updater, carrier_system.profile.serial),
-                TimestampSensor(updater, carrier_system.profile.serial, "all_data"),
-                TimestampSensor(updater, carrier_system.profile.serial, "websocket"),
-                TimestampSensor(updater, carrier_system.profile.serial, "energy"),
-                AirflowSensor(updater, carrier_system.profile.serial),
-                StaticPressureSensor(updater, carrier_system.profile.serial),
-                OutdoorUnitOperationalStatusSensor(updater, carrier_system.profile.serial),
-                IndoorUnitOperationalStatusSensor(updater, carrier_system.profile.serial),
+                OutdoorTemperatureSensor(
+                    coordinator=coordinator, system_serial=carrier_system.profile.serial
+                ),
+                FilterUsedSensor(
+                    coordinator=coordinator, system_serial=carrier_system.profile.serial
+                ),
+                TimestampSensor(
+                    coordinator=coordinator,
+                    system_serial=carrier_system.profile.serial,
+                    timestamp_type="all_data",
+                ),
+                TimestampSensor(
+                    coordinator=coordinator,
+                    system_serial=carrier_system.profile.serial,
+                    timestamp_type="websocket",
+                ),
+                TimestampSensor(
+                    coordinator=coordinator,
+                    system_serial=carrier_system.profile.serial,
+                    timestamp_type="energy",
+                ),
+                AirflowSensor(coordinator=coordinator, system_serial=carrier_system.profile.serial),
+                StaticPressureSensor(
+                    coordinator=coordinator, system_serial=carrier_system.profile.serial
+                ),
+                OutdoorUnitOperationalStatusSensor(
+                    coordinator=coordinator, system_serial=carrier_system.profile.serial
+                ),
+                IndoorUnitOperationalStatusSensor(
+                    coordinator=coordinator, system_serial=carrier_system.profile.serial
+                ),
             ]
         )
         if carrier_system.profile.outdoor_unit_type in ["varcaphp", "varcapac"]:
-            entities.append(OutDoorUnitVarSensor(updater, carrier_system.profile.serial))
+            entities.append(
+                OutdoorUnitVarSensor(
+                    coordinator=coordinator, system_serial=carrier_system.profile.serial
+                )
+            )
         if carrier_system.config.humidifier_enabled:
-            entities.append(HumidifierRemainingSensor(updater, carrier_system.profile.serial))
+            entities.append(
+                HumidifierRemainingSensor(
+                    coordinator=coordinator, system_serial=carrier_system.profile.serial
+                )
+            )
         if carrier_system.config.uv_enabled:
-            entities.append(UVLampRemainingSensor(updater, carrier_system.profile.serial))
-        for electric_metric in [
-            "cooling",
-            "hp_heat",
-            "fan",
-            "electric_heat",
-            "reheat",
-            "fan_gas",
-            "loop_pump",
-        ]:
-            if getattr(carrier_system.energy, electric_metric):
-                entities.append(
-                    EnergyMeasurementSensor(updater, carrier_system.profile.serial, electric_metric)
+            entities.append(
+                UVLampRemainingSensor(
+                    coordinator=coordinator, system_serial=carrier_system.profile.serial
                 )
-                entities.append(
-                    DailyEnergyMeasurementSensor(
-                        updater, carrier_system.profile.serial, electric_metric
-                    )
+            )
+        for electric_metric in ENERGY_METRIC_MAP:
+            if getattr(carrier_system.energy, electric_metric, False) is True:
+                entities.extend(
+                    [
+                        YearlyEnergyMeasurementSensor(
+                            coordinator=coordinator,
+                            system_serial=carrier_system.profile.serial,
+                            metric=electric_metric,
+                        ),
+                        DailyEnergyMeasurementSensor(
+                            coordinator=coordinator,
+                            system_serial=carrier_system.profile.serial,
+                            metric=electric_metric,
+                        ),
+                        MonthlyEnergyMeasurementSensor(
+                            coordinator=coordinator,
+                            system_serial=carrier_system.profile.serial,
+                            metric=electric_metric,
+                        ),
+                    ]
                 )
-                entities.append(
-                    MonthlyEnergyMeasurementSensor(
-                        updater, carrier_system.profile.serial, electric_metric
-                    )
+        gas_measurement = getattr(carrier_system.energy, "gas", False)
+        if gas_measurement is True:
+            entities.append(
+                GasMeasurementSensor(
+                    coordinator=coordinator,
+                    system_serial=carrier_system.profile.serial,
+                    fuel_type=carrier_system.config.fuel_type,
                 )
-        if carrier_system.energy.gas:
-            entities.append(GasMeasurementSensor(updater, carrier_system.profile.serial, "gas"))
+            )
             if carrier_system.config.fuel_type == "propane":
-                entities.append(PropaneMeasurementSensor(updater, carrier_system.profile.serial))
+                entities.append(
+                    PropaneMeasurementSensor(
+                        coordinator=coordinator, system_serial=carrier_system.profile.serial
+                    )
+                )
         for zone in carrier_system.config.zones:
             entities.extend(
                 [
                     ZoneTemperatureSensor(
-                        updater, carrier_system.profile.serial, zone_api_id=zone.api_id
+                        coordinator=coordinator,
+                        system_serial=carrier_system.profile.serial,
+                        zone_api_id=zone.api_id,
                     ),
                     ZoneHumiditySensor(
-                        updater, carrier_system.profile.serial, zone_api_id=zone.api_id
+                        coordinator=coordinator,
+                        system_serial=carrier_system.profile.serial,
+                        zone_api_id=zone.api_id,
                     ),
                 ]
             )
     async_add_entities(entities)
 
 
-class ZoneHumiditySensor(CarrierEntity, SensorEntity):
+class CarrierSensor(CarrierEntity, SensorEntity):
+    """Shared Carrier base class for system-level sensor entities."""
+
+    def __init__(
+        self,
+        entity_name: str,
+        coordinator: CarrierDataUpdateCoordinator,
+        system_serial: str | None = None,
+        unique_id_suffix: str | None = None,
+    ) -> None:
+        """Initialize a Carrier sensor entity.
+
+        Args:
+            entity_name: Friendly suffix used in entity name and unique ID.
+            coordinator: Coordinator that provides Carrier data.
+            system_serial: Carrier system serial for this entity.
+            unique_id_suffix: Optional stable suffix used for the entity unique ID.
+
+        Raises:
+            ValueError: Raised when no Carrier system serial is provided.
+        """
+        if system_serial is None:
+            raise ValueError("Carrier sensor system serial is required")
+        super().__init__(
+            entity_name=entity_name,
+            coordinator=coordinator,
+            system_serial=system_serial,
+            unique_id_suffix=unique_id_suffix,
+        )
+        self._sync_entity_attrs()
+
+    def _update_entity_attrs(self) -> None:
+        """Update sensor attrs from coordinator data."""
+        self._attr_available = False
+
+
+class CarrierZoneSensor(CarrierZoneEntity, CarrierSensor):
+    """Shared Carrier base class for zone-backed sensor entities."""
+
+    def __init__(
+        self,
+        entity_name: str,
+        coordinator: CarrierDataUpdateCoordinator,
+        system_serial: str,
+        zone_api_id: str,
+        unique_id_suffix: str,
+    ) -> None:
+        """Initialize a zone-backed Carrier sensor entity.
+
+        Args:
+            entity_name: Friendly suffix appended to the zone name for display.
+            coordinator: Coordinator that provides Carrier data.
+            system_serial: Carrier system serial for this entity.
+            zone_api_id: Carrier API identifier for the represented zone.
+            unique_id_suffix: Stable suffix used in the zone entity unique ID.
+        """
+        super().__init__(
+            entity_name=entity_name,
+            coordinator=coordinator,
+            system_serial=system_serial,
+            zone_api_id=zone_api_id,
+            unique_id_suffix=unique_id_suffix,
+        )
+
+
+class ZoneHumiditySensor(CarrierZoneSensor):
     """Sensor entity that reports current humidity for a specific zone."""
 
     _attr_device_class = SensorDeviceClass.HUMIDITY
@@ -118,565 +231,473 @@ class ZoneHumiditySensor(CarrierEntity, SensorEntity):
     _attr_native_unit_of_measurement = PERCENTAGE
 
     def __init__(
-        self, updater: CarrierDataUpdateCoordinator, system_serial: str, zone_api_id: str
+        self, coordinator: CarrierDataUpdateCoordinator, system_serial: str, zone_api_id: str
     ) -> None:
         """Initialize a zone humidity sensor.
 
         Args:
-            updater: Coordinator that provides system and zone data.
+            coordinator: Coordinator that provides system and zone data.
             system_serial: Carrier system serial tied to the zone.
             zone_api_id: Carrier API identifier for the represented zone.
         """
-        self.zone_api_id: str = zone_api_id
-        self.coordinator = updater
-        self.coordinator_context = system_serial
-        super().__init__(f"{self._config_zone.name} Humidity", updater, system_serial)
+        super().__init__(
+            entity_name="Humidity",
+            coordinator=coordinator,
+            system_serial=system_serial,
+            zone_api_id=zone_api_id,
+            unique_id_suffix="humidity",
+        )
 
-    @property
-    def native_value(self) -> int | None:
-        """Return current zone humidity.
-
-        Returns:
-            int | None: Relative humidity percentage for the zone, or None when unavailable.
-        """
-        return self._status_zone.humidity
-
-    @property
-    def available(self) -> bool:
-        """Indicate whether humidity data can be shown.
-
-        Returns:
-            bool: True when a zone humidity value is present.
-        """
-        return self.native_value is not None
+    def _update_entity_attrs(self) -> None:
+        """Update humidity attrs from coordinator data."""
+        self._attr_native_value = self._status_zone.humidity
+        self._attr_available = self._attr_native_value is not None
 
 
-class GasMeasurementSensor(CarrierEntity, SensorEntity):
+class GasMeasurementSensor(CarrierSensor):
     """Yearly gas usage sensor with fuel-specific unit conversion."""
 
+    _attr_device_class = SensorDeviceClass.GAS
+    _attr_state_class = SensorStateClass.TOTAL_INCREASING
+
     def __init__(
-        self, updater: CarrierDataUpdateCoordinator, system_serial: str, metric: str
+        self,
+        coordinator: CarrierDataUpdateCoordinator,
+        system_serial: str,
+        fuel_type: str,
     ) -> None:
         """Initialize a yearly gas consumption sensor.
 
         Args:
-            updater: Coordinator that provides system energy payloads.
+            coordinator: Coordinator that provides system energy payloads.
             system_serial: Carrier system serial for this entity.
-            metric: Carrier energy metric key used as the sensor key.
+            fuel_type: Configured fuel type for the Carrier system.
 
         Raises:
             ValueError: Raised when the system serial cannot be resolved.
         """
-        carrier_system = updater.system(system_serial=system_serial)
-        if carrier_system is None:
-            raise ValueError(
-                f"No carrier system found for serial {system_serial!r}; "
-                "cannot initialize GasMeasurementSensor."
-            )
-        self.fuel_type = carrier_system.config.fuel_type
-        unit_of_measurement = UnitOfVolume.CUBIC_METERS  # for therms
-        if self.fuel_type == "propane":
-            unit_of_measurement = UnitOfVolume.CUBIC_FEET
-        self.entity_description = SensorEntityDescription(
-            key=metric,
-            device_class=SensorDeviceClass.GAS,
-            state_class=SensorStateClass.TOTAL_INCREASING,
-            native_unit_of_measurement=unit_of_measurement,
-            suggested_display_precision=2,
+        self.fuel_type = fuel_type
+        super().__init__(
+            entity_name=f"{self.fuel_type.capitalize()} Usage Year to Date",
+            coordinator=coordinator,
+            system_serial=system_serial,
         )
-        super().__init__(f"{self.fuel_type.capitalize()} Yearly", updater, system_serial)
 
-    @property
-    def native_value(self) -> float | None:
-        """Return yearly gas usage converted to the configured gas unit.
-
-        Returns:
-            float | None: Converted yearly gas consumption value, or None when unavailable.
-        """
-        gas = self.carrier_system.energy.current_year_measurements().gas
-        if gas is None:
-            return None
-
-        value = gas
         match self.carrier_system.config.gas_unit:
             case "gallon":
-                value = (
-                    value / 2.54998
-                )  # Convert kBTU to cubic feet (1 cubic foot = 2,549.98 BTU, so divide by 2.54998)
+                self._attr_native_unit_of_measurement = UnitOfVolume.CUBIC_FEET
+                self._attr_suggested_display_precision = 2
+            case "therm" | "gjoule":
+                self._attr_native_unit_of_measurement = UnitOfVolume.CUBIC_METERS
+                self._attr_suggested_display_precision = 2
+            case _:
+                self._attr_native_unit_of_measurement = UnitOfVolume.CUBIC_METERS
+                self._attr_suggested_display_precision = 2
+
+    def _update_entity_attrs(self) -> None:
+        """Update gas usage attrs from coordinator data."""
+        if self.carrier_system.energy.raw is None:
+            self._attr_available = False
+            return
+
+        api_field = "gas"
+        energy_periods = self.carrier_system.energy.raw.get("energyPeriods", [])
+        value: float | None = None
+        for period in energy_periods:
+            if period.get("energyPeriodType") == "year1":
+                value = period.get(api_field)
+                break
+        if value is None:
+            self._attr_available = False
+            return
+
+        match self.carrier_system.config.gas_unit:
+            case "gallon":
+                # Convert kBTU to cubic feet (1 cubic foot = 2,549.98 BTU, so divide by 2.54998)
+                value = value / 2.54998
             case "therm":
-                value = (
-                    value / 100 * 2.8328611898017
-                )  # /100 to therms then * to convert from therms to cubic meters
+                # /100 to therms then * to convert from therms to cubic meters
+                value = value / 100 * 2.8328611898017
             case "gjoule":
                 # /100 to gjoules (because carrier keeps it an integer in the api
                 # response even though it is a float) then * to convert from gjoules
                 # to cubic meters
                 value = value / 100 * 25.5
-        return value
-
-    @property
-    def available(self) -> bool:
-        """Indicate whether gas usage data can be displayed.
-
-        Returns:
-            bool: True when a computed gas value is available.
-        """
-        return self.native_value is not None
+            case _:
+                self._attr_available = False
+                return
+        self._attr_native_value = value
+        self._attr_available = True
 
 
-class PropaneMeasurementSensor(CarrierEntity, SensorEntity):
+class PropaneMeasurementSensor(CarrierSensor):
     """Yearly propane usage sensor expressed in gallons."""
 
-    def __init__(self, updater: CarrierDataUpdateCoordinator, system_serial: str) -> None:
+    _attr_device_class = SensorDeviceClass.VOLUME
+    _attr_state_class = SensorStateClass.TOTAL_INCREASING
+    _attr_native_unit_of_measurement = UnitOfVolume.GALLONS
+    _attr_suggested_display_precision = 2
+
+    def __init__(self, coordinator: CarrierDataUpdateCoordinator, system_serial: str) -> None:
         """Initialize a yearly propane consumption sensor.
 
         Args:
-            updater: Coordinator that provides energy payloads.
+            coordinator: Coordinator that provides energy payloads.
             system_serial: Carrier system serial for this entity.
         """
-        self.entity_description = SensorEntityDescription(
-            key="propane",
-            device_class=SensorDeviceClass.VOLUME,
-            state_class=SensorStateClass.TOTAL_INCREASING,
-            native_unit_of_measurement=UnitOfVolume.GALLONS,
-            suggested_display_precision=2,
+        super().__init__(
+            entity_name="Propane Consumption Year to Date",
+            coordinator=coordinator,
+            system_serial=system_serial,
         )
-        super().__init__("Propane Yearly Gallons", updater, system_serial)
 
-    @property
-    def native_value(self) -> float | None:
-        """Return yearly propane usage converted from kBTU to gallons.
+    def _update_entity_attrs(self) -> None:
+        """Update propane usage attrs from coordinator data."""
+        if self.carrier_system.energy.raw is None:
+            self._attr_available = False
+            return
 
-        Returns:
-            float | None: Converted yearly propane volume in gallons, or None when unavailable.
-        """
-        gas = self.carrier_system.energy.current_year_measurements().gas
-        if gas is None:
-            return None
+        api_field = "gas"
+        energy_periods = self.carrier_system.energy.raw.get("energyPeriods", [])
+        value: float | None = None
+        for period in energy_periods:
+            if period.get("energyPeriodType") == "year1":
+                value = period.get(api_field)
+                break
+        if value is None:
+            self._attr_available = False
+            return
 
-        return (
-            gas / 91.69
-        )  # Convert kBTU to gallons (1 gallon LPG = 91,690 BTU, so divide by 91.69)
-
-    @property
-    def available(self) -> bool:
-        """Indicate whether propane data can be displayed.
-
-        Returns:
-            bool: True when a propane value is available.
-        """
-        return self.carrier_system.energy.current_year_measurements().gas is not None
+        # Convert kBTU to gallons (1 gallon LPG = 91,690 BTU, so divide by 91.69)
+        self._attr_native_value = value / 91.69
+        self._attr_available = True
 
 
-class EnergyMeasurementSensor(CarrierEntity, SensorEntity):
+class YearlyEnergyMeasurementSensor(CarrierSensor):
     """Yearly electrical energy consumption sensor for a Carrier metric."""
 
+    _attr_device_class = SensorDeviceClass.ENERGY
+    _attr_state_class = SensorStateClass.TOTAL_INCREASING
+    _attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
+    _attr_suggested_display_precision = 0
+
     def __init__(
-        self, updater: CarrierDataUpdateCoordinator, system_serial: str, metric: str
+        self, coordinator: CarrierDataUpdateCoordinator, system_serial: str, metric: str
     ) -> None:
         """Initialize a yearly energy measurement sensor.
 
         Args:
-            updater: Coordinator that provides energy payloads.
+            coordinator: Coordinator that provides energy payloads.
             system_serial: Carrier system serial for this entity.
             metric: Name of the Carrier energy metric to expose.
         """
-        self.entity_description = SensorEntityDescription(
-            key=metric,
-            device_class=SensorDeviceClass.ENERGY,
-            state_class=SensorStateClass.TOTAL_INCREASING,
-            native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
-            suggested_display_precision=0,
-        )
-        super().__init__(f"{self.entity_description.key} Energy Yearly", updater, system_serial)
-
-    @property
-    def native_value(self) -> float | None:
-        """Return yearly energy value for the configured metric.
-
-        Returns:
-            float | None: Yearly kWh total for the metric, or None when unavailable.
-        """
-        return getattr(
-            self.carrier_system.energy.current_year_measurements(), self.entity_description.key
+        self.metric = metric
+        super().__init__(
+            entity_name=f"{metric.replace('_', ' ').title()} Energy Year to Date",
+            coordinator=coordinator,
+            system_serial=system_serial,
         )
 
-    @property
-    def available(self) -> bool:
-        """Indicate whether energy data can be displayed.
+    def _update_entity_attrs(self) -> None:
+        """Update yearly energy attrs from coordinator data."""
+        if self.carrier_system.energy.raw is None:
+            self._attr_available = False
+            return
 
-        Returns:
-            bool: True when a metric value is available.
-        """
-        return self.native_value is not None
+        api_field = ENERGY_METRIC_MAP.get(self.metric)
+        if api_field is None:
+            _LOGGER.debug("Unknown yearly energy metric requested: %s", self.metric)
+            self._attr_available = False
+            return
+
+        energy_periods = self.carrier_system.energy.raw.get("energyPeriods", [])
+        for period in energy_periods:
+            if period.get("energyPeriodType") == "year1":
+                value = period.get(api_field)
+                if value is not None:
+                    self._attr_native_value = value
+                    self._attr_available = True
+                    return
+        self._attr_available = False
 
 
-class DailyEnergyMeasurementSensor(CarrierEntity, SensorEntity):
+class DailyEnergyMeasurementSensor(CarrierSensor):
     """Sensor for yesterday's energy usage by Carrier metric."""
 
+    _attr_device_class = SensorDeviceClass.ENERGY
+    _attr_state_class = SensorStateClass.TOTAL_INCREASING
+    _attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
+    _attr_suggested_display_precision = 1
+
     def __init__(
-        self, updater: CarrierDataUpdateCoordinator, system_serial: str, metric: str
+        self, coordinator: CarrierDataUpdateCoordinator, system_serial: str, metric: str
     ) -> None:
         """Initialize a daily energy sensor for a specific metric.
 
         Args:
-            updater: Coordinator that provides energy payloads.
+            coordinator: Coordinator that provides energy payloads.
             system_serial: Carrier system serial for this entity.
             metric: Internal Carrier metric name to expose.
         """
-        # Map metric names to API field names
-        self.metric_map = {
-            "cooling": "coolingKwh",
-            "hp_heat": "hPHeatKwh",
-            "fan": "fanKwh",
-            "electric_heat": "eHeatKwh",
-            "reheat": "reheatKwh",
-            "fan_gas": "fanGasKwh",
-            "loop_pump": "loopPumpKwh",
-        }
         self.metric = metric
-        self.entity_description = SensorEntityDescription(
-            key=f"{metric}_daily",
-            device_class=SensorDeviceClass.ENERGY,
-            state_class=SensorStateClass.TOTAL_INCREASING,
-            native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
-            suggested_display_precision=1,
+        super().__init__(
+            entity_name=f"{metric.replace('_', ' ').title()} Energy Yesterday",
+            coordinator=coordinator,
+            system_serial=system_serial,
         )
-        super().__init__(f"{metric} Energy Yesterday", updater, system_serial)
 
-    @property
-    def native_value(self) -> float | None:
-        """Return yesterday's energy consumption for this metric.
-
-        Returns:
-            float | None: Previous-day consumption in kWh, or None when raw
-                energy data is unavailable.
-        """
+    def _update_entity_attrs(self) -> None:
+        """Update daily energy attrs from coordinator data."""
         if self.carrier_system.energy.raw is None:
-            return None
+            self._attr_available = False
+            return
 
-        api_field = self.metric_map.get(self.metric)
+        api_field = ENERGY_METRIC_MAP.get(self.metric)
         if api_field is None:
             _LOGGER.debug("Unknown daily energy metric requested: %s", self.metric)
-            return None
+            self._attr_available = False
+            return
 
         energy_periods = self.carrier_system.energy.raw.get("energyPeriods", [])
         for period in energy_periods:
             if period.get("energyPeriodType") == "day1":
-                return period.get(api_field, 0)
-        return 0
-
-    @property
-    def available(self) -> bool:
-        """Indicate whether raw energy period data is available.
-
-        Returns:
-            bool: True when energy payload data is present.
-        """
-        return self.carrier_system.energy.raw is not None
+                value = period.get(api_field)
+                if value is not None:
+                    self._attr_native_value = value
+                    self._attr_available = True
+                    return
+        self._attr_available = False
 
 
-class MonthlyEnergyMeasurementSensor(CarrierEntity, SensorEntity):
+class MonthlyEnergyMeasurementSensor(CarrierSensor):
     """Sensor for last month's energy usage by Carrier metric."""
 
+    _attr_device_class = SensorDeviceClass.ENERGY
+    _attr_state_class = SensorStateClass.TOTAL_INCREASING
+    _attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
+    _attr_suggested_display_precision = 0
+
     def __init__(
-        self, updater: CarrierDataUpdateCoordinator, system_serial: str, metric: str
+        self, coordinator: CarrierDataUpdateCoordinator, system_serial: str, metric: str
     ) -> None:
         """Initialize a monthly energy sensor for a specific metric.
 
         Args:
-            updater: Coordinator that provides energy payloads.
+            coordinator: Coordinator that provides energy payloads.
             system_serial: Carrier system serial for this entity.
             metric: Internal Carrier metric name to expose.
         """
-        # Map metric names to API field names
-        self.metric_map = {
-            "cooling": "coolingKwh",
-            "hp_heat": "hPHeatKwh",
-            "fan": "fanKwh",
-            "electric_heat": "eHeatKwh",
-            "reheat": "reheatKwh",
-            "fan_gas": "fanGasKwh",
-            "loop_pump": "loopPumpKwh",
-        }
         self.metric = metric
-        self.entity_description = SensorEntityDescription(
-            key=f"{metric}_monthly",
-            device_class=SensorDeviceClass.ENERGY,
-            state_class=SensorStateClass.TOTAL,
-            native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
-            suggested_display_precision=0,
+        super().__init__(
+            entity_name=f"{metric.replace('_', ' ').title()} Energy Last Month",
+            coordinator=coordinator,
+            system_serial=system_serial,
         )
-        super().__init__(f"{metric} Energy Last Month", updater, system_serial)
 
-    @property
-    def native_value(self) -> float | None:
-        """Return last month's energy consumption for this metric.
-
-        Returns:
-            float | None: Previous-month consumption in kWh, or None when raw
-                energy data is unavailable.
-        """
+    def _update_entity_attrs(self) -> None:
+        """Update monthly energy attrs from coordinator data."""
         if self.carrier_system.energy.raw is None:
-            return None
+            self._attr_available = False
+            return
 
-        api_field = self.metric_map.get(self.metric)
+        api_field = ENERGY_METRIC_MAP.get(self.metric)
         if api_field is None:
             _LOGGER.debug("Unknown monthly energy metric requested: %s", self.metric)
-            return None
+            self._attr_available = False
+            return
 
         energy_periods = self.carrier_system.energy.raw.get("energyPeriods", [])
         for period in energy_periods:
             if period.get("energyPeriodType") == "month1":
-                return period.get(api_field, 0)
-        return 0
-
-    @property
-    def available(self) -> bool:
-        """Indicate whether raw energy period data is available.
-
-        Returns:
-            bool: True when energy payload data is present.
-        """
-        return self.carrier_system.energy.raw is not None
+                value = period.get(api_field)
+                if value is not None:
+                    self._attr_native_value = value
+                    self._attr_available = True
+                    return
+        self._attr_available = False
 
 
-class ZoneTemperatureSensor(CarrierEntity, SensorEntity):
+class ZoneTemperatureSensor(CarrierZoneSensor):
     """Sensor entity that reports current temperature for a specific zone."""
 
     _attr_device_class = SensorDeviceClass.TEMPERATURE
     _attr_state_class = SensorStateClass.MEASUREMENT
 
     def __init__(
-        self, updater: CarrierDataUpdateCoordinator, system_serial: str, zone_api_id: str
+        self, coordinator: CarrierDataUpdateCoordinator, system_serial: str, zone_api_id: str
     ) -> None:
         """Initialize a zone temperature sensor.
 
         Args:
-            updater: Coordinator that provides system and zone data.
+            coordinator: Coordinator that provides system and zone data.
             system_serial: Carrier system serial tied to the zone.
             zone_api_id: Carrier API identifier for the represented zone.
         """
-        self.zone_api_id: str = zone_api_id
-        self.coordinator = updater
-        self.coordinator_context = system_serial
-        super().__init__(f"{self._config_zone.name} Temperature", updater, system_serial)
+        super().__init__(
+            entity_name="Temperature",
+            coordinator=coordinator,
+            system_serial=system_serial,
+            zone_api_id=zone_api_id,
+            unique_id_suffix="temperature",
+        )
 
-    @property
-    def native_unit_of_measurement(self) -> str | None:
-        """Return the active unit used for zone temperature values.
-
-        Returns:
-            str | None: Fahrenheit or Celsius unit constant.
-        """
+    def _update_entity_attrs(self) -> None:
+        """Update temperature attrs from coordinator data."""
         if self.carrier_system.status.temperature_unit == TemperatureUnits.FAHRENHEIT:
-            return UnitOfTemperature.FAHRENHEIT
-        return UnitOfTemperature.CELSIUS
-
-    @property
-    def native_value(self) -> float | None:
-        """Return current zone temperature.
-
-        Returns:
-            float | None: Temperature reported for the zone, or None when unavailable.
-        """
-        return self._status_zone.temperature
-
-    @property
-    def available(self) -> bool:
-        """Indicate whether temperature data can be shown.
-
-        Returns:
-            bool: True when a zone temperature value is present.
-        """
-        return self.native_value is not None
+            self._attr_native_unit_of_measurement = UnitOfTemperature.FAHRENHEIT
+        else:
+            self._attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
+        self._attr_native_value = self._status_zone.temperature
+        self._attr_available = self._attr_native_value is not None
 
 
-class OutdoorTemperatureSensor(CarrierEntity, SensorEntity):
+class OutdoorTemperatureSensor(CarrierSensor):
     """Sensor entity that reports outdoor ambient temperature."""
 
     _attr_device_class = SensorDeviceClass.TEMPERATURE
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_native_unit_of_measurement = UnitOfTemperature.FAHRENHEIT
 
-    def __init__(self, updater: CarrierDataUpdateCoordinator, system_serial: str) -> None:
+    def __init__(self, coordinator: CarrierDataUpdateCoordinator, system_serial: str) -> None:
         """Initialize an outdoor temperature sensor.
 
         Args:
-            updater: Coordinator that provides system telemetry.
+            coordinator: Coordinator that provides system telemetry.
             system_serial: Carrier system serial for this entity.
         """
-        super().__init__("Outdoor Temperature", updater, system_serial)
+        super().__init__(
+            entity_name="Outdoor Temperature",
+            coordinator=coordinator,
+            system_serial=system_serial,
+        )
 
-    @property
-    def native_value(self) -> float | None:
-        """Return current outdoor temperature.
-
-        Returns:
-            float | None: Outdoor temperature reported by Carrier, or None when unavailable.
-        """
-        return self.carrier_system.status.outdoor_temperature
-
-    @property
-    def available(self) -> bool:
-        """Indicate whether outdoor temperature data is available.
-
-        Returns:
-            bool: True when an outdoor temperature value exists.
-        """
-        return self.native_value is not None
+    def _update_entity_attrs(self) -> None:
+        """Update outdoor temperature attrs from coordinator data."""
+        if self.carrier_system.status.temperature_unit == TemperatureUnits.FAHRENHEIT:
+            self._attr_native_unit_of_measurement = UnitOfTemperature.FAHRENHEIT
+        else:
+            self._attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
+        self._attr_native_value = self.carrier_system.status.outdoor_temperature
+        self._attr_available = self._attr_native_value is not None
 
 
-class FilterUsedSensor(CarrierEntity, SensorEntity):
+class FilterUsedSensor(CarrierSensor):
     """Filter life sensor represented as a battery-style percentage."""
 
-    _attr_device_class = SensorDeviceClass.BATTERY
     _attr_native_unit_of_measurement = PERCENTAGE
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_icon = "mdi:air-filter"
 
-    def __init__(self, updater: CarrierDataUpdateCoordinator, system_serial: str) -> None:
+    def __init__(self, coordinator: CarrierDataUpdateCoordinator, system_serial: str) -> None:
         """Initialize a filter remaining-life sensor.
 
         Args:
-            updater: Coordinator that provides system telemetry.
+            coordinator: Coordinator that provides system telemetry.
             system_serial: Carrier system serial for this entity.
         """
-        super().__init__("Filter Remaining", updater, system_serial)
+        super().__init__(
+            entity_name="Filter Remaining",
+            coordinator=coordinator,
+            system_serial=system_serial,
+        )
 
-    @property
-    def native_value(self) -> float | None:
-        """Return remaining filter life as a percentage.
-
-        Returns:
-            float | None: Remaining percentage, or None when unavailable.
-        """
-        if self.carrier_system.status.filter_used is not None:
-            return 100 - self.carrier_system.status.filter_used
-        return None
-
-    @property
-    def available(self) -> bool:
-        """Indicate whether filter life can be displayed.
-
-        Returns:
-            bool: True when a filter value is available.
-        """
-        return self.native_value is not None
+    def _update_entity_attrs(self) -> None:
+        """Update filter life attrs from coordinator data."""
+        if self.carrier_system.status.filter_used is None:
+            self._attr_available = False
+            return
+        self._attr_native_value = 100 - self.carrier_system.status.filter_used
+        self._attr_available = True
 
 
-class HumidifierRemainingSensor(CarrierEntity, SensorEntity):
+class HumidifierRemainingSensor(CarrierSensor):
     """Humidifier level sensor represented as a remaining percentage."""
 
-    _attr_device_class = SensorDeviceClass.BATTERY
     _attr_native_unit_of_measurement = PERCENTAGE
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_icon = "mdi:air-filter"
 
-    def __init__(self, updater: CarrierDataUpdateCoordinator, system_serial: str) -> None:
+    def __init__(self, coordinator: CarrierDataUpdateCoordinator, system_serial: str) -> None:
         """Initialize a humidifier remaining-life sensor.
 
         Args:
-            updater: Coordinator that provides system telemetry.
+            coordinator: Coordinator that provides system telemetry.
             system_serial: Carrier system serial for this entity.
         """
-        super().__init__("Humidifier Remaining", updater, system_serial)
+        super().__init__(
+            entity_name="Humidifier Remaining",
+            coordinator=coordinator,
+            system_serial=system_serial,
+        )
 
-    @property
-    def native_value(self) -> float | None:
-        """Return remaining humidifier capacity as a percentage.
-
-        Returns:
-            float | None: Remaining percentage, or None when unavailable.
-        """
-        if self.carrier_system.status.humidity_level is not None:
-            return 100 - self.carrier_system.status.humidity_level
-        return None
-
-    @property
-    def available(self) -> bool:
-        """Indicate whether humidifier remaining data is available.
-
-        Returns:
-            bool: True when a humidifier value is available.
-        """
-        return self.native_value is not None
+    def _update_entity_attrs(self) -> None:
+        """Update humidifier remaining attrs from coordinator data."""
+        if self.carrier_system.status.humidity_level is None:
+            self._attr_available = False
+            return
+        self._attr_native_value = 100 - self.carrier_system.status.humidity_level
+        self._attr_available = True
 
 
-class UVLampRemainingSensor(CarrierEntity, SensorEntity):
+class UVLampRemainingSensor(CarrierSensor):
     """UV lamp life sensor represented as a remaining percentage."""
 
-    _attr_device_class = SensorDeviceClass.BATTERY
     _attr_native_unit_of_measurement = PERCENTAGE
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_icon = "mdi:lightbulb-fluorescent-tube-outline"
 
-    def __init__(self, updater: CarrierDataUpdateCoordinator, system_serial: str) -> None:
+    def __init__(self, coordinator: CarrierDataUpdateCoordinator, system_serial: str) -> None:
         """Initialize a UV lamp remaining-life sensor.
 
         Args:
-            updater: Coordinator that provides system telemetry.
+            coordinator: Coordinator that provides system telemetry.
             system_serial: Carrier system serial for this entity.
         """
-        super().__init__("UV Lamp Remaining", updater, system_serial)
+        super().__init__(
+            entity_name="UV Lamp Remaining",
+            coordinator=coordinator,
+            system_serial=system_serial,
+        )
 
-    @property
-    def native_value(self) -> float | None:
-        """Return remaining UV lamp life as a percentage.
-
-        Returns:
-            float | None: Remaining percentage, or None when unavailable.
-        """
-        if self.carrier_system.status.uv_lamp_level is not None:
-            return 100 - self.carrier_system.status.uv_lamp_level
-        return None
-
-    @property
-    def available(self) -> bool:
-        """Indicate whether UV lamp remaining data is available.
-
-        Returns:
-            bool: True when a UV lamp value is available.
-        """
-        return self.native_value is not None
+    def _update_entity_attrs(self) -> None:
+        """Update UV lamp remaining attrs from coordinator data."""
+        if self.carrier_system.status.uv_lamp_level is None:
+            self._attr_available = False
+            return
+        self._attr_native_value = 100 - self.carrier_system.status.uv_lamp_level
+        self._attr_available = True
 
 
-class TimestampSensor(CarrierEntity, SensorEntity):
+class TimestampSensor(CarrierSensor):
     """Timestamp sensor for coordinator refresh and websocket update moments."""
 
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
     _attr_device_class = SensorDeviceClass.TIMESTAMP
 
-    def __init__(self, updater: CarrierDataUpdateCoordinator, system_serial: str, key: str) -> None:
-        """Initialize a timestamp sensor bound to one coordinator timestamp key.
+    def __init__(
+        self, coordinator: CarrierDataUpdateCoordinator, system_serial: str, timestamp_type: str
+    ) -> None:
+        """Initialize a timestamp sensor bound to one coordinator timestamp type.
 
         Args:
-            updater: Coordinator that owns timestamp fields.
+            coordinator: Coordinator that owns timestamp fields.
             system_serial: Carrier system serial for this entity.
-            key: Timestamp suffix such as "all_data", "websocket", or "energy".
+            timestamp_type: Timestamp suffix such as "all_data", "websocket", or "energy".
         """
-        super().__init__(f"updated {key.replace('_', ' ').capitalize()} at", updater, system_serial)
-        self.key = key
+        self.timestamp_type = timestamp_type
+        super().__init__(
+            entity_name=f"{timestamp_type.replace('_', ' ').title()} Last Updated",
+            coordinator=coordinator,
+            system_serial=system_serial,
+        )
 
-    @property
-    def native_value(self) -> datetime | None:
-        """Return the coordinator timestamp for this sensor key.
-
-        Returns:
-            datetime | None: Last recorded timestamp for the tracked update path.
-        """
-        return getattr(self.coordinator, f"timestamp_{self.key}")
-
-    @property
-    def available(self) -> bool:
-        """Indicate whether a timestamp value exists.
-
-        Returns:
-            bool: True when the underlying coordinator timestamp is populated.
-        """
-        return self.native_value is not None
+    def _update_entity_attrs(self) -> None:
+        """Update timestamp attrs from coordinator data."""
+        self._attr_native_value = getattr(self.coordinator, f"timestamp_{self.timestamp_type}")
+        self._attr_available = self._attr_native_value is not None
 
 
-class AirflowSensor(CarrierEntity, SensorEntity):
+class AirflowSensor(CarrierSensor):
     """Sensor entity that reports indoor airflow in CFM."""
 
     _attr_device_class = SensorDeviceClass.VOLUME_FLOW_RATE
@@ -684,37 +705,29 @@ class AirflowSensor(CarrierEntity, SensorEntity):
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_icon = "mdi:fan"
 
-    def __init__(self, updater: CarrierDataUpdateCoordinator, system_serial: str) -> None:
+    def __init__(self, coordinator: CarrierDataUpdateCoordinator, system_serial: str) -> None:
         """Initialize an airflow sensor.
 
         Args:
-            updater: Coordinator that provides system telemetry.
+            coordinator: Coordinator that provides system telemetry.
             system_serial: Carrier system serial for this entity.
         """
-        super().__init__("Airflow", updater, system_serial)
+        super().__init__(
+            entity_name="Airflow",
+            coordinator=coordinator,
+            system_serial=system_serial,
+        )
 
-    @property
-    def native_value(self) -> float | None:
-        """Return airflow in cubic feet per minute.
-
-        Returns:
-            float | None: Airflow value as an integer-converted CFM reading.
-        """
-        if self.carrier_system.status.airflow_cfm is not None:
-            return int(self.carrier_system.status.airflow_cfm)
-        return None
-
-    @property
-    def available(self) -> bool:
-        """Indicate whether airflow data can be displayed.
-
-        Returns:
-            bool: True when airflow telemetry is available.
-        """
-        return self.native_value is not None
+    def _update_entity_attrs(self) -> None:
+        """Update airflow attrs from coordinator data."""
+        if self.carrier_system.status.airflow_cfm is None:
+            self._attr_available = False
+            return
+        self._attr_native_value = int(self.carrier_system.status.airflow_cfm)
+        self._attr_available = True
 
 
-class StaticPressureSensor(CarrierEntity, SensorEntity):
+class StaticPressureSensor(CarrierSensor):
     """Sensor entity that reports system static pressure."""
 
     _attr_device_class = SensorDeviceClass.PRESSURE
@@ -722,161 +735,117 @@ class StaticPressureSensor(CarrierEntity, SensorEntity):
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_icon = "mdi:air-filter"
 
-    def __init__(self, updater: CarrierDataUpdateCoordinator, system_serial: str) -> None:
+    def __init__(self, coordinator: CarrierDataUpdateCoordinator, system_serial: str) -> None:
         """Initialize a static pressure sensor.
 
         Args:
-            updater: Coordinator that provides system telemetry.
+            coordinator: Coordinator that provides system telemetry.
             system_serial: Carrier system serial for this entity.
         """
-        super().__init__("Static Pressure", updater, system_serial)
+        super().__init__(
+            entity_name="Static Pressure",
+            coordinator=coordinator,
+            system_serial=system_serial,
+        )
 
-    @property
-    def native_value(self) -> float | None:
-        """Return current static pressure reading.
-
-        Returns:
-            float | None: Static pressure value when provided by Carrier.
-        """
-        if self.carrier_system.status.static_pressure is not None:
-            return self.carrier_system.status.static_pressure
-        return None
-
-    @property
-    def available(self) -> bool:
-        """Indicate whether static pressure data is available.
-
-        Returns:
-            bool: True when pressure telemetry exists.
-        """
-        return self.native_value is not None
+    def _update_entity_attrs(self) -> None:
+        """Update static pressure attrs from coordinator data."""
+        self._attr_native_value = self.carrier_system.status.static_pressure
+        self._attr_available = self._attr_native_value is not None
 
 
-class OutdoorUnitOperationalStatusSensor(CarrierEntity, SensorEntity):
+class OutdoorUnitOperationalStatusSensor(CarrierSensor):
     """Sensor for outdoor unit operational status and related raw details."""
 
     _attr_icon = "mdi:hvac"
 
-    def __init__(self, updater: CarrierDataUpdateCoordinator, system_serial: str) -> None:
+    def __init__(self, coordinator: CarrierDataUpdateCoordinator, system_serial: str) -> None:
         """Initialize an outdoor unit operational status sensor.
 
         Args:
-            updater: Coordinator that provides system telemetry.
+            coordinator: Coordinator that provides system telemetry.
             system_serial: Carrier system serial for this entity.
         """
-        super().__init__("ODU Status", updater, system_serial)
-        self.entity_description = SensorEntityDescription(
-            key="ODU Status", device_class=SensorDeviceClass.ENUM
+        super().__init__(
+            entity_name="ODU Status",
+            coordinator=coordinator,
+            system_serial=system_serial,
         )
 
-    @property
-    def native_value(self) -> Any | None:
-        """Return normalized outdoor unit operational status.
-
-        Numeric string payloads are mapped to "on" to improve Home Assistant
-        logbook phrasing.
-
-        Returns:
-            Any | None: Normalized status value or None when unavailable.
-        """
+    def _update_entity_attrs(self) -> None:
+        """Update outdoor operational status attrs from coordinator data."""
         value = self.carrier_system.status.outdoor_unit_operational_status
-        if value is not None:
-            if isinstance(value, str) and value.isdigit():
-                return "on"
-            return value
-        return None
-
-    @property
-    def available(self) -> bool:
-        """Indicate whether operational status data is available.
-
-        Returns:
-            bool: True when a status value can be shown.
-        """
-        return self.native_value is not None
-
-    @property
-    def extra_state_attributes(self) -> Mapping[str, Any] | None:
-        """Return raw outdoor unit attributes from the Carrier payload.
-
-        Returns:
-            Mapping[str, Any] | None: Raw outdoor-unit subsection from status data.
-        """
+        if value is None:
+            self._attr_available = False
+        elif isinstance(value, str) and value.isdigit():
+            self._attr_native_value = "on"
+            self._attr_available = True
+        else:
+            self._attr_native_value = value
+            self._attr_available = True
         status_raw = self.carrier_system.status.raw
         if status_raw is None:
-            return None
+            self._attr_extra_state_attributes = {}
+            return
         outdoor_unit_attributes = status_raw.get("odu")
         if isinstance(outdoor_unit_attributes, Mapping):
-            return outdoor_unit_attributes
-        return None
+            self._attr_extra_state_attributes = dict(outdoor_unit_attributes)
+        else:
+            self._attr_extra_state_attributes = {}
 
 
-class IndoorUnitOperationalStatusSensor(CarrierEntity, SensorEntity):
+class IndoorUnitOperationalStatusSensor(CarrierSensor):
     """Sensor for indoor unit operational status and related raw details."""
 
-    _attr_device_class = SensorDeviceClass.ENUM
     _attr_icon = "mdi:hvac"
 
-    def __init__(self, updater: CarrierDataUpdateCoordinator, system_serial: str) -> None:
+    def __init__(self, coordinator: CarrierDataUpdateCoordinator, system_serial: str) -> None:
         """Initialize an indoor unit operational status sensor.
 
         Args:
-            updater: Coordinator that provides system telemetry.
+            coordinator: Coordinator that provides system telemetry.
             system_serial: Carrier system serial for this entity.
         """
-        super().__init__("IDU Status", updater, system_serial)
+        super().__init__(
+            entity_name="IDU Status",
+            coordinator=coordinator,
+            system_serial=system_serial,
+        )
 
-    @property
-    def native_value(self) -> str | None:
-        """Return indoor unit operational status.
-
-        Returns:
-            str | None: Reported indoor unit status value.
-        """
-        if self.carrier_system.status.indoor_unit_operational_status is not None:
-            return self.carrier_system.status.indoor_unit_operational_status
-        return None
-
-    @property
-    def available(self) -> bool:
-        """Indicate whether operational status data is available.
-
-        Returns:
-            bool: True when a status value can be shown.
-        """
-        return self.native_value is not None
-
-    @property
-    def extra_state_attributes(self) -> Mapping[str, Any] | None:
-        """Return raw indoor unit attributes from the Carrier payload.
-
-        Returns:
-            Mapping[str, Any] | None: Raw indoor-unit subsection from status data.
-        """
+    def _update_entity_attrs(self) -> None:
+        """Update indoor operational status attrs from coordinator data."""
+        self._attr_native_value = self.carrier_system.status.indoor_unit_operational_status
+        self._attr_available = self._attr_native_value is not None
         status_raw = self.carrier_system.status.raw
         if status_raw is None:
-            return None
+            self._attr_extra_state_attributes = {}
+            return
         indoor_unit_attributes = status_raw.get("idu")
         if isinstance(indoor_unit_attributes, Mapping):
-            return indoor_unit_attributes
-        return None
+            self._attr_extra_state_attributes = dict(indoor_unit_attributes)
+        else:
+            self._attr_extra_state_attributes = {}
 
 
-class OutDoorUnitVarSensor(CarrierEntity, SensorEntity):
+class OutdoorUnitVarSensor(CarrierSensor):
     """Sensor for variable-capacity outdoor unit percentage output."""
 
     _attr_icon = "mdi:percent-box"
     _attr_native_unit_of_measurement = PERCENTAGE
     _attr_state_class = SensorStateClass.MEASUREMENT
 
-    def __init__(self, updater: CarrierDataUpdateCoordinator, system_serial: str) -> None:
+    def __init__(self, coordinator: CarrierDataUpdateCoordinator, system_serial: str) -> None:
         """Initialize a variable outdoor unit percentage sensor.
 
         Args:
-            updater: Coordinator that provides system telemetry.
+            coordinator: Coordinator that provides system telemetry.
             system_serial: Carrier system serial for this entity.
         """
-        super().__init__("ODU Var", updater, system_serial)
+        super().__init__(
+            entity_name="ODU Var",
+            coordinator=coordinator,
+            system_serial=system_serial,
+        )
 
     @property
     def native_value(self) -> float | None:
@@ -895,12 +864,3 @@ class OutDoorUnitVarSensor(CarrierEntity, SensorEntity):
             return float(value)
         except ValueError:
             return 0.0
-
-    @property
-    def available(self) -> bool:
-        """Indicate whether variable-capacity percentage is available.
-
-        Returns:
-            bool: True when outdoor operational status data exists.
-        """
-        return self.native_value is not None
