@@ -882,24 +882,25 @@ class OutDoorUnitVarSensor(CarrierEntity, SensorEntity):
     def native_value(self) -> float | None:
         """Return normalized variable outdoor unit percentage.
 
+        Non-numeric values such as ``'off'`` are treated as 0 % so the sensor
+        stays available while the unit is idle rather than going unavailable.
+
         Returns:
-            float | None: Percentage when the payload is numeric, else None.
+            float | None: Percentage, or None when no data is present.
         """
         value = self.carrier_system.status.outdoor_unit_operational_status
-        if value is None:
+        if value is None or not isinstance(value, str):
             return None
-        if isinstance(value, str):
-            try:
-                return float(value)
-            except ValueError:
-                return None
-        return None
+        try:
+            return float(value)
+        except ValueError:
+            return 0.0
 
     @property
     def available(self) -> bool:
         """Indicate whether variable-capacity percentage is available.
 
         Returns:
-            bool: True when a normalized percentage value exists.
+            bool: True when outdoor operational status data exists.
         """
         return self.native_value is not None
