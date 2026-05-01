@@ -847,20 +847,19 @@ class OutdoorUnitVarSensor(CarrierSensor):
             system_serial=system_serial,
         )
 
-    @property
-    def native_value(self) -> float | None:
-        """Return normalized variable outdoor unit percentage.
+    def _update_entity_attrs(self) -> None:
+        """Update outdoor unit variable rate.
 
         Non-numeric values such as ``'off'`` are treated as 0 % so the sensor
         stays available while the unit is idle rather than going unavailable.
 
-        Returns:
-            float | None: Percentage, or None when no data is present.
         """
         value = self.carrier_system.status.outdoor_unit_operational_status
         if value is None or not isinstance(value, str):
-            return None
+            self._attr_available = False
+            return
+        self._attr_available = True
         try:
-            return float(value)
+            self._attr_native_value = float(value)
         except ValueError:
-            return 0.0
+            self._attr_native_value = 0.0
