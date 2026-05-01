@@ -127,6 +127,11 @@ class CarrierEntity(CoordinatorEntity[CarrierDataUpdateCoordinator]):
             raise ValueError(f"Config Zone not found: {self.zone_api_id}")
         raise ValueError("No zone api id defined")
 
+    @property
+    def available(self) -> bool:
+        """Return if entity is available."""
+        return self.coordinator.last_update_success and getattr(self, "_attr_available", True)
+
 
 class CarrierZoneEntity(CarrierEntity):
     """Shared Carrier entity base for entities bound to a specific zone."""
