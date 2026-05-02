@@ -425,7 +425,7 @@ class DailyEnergyMeasurementSensor(CarrierSensor):
     """Sensor for yesterday's energy usage by Carrier metric."""
 
     _attr_device_class = SensorDeviceClass.ENERGY
-    _attr_state_class = SensorStateClass.TOTAL_INCREASING
+    _attr_state_class = SensorStateClass.TOTAL
     _attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
     _attr_suggested_display_precision = 1
 
@@ -473,7 +473,7 @@ class MonthlyEnergyMeasurementSensor(CarrierSensor):
     """Sensor for last month's energy usage by Carrier metric."""
 
     _attr_device_class = SensorDeviceClass.ENERGY
-    _attr_state_class = SensorStateClass.TOTAL_INCREASING
+    _attr_state_class = SensorStateClass.TOTAL
     _attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
     _attr_suggested_display_precision = 0
 
@@ -582,7 +582,7 @@ class OutdoorTemperatureSensor(CarrierSensor):
 
 
 class FilterUsedSensor(CarrierSensor):
-    """Filter life sensor represented as a battery-style percentage."""
+    """Filter life sensor represented as a percentage."""
 
     _attr_native_unit_of_measurement = PERCENTAGE
     _attr_state_class = SensorStateClass.MEASUREMENT
