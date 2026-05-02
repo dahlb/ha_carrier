@@ -12,7 +12,7 @@ from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers import config_validation as cv, entity_registry as er
-from homeassistant.helpers.entity_registry import RegistryEntry
+from homeassistant.helpers.entity_registry import EntityRegistry, RegistryEntry
 from homeassistant.util import slugify
 
 from .carrier_data_update_coordinator import CarrierDataUpdateCoordinator, CarrierUnauthorizedError
@@ -24,7 +24,7 @@ from .const import (
     WEBSOCKET_RETRY_INITIAL_DELAY_SECONDS,
     WEBSOCKET_RETRY_MAX_DELAY_SECONDS,
 )
-from .util import TIMESTAMP_TYPES, async_redact_data
+from .util import TIMESTAMP_TYPES, async_redact_data, has_heat
 
 type ConfigEntryCarrier = ConfigEntry[CarrierDataUpdateCoordinator]
 
@@ -41,18 +41,20 @@ ENERGY_METRICS: tuple[str, ...] = (
     "fan_gas",
     "loop_pump",
 )
-SYSTEM_ENTITY_SUFFIXES: tuple[str, ...] = (
+ALWAYS_CREATED_SYSTEM_ENTITY_SUFFIXES: tuple[str, ...] = (
     "Online",
-    "Humidifier Running",
-    "Heat Source",
     "Outdoor Temperature",
     "Filter Remaining",
-    "Humidifier Remaining",
-    "UV Lamp Remaining",
     "Airflow",
     "Static Pressure",
     "ODU Status",
     "IDU Status",
+)
+CONDITIONALLY_CREATED_SYSTEM_ENTITY_SUFFIXES: tuple[str, ...] = (
+    "Humidifier Running",
+    "Heat Source",
+    "Humidifier Remaining",
+    "UV Lamp Remaining",
     "ODU Var",
 )
 
@@ -106,7 +108,10 @@ def _async_build_unique_id_migration_map(systems: Iterable[System]) -> dict[str,
     for carrier_system in systems:
         system_serial = carrier_system.profile.serial
 
-        for suffix in SYSTEM_ENTITY_SUFFIXES:
+        for suffix in (
+            *ALWAYS_CREATED_SYSTEM_ENTITY_SUFFIXES,
+            *CONDITIONALLY_CREATED_SYSTEM_ENTITY_SUFFIXES,
+        ):
             _async_add_unique_id_migration(migration_map, system_serial, suffix)
 
         for timestamp_type in TIMESTAMP_TYPES:
@@ -182,36 +187,169 @@ def _async_build_unique_id_migration_map(systems: Iterable[System]) -> dict[str,
     return migration_map
 
 
-def _async_entity_unique_id_migration_updates(
-    entry: RegistryEntry,
-    migration_map: Mapping[str, str],
-    existing_unique_ids: set[str],
-) -> dict[str, str] | None:
-    """Return entity registry updates for one legacy Carrier registry entry.
+def _async_build_created_unique_ids(systems: Iterable[System]) -> set[str]:
+    """Build unique IDs that version 2 setup will create for Carrier systems.
 
     Args:
-        entry: Entity registry entry being considered for migration.
-        migration_map: Old-to-new unique ID migration map.
-        existing_unique_ids: Unique IDs already present for this config entry.
+        systems: Carrier systems loaded from the account during migration.
 
     Returns:
-        dict[str, str] | None: Entity registry update payload, or None.
+        set[str]: Version 2 entity unique IDs expected to be created.
     """
-    new_unique_id = migration_map.get(entry.unique_id)
-    if new_unique_id is None or new_unique_id == entry.unique_id:
-        return None
-    if new_unique_id in existing_unique_ids:
-        _LOGGER.debug(
-            "Skipping Carrier entity unique ID migration for %s; %s already exists",
-            entry.entity_id,
-            new_unique_id,
-        )
-        return None
-    existing_unique_ids.add(new_unique_id)
-    return {"new_unique_id": new_unique_id}
+    created_unique_ids: set[str] = set()
+
+    for carrier_system in systems:
+        system_serial = carrier_system.profile.serial
+        for suffix in ALWAYS_CREATED_SYSTEM_ENTITY_SUFFIXES:
+            created_unique_ids.add(_async_new_unique_id(system_serial, suffix))
+
+        for timestamp_type in TIMESTAMP_TYPES:
+            created_unique_ids.add(
+                _async_new_unique_id(
+                    system_serial,
+                    f"{timestamp_type.replace('_', ' ').title()} Last Updated",
+                )
+            )
+
+        if carrier_system.config.humidifier_enabled:
+            created_unique_ids.add(_async_new_unique_id(system_serial, "Humidifier Running"))
+            created_unique_ids.add(_async_new_unique_id(system_serial, "Humidifier Remaining"))
+        if carrier_system.config.uv_enabled:
+            created_unique_ids.add(_async_new_unique_id(system_serial, "UV Lamp Remaining"))
+        if carrier_system.profile.outdoor_unit_type in ["varcaphp", "varcapac"]:
+            created_unique_ids.add(_async_new_unique_id(system_serial, "ODU Var"))
+        if has_heat(carrier_system):
+            created_unique_ids.add(_async_new_unique_id(system_serial, "Heat Source"))
+
+        for metric in ENERGY_METRICS:
+            if getattr(carrier_system.energy, metric, False) is True:
+                metric_title = metric.replace("_", " ").title()
+                created_unique_ids.add(
+                    _async_new_unique_id(system_serial, f"{metric_title} Energy Year to Date")
+                )
+                created_unique_ids.add(
+                    _async_new_unique_id(system_serial, f"{metric_title} Energy Yesterday")
+                )
+                created_unique_ids.add(
+                    _async_new_unique_id(system_serial, f"{metric_title} Energy Last Month")
+                )
+
+        if getattr(carrier_system.energy, "gas", False) is True:
+            created_unique_ids.add(
+                _async_new_unique_id(
+                    system_serial,
+                    f"{carrier_system.config.fuel_type.capitalize()} Usage Year to Date",
+                )
+            )
+            if carrier_system.config.fuel_type == "propane":
+                created_unique_ids.add(
+                    _async_new_unique_id(system_serial, "Propane Consumption Year to Date")
+                )
+
+        for zone in carrier_system.config.zones:
+            zone_unique_id_suffix = f"zone_{zone.api_id}"
+            created_unique_ids.add(
+                _async_new_unique_id(system_serial, f"{zone_unique_id_suffix}_thermostat")
+            )
+            created_unique_ids.add(
+                _async_new_unique_id(system_serial, f"{zone_unique_id_suffix}_humidity")
+            )
+            created_unique_ids.add(
+                _async_new_unique_id(system_serial, f"{zone_unique_id_suffix}_temperature")
+            )
+            if zone.occupancy_enabled:
+                created_unique_ids.add(
+                    _async_new_unique_id(system_serial, f"{zone_unique_id_suffix}_occupancy")
+                )
+
+    return created_unique_ids
+
+
+def _async_migrate_entity_unique_ids(
+    ent_reg: EntityRegistry,
+    registry_entries: Iterable[RegistryEntry],
+    migration_map: Mapping[str, str],
+    created_unique_ids: set[str],
+) -> None:
+    """Rename or remove legacy Carrier entity registry entries.
+
+    Args:
+        ent_reg: Home Assistant entity registry.
+        registry_entries: Entity registry entries owned by the config entry.
+        migration_map: Old-to-new unique ID migration map.
+        created_unique_ids: Unique IDs that version 2 setup will create.
+
+    Returns:
+        None: Entity registry entries are updated in place.
+    """
+    existing_unique_ids = {entry.unique_id for entry in registry_entries}
+
+    for entry in registry_entries:
+        new_unique_id = migration_map.get(entry.unique_id)
+        if new_unique_id is None or new_unique_id == entry.unique_id:
+            continue
+
+        if new_unique_id not in created_unique_ids:
+            _LOGGER.debug(
+                "Removing stale Carrier entity %s during unique ID migration",
+                entry.entity_id,
+            )
+            ent_reg.async_remove(entry.entity_id)
+            existing_unique_ids.discard(entry.unique_id)
+            continue
+
+        if new_unique_id in existing_unique_ids:
+            _LOGGER.debug(
+                "Removing duplicate legacy Carrier entity %s during unique ID migration",
+                entry.entity_id,
+            )
+            ent_reg.async_remove(entry.entity_id)
+            existing_unique_ids.discard(entry.unique_id)
+            continue
+
+        ent_reg.async_update_entity(entry.entity_id, new_unique_id=new_unique_id)
+        existing_unique_ids.discard(entry.unique_id)
+        existing_unique_ids.add(new_unique_id)
+
+
+async def _async_migrate_entity_registry_unique_ids(
+    hass: HomeAssistant,
+    config_entry: ConfigEntryCarrier,
+    migration_map: Mapping[str, str],
+    created_unique_ids: set[str],
+) -> None:
+    """Migrate or remove entity registry entries for one Carrier config entry.
+
+    Args:
+        hass: Home Assistant instance.
+        config_entry: Carrier config entry being migrated.
+        migration_map: Old-to-new unique ID migration map.
+        created_unique_ids: Unique IDs that version 2 setup will create.
+
+    Returns:
+        None: Entity registry entries are updated in place.
+    """
+    ent_reg = er.async_get(hass)
+    registry_entries = list(ent_reg.entities.get_entries_for_config_entry_id(config_entry.entry_id))
+    _async_migrate_entity_unique_ids(
+        ent_reg,
+        registry_entries,
+        migration_map,
+        created_unique_ids,
+    )
 
 
 async def _migrate_1_to_2(hass: HomeAssistant, config_entry: ConfigEntryCarrier) -> bool:
+    """Migrate a Carrier config entry from version 1 to version 2.
+
+    Args:
+        hass: Home Assistant instance.
+        config_entry: Version 1 Carrier config entry being migrated.
+
+    Returns:
+        bool: True when entity registry migration and config entry version
+            update succeed.
+    """
     try:
         api_connection = ApiConnectionGraphql(
             username=config_entry.data[CONF_USERNAME],
@@ -229,18 +367,11 @@ async def _migrate_1_to_2(hass: HomeAssistant, config_entry: ConfigEntryCarrier)
         _LOGGER.exception("Unable to load Carrier data for config entry migration")
         return False
 
-    migration_map = _async_build_unique_id_migration_map(systems)
-    ent_reg = er.async_get(hass)
-    existing_unique_ids = {
-        entry.unique_id
-        for entry in ent_reg.entities.get_entries_for_config_entry_id(config_entry.entry_id)
-    }
-    await er.async_migrate_entries(
+    await _async_migrate_entity_registry_unique_ids(
         hass,
-        config_entry.entry_id,
-        lambda entry: _async_entity_unique_id_migration_updates(
-            entry, migration_map, existing_unique_ids
-        ),
+        config_entry,
+        _async_build_unique_id_migration_map(systems),
+        _async_build_created_unique_ids(systems),
     )
     hass.config_entries.async_update_entry(config_entry, version=CONFIG_FLOW_VERSION)
     _LOGGER.info("Carrier config entry migration to version %s complete", CONFIG_FLOW_VERSION)
