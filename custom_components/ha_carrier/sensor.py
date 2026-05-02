@@ -22,6 +22,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from . import ConfigEntryCarrier
 from .carrier_data_update_coordinator import CarrierDataUpdateCoordinator
 from .carrier_entity import CarrierEntity, CarrierZoneEntity
+from .util import TIMESTAMP_TYPES
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 
@@ -59,21 +60,6 @@ async def async_setup_entry(
                 FilterUsedSensor(
                     coordinator=coordinator, system_serial=carrier_system.profile.serial
                 ),
-                TimestampSensor(
-                    coordinator=coordinator,
-                    system_serial=carrier_system.profile.serial,
-                    timestamp_type="all_data",
-                ),
-                TimestampSensor(
-                    coordinator=coordinator,
-                    system_serial=carrier_system.profile.serial,
-                    timestamp_type="websocket",
-                ),
-                TimestampSensor(
-                    coordinator=coordinator,
-                    system_serial=carrier_system.profile.serial,
-                    timestamp_type="energy",
-                ),
                 AirflowSensor(coordinator=coordinator, system_serial=carrier_system.profile.serial),
                 StaticPressureSensor(
                     coordinator=coordinator, system_serial=carrier_system.profile.serial
@@ -86,6 +72,17 @@ async def async_setup_entry(
                 ),
             ]
         )
+        entities.extend(
+            [
+                TimestampSensor(
+                    coordinator=coordinator,
+                    system_serial=carrier_system.profile.serial,
+                    timestamp_type=timestamp_type,
+                )
+                for timestamp_type in TIMESTAMP_TYPES
+            ]
+        )
+
         if carrier_system.profile.outdoor_unit_type in ["varcaphp", "varcapac"]:
             entities.append(
                 OutdoorUnitVarSensor(

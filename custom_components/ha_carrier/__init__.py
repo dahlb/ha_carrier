@@ -24,7 +24,7 @@ from .const import (
     WEBSOCKET_RETRY_INITIAL_DELAY_SECONDS,
     WEBSOCKET_RETRY_MAX_DELAY_SECONDS,
 )
-from .util import async_redact_data
+from .util import TIMESTAMP_TYPES, async_redact_data
 
 type ConfigEntryCarrier = ConfigEntry[CarrierDataUpdateCoordinator]
 
@@ -55,7 +55,6 @@ SYSTEM_ENTITY_SUFFIXES: tuple[str, ...] = (
     "IDU Status",
     "ODU Var",
 )
-TIMESTAMP_TYPES: tuple[str, ...] = ("all_data", "websocket", "energy")
 
 
 def _async_new_unique_id(system_serial: str, new_suffix: str) -> str:

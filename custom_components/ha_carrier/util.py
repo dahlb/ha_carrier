@@ -28,6 +28,8 @@ FAN_TYPES: list[str] = [
     "fan_gas",
 ]
 
+TIMESTAMP_TYPES: tuple[str, ...] = ("all_data", "websocket", "energy")
+
 
 def has_heat(carrier_system: System) -> bool:
     """Return True if the Carrier system supports heat source selection."""
