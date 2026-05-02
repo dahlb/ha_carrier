@@ -465,6 +465,11 @@ class Thermostat(CarrierClimate):
             heat_set_point = temperature or heat_set_point
             cool_set_point = manual_activity.cool_set_point
 
+        if heat_set_point is None or cool_set_point is None:
+            raise HomeAssistantError(
+                "Both heat and cool set points must be resolved before applying a manual hold"
+            )
+
         fan_mode = manual_activity.fan
 
         _LOGGER.debug(
