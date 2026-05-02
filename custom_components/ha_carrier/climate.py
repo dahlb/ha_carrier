@@ -7,14 +7,7 @@ from functools import partial
 import logging
 from typing import Any
 
-from carrier_api import (
-    ActivityTypes,
-    ConfigZoneActivity,
-    FanModes,
-    System,
-    SystemModes,
-    TemperatureUnits,
-)
+from carrier_api import ActivityTypes, ConfigZoneActivity, FanModes, SystemModes, TemperatureUnits
 from homeassistant.components.climate import (
     ClimateEntity,
     ClimateEntityFeature,
@@ -36,6 +29,7 @@ from . import ConfigEntryCarrier
 from .carrier_data_update_coordinator import CarrierDataUpdateCoordinator
 from .carrier_entity import CarrierZoneEntity
 from .const import CONF_INFINITE_HOLDS, DEFAULT_INFINITE_HOLDS, FAN_AUTO
+from .util import has_cool, has_fan, has_heat
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 
@@ -46,37 +40,6 @@ SUPPORT_FLAGS: ClimateEntityFeature = (
     | ClimateEntityFeature.TARGET_TEMPERATURE_RANGE
     | ClimateEntityFeature.PRESET_MODE
 )
-
-HEAT_TYPES: list[str] = [
-    "hp_heat",
-    "electric_heat",
-    "reheat",
-    "loop_pump",
-]
-
-COOL_TYPES: list[str] = [
-    "cooling",
-]
-
-FAN_TYPES: list[str] = [
-    "fan",
-    "fan_gas",
-]
-
-
-def has_heat(carrier_system: System) -> bool:
-    """Return True if the Carrier system supports heat source selection."""
-    return any(getattr(carrier_system.energy, heat_type, False) is True for heat_type in HEAT_TYPES)
-
-
-def has_cool(carrier_system: System) -> bool:
-    """Return True if the Carrier system supports cool source selection."""
-    return any(getattr(carrier_system.energy, cool_type, False) is True for cool_type in COOL_TYPES)
-
-
-def has_fan(carrier_system: System) -> bool:
-    """Return True if the Carrier system supports fan mode selection."""
-    return any(getattr(carrier_system.energy, fan_type, False) is True for fan_type in FAN_TYPES)
 
 
 async def async_setup_entry(
