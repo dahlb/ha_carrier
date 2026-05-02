@@ -36,6 +36,16 @@ CONDITIONALLY_CREATED_SYSTEM_ENTITY_SUFFIXES: tuple[str, ...] = (
     "UV Lamp Remaining",
     "ODU Var",
 )
+ZONE_ENTITY_SUFFIXES: dict[str, str] = {
+    "thermostat": "",
+    "occupancy": " Occupancy",
+    "humidity": " Humidity",
+    "temperature": " Temperature",
+}
+SYSTEM_ENTITY_SUFFIXES: set[str] = {
+    *ALWAYS_CREATED_SYSTEM_ENTITY_SUFFIXES,
+    *CONDITIONALLY_CREATED_SYSTEM_ENTITY_SUFFIXES,
+}
 
 
 def _async_new_unique_id(system_serial: str, new_suffix: str) -> str:
@@ -73,11 +83,240 @@ def _async_add_unique_id_migration(
     )
 
 
-def _async_build_unique_id_migration_map(systems: Iterable[System]) -> dict[str, str]:
+def _async_old_unique_id_suffix(entry: RegistryEntry, system_serial: str) -> str | None:
+    """Return the v1 unique ID suffix for an entity registry entry.
+
+    Args:
+        entry: Entity registry entry being considered for migration.
+        system_serial: Carrier system serial number expected in the unique ID.
+
+    Returns:
+        str | None: Legacy suffix after the system serial prefix, or None when
+            the entry does not belong to the system serial.
+    """
+    unique_id_prefix = f"{system_serial}_"
+    if not entry.unique_id.startswith(unique_id_prefix):
+        return None
+    return entry.unique_id.removeprefix(unique_id_prefix)
+
+
+def _async_zone_entry_kind(entry: RegistryEntry, system_serial: str) -> str | None:
+    """Return the zone entity kind represented by a v1 registry entry.
+
+    Args:
+        entry: Entity registry entry being considered for migration.
+        system_serial: Carrier system serial number expected in the unique ID.
+
+    Returns:
+        str | None: Zone entity kind such as ``thermostat`` or ``humidity``.
+    """
+    old_suffix = _async_old_unique_id_suffix(entry, system_serial)
+    if old_suffix is None:
+        return None
+
+    # Climate entries are zone thermostats even when the zone name itself ends
+    # with a sensor-like suffix such as " Humidity" or " Temperature".
+    if entry.domain == "climate":
+        return "thermostat"
+
+    # Several system-level entities also end with zone-like words. Keep them out
+    # of zone migration classification so "Outdoor Temperature" is not treated
+    # as a zone temperature entity.
+    if old_suffix in SYSTEM_ENTITY_SUFFIXES:
+        return None
+
+    for kind, display_suffix in ZONE_ENTITY_SUFFIXES.items():
+        if display_suffix and old_suffix.endswith(display_suffix):
+            return kind
+
+    return None
+
+
+def _async_add_zone_unique_id_migration(
+    migration_map: dict[str, str],
+    system_serial: str,
+    legacy_zone_name: str,
+    zone_api_id: str,
+    kind: str,
+) -> None:
+    """Add one legacy zone unique ID to version 2 unique ID mapping.
+
+    Args:
+        migration_map: Mutable migration map being built.
+        system_serial: Carrier system serial number.
+        legacy_zone_name: Zone name stored in the v1 unique ID.
+        zone_api_id: Stable Carrier zone API identifier.
+        kind: Zone entity kind being migrated.
+
+    Returns:
+        None: The mapping is updated in place.
+    """
+    display_suffix = ZONE_ENTITY_SUFFIXES[kind]
+    _async_add_unique_id_migration(
+        migration_map,
+        system_serial,
+        f"{legacy_zone_name}{display_suffix}",
+        f"zone_{zone_api_id}_{kind}",
+    )
+
+
+def _async_legacy_zone_name_from_entry(
+    entry: RegistryEntry,
+    system_serial: str,
+    kind: str,
+) -> str | None:
+    """Return the legacy zone name stored in a v1 registry entry.
+
+    Args:
+        entry: Entity registry entry being considered for migration.
+        system_serial: Carrier system serial number expected in the unique ID.
+        kind: Zone entity kind being migrated.
+
+    Returns:
+        str | None: Legacy zone name, or None when the entry does not match.
+    """
+    old_suffix = _async_old_unique_id_suffix(entry, system_serial)
+    if old_suffix is None:
+        return None
+
+    display_suffix = ZONE_ENTITY_SUFFIXES[kind]
+    if display_suffix:
+        if not old_suffix.endswith(display_suffix):
+            return None
+        return old_suffix[: -len(display_suffix)]
+
+    if _async_zone_entry_kind(entry, system_serial) == "thermostat":
+        return old_suffix
+    return None
+
+
+def _async_build_registry_zone_migration_map(
+    systems: Iterable[System],
+    registry_entries: Iterable[RegistryEntry],
+) -> dict[str, str]:
+    """Build zone unique ID mappings from existing registry entries.
+
+    Args:
+        systems: Carrier systems loaded from the account during migration.
+        registry_entries: Existing entity registry entries for the config entry.
+
+    Returns:
+        dict[str, str]: Registry-derived v1 to v2 zone unique ID mappings.
+    """
+    migration_map: dict[str, str] = {}
+    entries = list(registry_entries)
+
+    for carrier_system in systems:
+        system_serial = carrier_system.profile.serial
+        zones = list(carrier_system.config.zones)
+
+        for kind in ZONE_ENTITY_SUFFIXES:
+            # v1 zone unique IDs used the display name stored in the registry.
+            # Build the old side from registry entries instead of current
+            # Carrier zone names so user-renamed zones still migrate.
+            matched_entries = [
+                entry for entry in entries if _async_zone_entry_kind(entry, system_serial) == kind
+            ]
+            legacy_name_to_entry: dict[str, RegistryEntry] = {}
+            for entry in matched_entries:
+                legacy_zone_name = _async_legacy_zone_name_from_entry(entry, system_serial, kind)
+                if legacy_zone_name is None:
+                    continue
+                if legacy_zone_name in legacy_name_to_entry:
+                    _LOGGER.warning(
+                        "Skipping ambiguous Carrier %s zone migration for %s: "
+                        "duplicate legacy zone name %s",
+                        kind,
+                        system_serial,
+                        legacy_zone_name,
+                    )
+                    legacy_name_to_entry = {}
+                    break
+                legacy_name_to_entry[legacy_zone_name] = entry
+
+            if not legacy_name_to_entry:
+                continue
+
+            # Current live data is only used to resolve the target zone API ID.
+            # Duplicate names make that association unsafe, so skip instead of
+            # guessing and possibly moving an entity to the wrong zone.
+            zone_name_to_zone = {zone.name: zone for zone in zones}
+            if len(zone_name_to_zone) != len(zones):
+                _LOGGER.warning(
+                    "Skipping ambiguous Carrier %s zone migration for %s: duplicate zone names",
+                    kind,
+                    system_serial,
+                )
+                continue
+
+            for legacy_zone_name, zone in zone_name_to_zone.items():
+                if legacy_zone_name not in legacy_name_to_entry:
+                    continue
+                # Exact name match: the common case, and the safest mapping.
+                _async_add_zone_unique_id_migration(
+                    migration_map,
+                    system_serial,
+                    legacy_zone_name,
+                    zone.api_id,
+                    kind,
+                )
+
+            unmatched_zones = [zone for zone in zones if zone.name not in legacy_name_to_entry]
+            unmatched_legacy_names = [
+                legacy_zone_name
+                for legacy_zone_name in legacy_name_to_entry
+                if legacy_zone_name not in zone_name_to_zone
+            ]
+
+            if len(unmatched_legacy_names) != len(unmatched_zones):
+                # Different counts means no one-to-one fallback is possible.
+                if unmatched_legacy_names or unmatched_zones:
+                    _LOGGER.warning(
+                        "Skipping ambiguous Carrier %s zone migration for %s: "
+                        "%s unmatched entries, %s unmatched zones",
+                        kind,
+                        system_serial,
+                        len(unmatched_legacy_names),
+                        len(unmatched_zones),
+                    )
+                continue
+
+            if len(unmatched_legacy_names) == 1 and len(unmatched_zones) == 1:
+                # One old zone and one live zone remain unmatched. Treat this as
+                # the only safe rename fallback.
+                legacy_zone_name = unmatched_legacy_names[0]
+                zone = unmatched_zones[0]
+                _async_add_zone_unique_id_migration(
+                    migration_map,
+                    system_serial,
+                    legacy_zone_name,
+                    zone.api_id,
+                    kind,
+                )
+                continue
+
+            if unmatched_legacy_names or unmatched_zones:
+                # Multiple unmatched zones could be reordered or renamed; do not
+                # pair by position because that can assign the wrong zone API ID.
+                _LOGGER.warning(
+                    "Skipping ambiguous Carrier %s zone migration for %s: "
+                    "legacy zone names do not uniquely match current zone names",
+                    kind,
+                    system_serial,
+                )
+
+    return migration_map
+
+
+def _async_build_unique_id_migration_map(
+    systems: Iterable[System],
+    registry_entries: Iterable[RegistryEntry],
+) -> dict[str, str]:
     """Build old-to-new entity unique ID mappings for Carrier systems.
 
     Args:
         systems: Carrier systems loaded from the account during migration.
+        registry_entries: Existing entity registry entries for the config entry.
 
     Returns:
         dict[str, str]: Mapping from version 1 unique IDs to version 2 unique IDs.
@@ -87,6 +326,9 @@ def _async_build_unique_id_migration_map(systems: Iterable[System]) -> dict[str,
     for carrier_system in systems:
         system_serial = carrier_system.profile.serial
 
+        # System-level v1 unique IDs only changed by slugification and, for a
+        # few entities, display suffix changes. These do not depend on zone API
+        # IDs, so they can be mapped directly from live system data.
         for suffix in (
             *ALWAYS_CREATED_SYSTEM_ENTITY_SUFFIXES,
             *CONDITIONALLY_CREATED_SYSTEM_ENTITY_SUFFIXES,
@@ -136,33 +378,9 @@ def _async_build_unique_id_migration_map(systems: Iterable[System]) -> dict[str,
                 f"{metric_title} Energy Last Month",
             )
 
-        for zone in carrier_system.config.zones:
-            zone_unique_id_suffix = f"zone_{zone.api_id}"
-            _async_add_unique_id_migration(
-                migration_map,
-                system_serial,
-                zone.name,
-                f"{zone_unique_id_suffix}_thermostat",
-            )
-            _async_add_unique_id_migration(
-                migration_map,
-                system_serial,
-                f"{zone.name} Occupancy",
-                f"{zone_unique_id_suffix}_occupancy",
-            )
-            _async_add_unique_id_migration(
-                migration_map,
-                system_serial,
-                f"{zone.name} Humidity",
-                f"{zone_unique_id_suffix}_humidity",
-            )
-            _async_add_unique_id_migration(
-                migration_map,
-                system_serial,
-                f"{zone.name} Temperature",
-                f"{zone_unique_id_suffix}_temperature",
-            )
-
+    # Zone entities need registry context because their v1 unique IDs were based
+    # on names and v2 unique IDs are based on stable Carrier zone API IDs.
+    migration_map.update(_async_build_registry_zone_migration_map(systems, registry_entries))
     return migration_map
 
 
@@ -249,7 +467,8 @@ def _async_migrate_entity_unique_ids(
     registry_entries: Iterable[RegistryEntry],
     migration_map: Mapping[str, str],
     created_unique_ids: set[str],
-) -> None:
+    allow_deletions: bool,
+) -> list[RegistryEntry]:
     """Rename or remove legacy Carrier entity registry entries.
 
     Args:
@@ -257,64 +476,83 @@ def _async_migrate_entity_unique_ids(
         registry_entries: Entity registry entries owned by the config entry.
         migration_map: Old-to-new unique ID migration map.
         created_unique_ids: Unique IDs that version 2 setup will create.
+        allow_deletions: Whether stale entries may be removed.
 
     Returns:
-        None: Entity registry entries are updated in place.
+        list[RegistryEntry]: Registry entries that could not be matched and updated.
     """
     existing_unique_ids = {entry.unique_id for entry in registry_entries}
+    unmatched_entries: list[RegistryEntry] = []
 
     for entry in registry_entries:
         new_unique_id = migration_map.get(entry.unique_id)
-        if new_unique_id is None or new_unique_id == entry.unique_id:
+        if new_unique_id == entry.unique_id:
+            continue
+
+        if new_unique_id is None:
+            unmatched_entries.append(entry)
             continue
 
         if new_unique_id not in created_unique_ids:
-            _LOGGER.debug(
-                "Removing stale Carrier entity %s during unique ID migration",
-                entry.entity_id,
-            )
-            ent_reg.async_remove(entry.entity_id)
-            existing_unique_ids.discard(entry.unique_id)
+            # Only remove stale entities when live discovery succeeded. If the
+            # Carrier API was unavailable, created_unique_ids is incomplete.
+            if allow_deletions:
+                _LOGGER.info(
+                    "Removing stale Carrier entity %s during unique ID migration",
+                    entry.entity_id,
+                )
+                ent_reg.async_remove(entry.entity_id)
+                existing_unique_ids.discard(entry.unique_id)
+            else:
+                unmatched_entries.append(entry)
             continue
 
         if new_unique_id in existing_unique_ids:
-            _LOGGER.debug(
-                "Removing duplicate legacy Carrier entity %s during unique ID migration",
-                entry.entity_id,
-            )
-            ent_reg.async_remove(entry.entity_id)
-            existing_unique_ids.discard(entry.unique_id)
+            # A current v2 entry already exists. Remove only the old duplicate,
+            # and only when live data proved the new entity should exist.
+            if allow_deletions:
+                _LOGGER.info(
+                    "Removing duplicate legacy Carrier entity %s during unique ID migration",
+                    entry.entity_id,
+                )
+                ent_reg.async_remove(entry.entity_id)
+                existing_unique_ids.discard(entry.unique_id)
+            else:
+                unmatched_entries.append(entry)
             continue
 
         ent_reg.async_update_entity(entry.entity_id, new_unique_id=new_unique_id)
         existing_unique_ids.discard(entry.unique_id)
         existing_unique_ids.add(new_unique_id)
 
+    return unmatched_entries
+
 
 async def _async_migrate_entity_registry_unique_ids(
     hass: HomeAssistant,
     config_entry: ConfigEntry,
-    migration_map: Mapping[str, str],
-    created_unique_ids: set[str],
-) -> None:
+    systems: Iterable[System],
+    allow_deletions: bool,
+) -> list[RegistryEntry]:
     """Migrate or remove entity registry entries for one Carrier config entry.
 
     Args:
         hass: Home Assistant instance.
         config_entry: Carrier config entry being migrated.
-        migration_map: Old-to-new unique ID migration map.
-        created_unique_ids: Unique IDs that version 2 setup will create.
+        systems: Carrier systems loaded from the account during migration.
+        allow_deletions: Whether stale entries may be removed.
 
     Returns:
-        None: Entity registry entries are updated in place.
+        list[RegistryEntry]: Registry entries that could not be matched and updated.
     """
     ent_reg = er.async_get(hass)
     registry_entries = list(ent_reg.entities.get_entries_for_config_entry_id(config_entry.entry_id))
-    _async_migrate_entity_unique_ids(
+    return _async_migrate_entity_unique_ids(
         ent_reg,
         registry_entries,
-        migration_map,
-        created_unique_ids,
+        _async_build_unique_id_migration_map(systems, registry_entries),
+        _async_build_created_unique_ids(systems),
+        allow_deletions,
     )
 
 
@@ -329,12 +567,14 @@ async def migrate_1_to_2(hass: HomeAssistant, config_entry: ConfigEntry) -> bool
         bool: True when entity registry migration and config entry version
             update succeed.
     """
+    systems_loaded = False
     try:
         api_connection = ApiConnectionGraphql(
             username=config_entry.data[CONF_USERNAME],
             password=config_entry.data[CONF_PASSWORD],
         )
         systems = await api_connection.load_data()
+        systems_loaded = True
     except (
         AuthError,
         BaseError,
@@ -343,15 +583,37 @@ async def migrate_1_to_2(hass: HomeAssistant, config_entry: ConfigEntry) -> bool
         OSError,
         TransportError,
     ):
-        _LOGGER.exception("Unable to load Carrier data for config entry migration")
-        return False
+        _LOGGER.warning(
+            "Unable to load Carrier data for config entry migration; "
+            "continuing without destructive entity registry cleanup",
+            exc_info=True,
+        )
+        systems = []
 
-    await _async_migrate_entity_registry_unique_ids(
+    if systems_loaded and not systems:
+        _LOGGER.warning(
+            "No Carrier systems loaded for config entry migration; "
+            "running non-destructive registry migration only"
+        )
+
+    # Missing live data still lets the migration attempt safe registry updates,
+    # but it must not delete stale entries or mark the config entry as migrated.
+    unmatched_entries = await _async_migrate_entity_registry_unique_ids(
         hass,
         config_entry,
-        _async_build_unique_id_migration_map(systems),
-        _async_build_created_unique_ids(systems),
+        systems,
+        bool(systems),
     )
-    hass.config_entries.async_update_entry(config_entry, version=CONFIG_FLOW_VERSION)
-    _LOGGER.info("Carrier config entry migration to version %s complete", CONFIG_FLOW_VERSION)
+    if unmatched_entries:
+        _LOGGER.info(
+            "Carrier config entry migration could not match and update entities: %s",
+            [entry.entity_id for entry in unmatched_entries],
+        )
+    if systems_loaded:
+        hass.config_entries.async_update_entry(config_entry, version=CONFIG_FLOW_VERSION)
+        _LOGGER.info("Carrier config entry migration to version %s complete", CONFIG_FLOW_VERSION)
+    else:
+        _LOGGER.warning(
+            "Carrier migration deferred due to data-load failure; will retry on next startup"
+        )
     return True
