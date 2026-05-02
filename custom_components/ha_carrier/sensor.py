@@ -785,13 +785,10 @@ class OutdoorUnitOperationalStatusSensor(CarrierSensor):
             self._attr_available = True
         status_raw = self.carrier_system.status.raw
         if status_raw is None:
-            self._attr_extra_state_attributes = {}
             return
         outdoor_unit_attributes = status_raw.get("odu")
         if isinstance(outdoor_unit_attributes, Mapping):
             self._attr_extra_state_attributes = dict(outdoor_unit_attributes)
-        else:
-            self._attr_extra_state_attributes = {}
 
 
 class IndoorUnitOperationalStatusSensor(CarrierSensor):
@@ -858,8 +855,12 @@ class OutdoorUnitVarSensor(CarrierSensor):
         if value is None or not isinstance(value, str):
             self._attr_available = False
             return
-        self._attr_available = True
+        if isinstance(value, str) and value == "off":
+            self._attr_native_value = 0.0
+            self._attr_available = True
+            return
         try:
             self._attr_native_value = float(value)
+            self._attr_available = True
         except ValueError:
-            self._attr_native_value = 0.0
+            self._attr_available = False

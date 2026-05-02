@@ -37,7 +37,7 @@ class CarrierEntity(CoordinatorEntity[CarrierDataUpdateCoordinator]):
         """
         super().__init__(coordinator, system_serial)
         self._system_serial = system_serial
-        self._attr_name = f"{entity_name}"
+        self._attr_name = entity_name
         unique_id_raw = f"{system_serial}_{unique_id_suffix or entity_name}"
         self._attr_unique_id = slugify(unique_id_raw)
         self._attr_device_info = DeviceInfo(
@@ -58,10 +58,11 @@ class CarrierEntity(CoordinatorEntity[CarrierDataUpdateCoordinator]):
         """Refresh entity attrs from coordinator data with shared error handling."""
         try:
             self._update_entity_attrs()
-        except ValueError as error:
+        except (ValueError, AttributeError, KeyError, TypeError) as error:
             _LOGGER.debug(
-                "Unable to update Carrier entity %s: %s",
+                "Unable to update Carrier entity %s. %s: %s",
                 self._attr_unique_id,
+                type(error).__name__,
                 error,
             )
             self._attr_available = False
