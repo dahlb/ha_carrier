@@ -28,6 +28,16 @@ FAN_TYPES: list[str] = [
     "fan_gas",
 ]
 
+ENERGY_METRIC_MAP: dict[str, str] = {
+    "cooling": "coolingKwh",
+    "hp_heat": "hPHeatKwh",
+    "fan": "fanKwh",
+    "electric_heat": "eHeatKwh",
+    "reheat": "reheatKwh",
+    "fan_gas": "fanGasKwh",
+    "loop_pump": "loopPumpKwh",
+}
+
 TIMESTAMP_TYPES: tuple[str, ...] = ("all_data", "websocket", "energy")
 
 

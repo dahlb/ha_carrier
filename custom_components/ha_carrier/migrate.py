@@ -16,19 +16,10 @@ from homeassistant.helpers.entity_registry import EntityRegistry, RegistryEntry
 from homeassistant.util import slugify
 
 from .const import CONFIG_FLOW_VERSION
-from .util import TIMESTAMP_TYPES, has_heat
+from .util import ENERGY_METRIC_MAP, TIMESTAMP_TYPES, has_heat
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 
-ENERGY_METRICS: tuple[str, ...] = (
-    "cooling",
-    "hp_heat",
-    "fan",
-    "electric_heat",
-    "reheat",
-    "fan_gas",
-    "loop_pump",
-)
 ALWAYS_CREATED_SYSTEM_ENTITY_SUFFIXES: tuple[str, ...] = (
     "Online",
     "Outdoor Temperature",
@@ -124,7 +115,7 @@ def _async_build_unique_id_migration_map(systems: Iterable[System]) -> dict[str,
             "Propane Consumption Year to Date",
         )
 
-        for metric in ENERGY_METRICS:
+        for metric in ENERGY_METRIC_MAP:
             metric_title = metric.replace("_", " ").title()
             _async_add_unique_id_migration(
                 migration_map,
@@ -209,7 +200,7 @@ def _async_build_created_unique_ids(systems: Iterable[System]) -> set[str]:
         if has_heat(carrier_system):
             created_unique_ids.add(_async_new_unique_id(system_serial, "Heat Source"))
 
-        for metric in ENERGY_METRICS:
+        for metric in ENERGY_METRIC_MAP:
             if getattr(carrier_system.energy, metric, False) is True:
                 metric_title = metric.replace("_", " ").title()
                 created_unique_ids.add(
