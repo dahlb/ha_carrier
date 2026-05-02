@@ -33,11 +33,10 @@ from .util import has_cool, has_fan, has_heat
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 
-SUPPORT_FLAGS: ClimateEntityFeature = (
+BASE_SUPPORT_FLAGS: ClimateEntityFeature = (
     ClimateEntityFeature.TURN_ON
     | ClimateEntityFeature.TURN_OFF
     | ClimateEntityFeature.TARGET_TEMPERATURE
-    | ClimateEntityFeature.TARGET_TEMPERATURE_RANGE
     | ClimateEntityFeature.PRESET_MODE
 )
 
@@ -59,7 +58,7 @@ async def async_setup_entry(
     coordinator = config_entry.runtime_data
     entities: list[Thermostat] = []
     for carrier_system in coordinator.systems:
-        support_flags = SUPPORT_FLAGS
+        support_flags = BASE_SUPPORT_FLAGS
         hvac_modes: list[HVACMode] = [
             HVACMode.OFF,
         ]
@@ -71,6 +70,7 @@ async def async_setup_entry(
         if has_heat(carrier_system):
             hvac_modes.append(HVACMode.HEAT)
         if has_cool(carrier_system) and has_heat(carrier_system):
+            support_flags |= ClimateEntityFeature.TARGET_TEMPERATURE_RANGE
             hvac_modes.append(HVACMode.HEAT_COOL)
         entities.extend(
             Thermostat(
