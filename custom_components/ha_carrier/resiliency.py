@@ -224,7 +224,7 @@ async def async_call_with_retry[T](
             result = await operation()
         except asyncio.CancelledError, KeyboardInterrupt, SystemExit:
             raise
-        except BaseException as error:
+        except Exception as error:
             if is_unauthorized_error(error):
                 if manage_unauthorized_state:
                     escalated = state.record_unauthorized(logger, operation_name)

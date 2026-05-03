@@ -54,7 +54,12 @@ async def _async_validate_credentials(username: str, password: str) -> dict[str,
         return {"base": ERROR_UNKNOWN}
     finally:
         if api_connection is not None:
-            await api_connection.cleanup()
+            try:
+                await api_connection.cleanup()
+            except Exception:
+                _LOGGER.exception(
+                    "Failed to clean up Carrier API connection after credential validation"
+                )
 
     return {}
 

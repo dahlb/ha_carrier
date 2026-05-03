@@ -61,6 +61,8 @@ async def _async_await_websocket_task(websocket_task: asyncio.Task[None]) -> Non
         pass
     except WEBSOCKET_RECOVERABLE_EXCEPTIONS:
         _LOGGER.exception("websocket task raised during cancellation")
+    except Exception:
+        _LOGGER.exception("websocket task raised unexpected exception during cancellation")
 
 
 async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntryCarrier) -> bool:
@@ -129,6 +131,10 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntryCarrie
                             _LOGGER,
                             "websocket listener",
                         )
+                        if not WEBSOCKET_RETRY_POLICY.retry_on_unauthorized:
+                            coordinator.data_flush = True
+                            await coordinator.async_request_refresh()
+                            raise
                     elif is_transient_transport_error(error):
                         coordinator.resiliency.record_transient(
                             _LOGGER,
@@ -181,10 +187,10 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntryCarrie
         SystemExit,
     ):
         raise
-    except ConfigEntryNotReady:
-        raise
-    except Exception:
-        _LOGGER.exception("Carrier setup failed unexpectedly")
+    except ConfigEntryNotReady as err:
+        if is_unauthorized_error(err):
+            _LOGGER.exception("Carrier unauthorized during setup (ConfigEntryNotReady)")
+            raise ConfigEntryAuthFailed("Carrier API rejected credentials during setup.") from err
         raise
 
     await hass.config_entries.async_forward_entry_setups(config_entry, PLATFORMS)

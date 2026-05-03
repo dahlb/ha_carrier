@@ -12,7 +12,6 @@ from gql.transport.exceptions import (
     TransportConnectionFailed,
     TransportError,
     TransportProtocolError,
-    TransportQueryError,
     TransportServerError,
 )
 from homeassistant.core import callback
@@ -121,7 +120,7 @@ TRANSIENT_TRANSPORT_EXCEPTIONS: tuple[type[BaseException], ...] = (
     OSError,
     TransportConnectionFailed,
     TransportProtocolError,
-    TransportQueryError,
+    TransportServerError,
 )
 """Transport-layer exceptions that should retry with backoff."""
 
