@@ -287,7 +287,7 @@ class GasMeasurementSensor(CarrierSensor):
             self._attr_available = False
             return
 
-        api_field = "gas"
+        api_field = "gasKwh"
         energy_periods = self.carrier_system.energy.raw.get("energyPeriods", [])
         value: float | None = None
         for period in energy_periods:
@@ -295,6 +295,11 @@ class GasMeasurementSensor(CarrierSensor):
                 value = period.get(api_field)
                 break
         if value is None:
+            _LOGGER.debug(
+                "%s missing in year1 energyPeriod for system %s; marking unavailable",
+                api_field,
+                self._system_serial,
+            )
             self._attr_available = False
             return
 
@@ -344,7 +349,7 @@ class PropaneMeasurementSensor(CarrierSensor):
             self._attr_available = False
             return
 
-        api_field = "gas"
+        api_field = "gasKwh"
         energy_periods = self.carrier_system.energy.raw.get("energyPeriods", [])
         value: float | None = None
         for period in energy_periods:
@@ -352,6 +357,11 @@ class PropaneMeasurementSensor(CarrierSensor):
                 value = period.get(api_field)
                 break
         if value is None:
+            _LOGGER.debug(
+                "%s missing in year1 energyPeriod for system %s; marking unavailable",
+                api_field,
+                self._system_serial,
+            )
             self._attr_available = False
             return
 
