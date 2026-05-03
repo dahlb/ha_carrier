@@ -13,6 +13,7 @@ import asyncio
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 import logging
+from math import ceil, log2
 import random
 
 from .exceptions import CarrierUnauthorizedError
@@ -165,7 +166,12 @@ def compute_backoff_delay(policy: RetryPolicy, attempt: int) -> float:
     Returns:
         float: Non-negative delay in seconds.
     """
-    raw = policy.base_delay * (2 ** max(attempt, 0))
+    if policy.base_delay > 0 and policy.max_delay > policy.base_delay:
+        max_exponent = ceil(log2(policy.max_delay / policy.base_delay))
+    else:
+        max_exponent = 0
+    exponent = min(max(attempt, 0), max_exponent)
+    raw = policy.base_delay * (2**exponent)
     capped = min(raw, policy.max_delay)
     if policy.jitter_fraction <= 0:
         return capped

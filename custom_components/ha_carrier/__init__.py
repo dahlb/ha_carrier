@@ -127,14 +127,10 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntryCarrie
                     raise
                 except WEBSOCKET_RECOVERABLE_EXCEPTIONS as error:
                     if is_unauthorized_error(error):
-                        coordinator.resiliency.record_unauthorized(
-                            _LOGGER,
-                            "websocket listener",
+                        _LOGGER.info(
+                            "websocket listener received unauthorized error; "
+                            "triggering coordinator refresh and retrying"
                         )
-                        if not WEBSOCKET_RETRY_POLICY.retry_on_unauthorized:
-                            coordinator.data_flush = True
-                            await coordinator.async_request_refresh()
-                            raise
                     elif is_transient_transport_error(error):
                         coordinator.resiliency.record_transient(
                             _LOGGER,

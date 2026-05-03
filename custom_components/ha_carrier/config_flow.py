@@ -3,7 +3,9 @@
 import logging
 from typing import Any
 
-from carrier_api import ApiConnectionGraphql
+from aiohttp import ClientError
+from carrier_api import ApiConnectionGraphql, AuthError, BaseError
+from gql.transport.exceptions import TransportError
 from homeassistant import config_entries
 from homeassistant.config_entries import ConfigFlowResult
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
@@ -21,7 +23,7 @@ from .const import (
     ERROR_CANNOT_CONNECT,
     ERROR_UNKNOWN,
 )
-from .util import RECOVERABLE_REFRESH_EXCEPTIONS, is_unauthorized_error
+from .util import is_transient_transport_error, is_unauthorized_error
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 
@@ -42,10 +44,10 @@ async def _async_validate_credentials(username: str, password: str) -> dict[str,
         await api_connection.load_data()
     except ConfigEntryAuthFailed:
         return {"base": ERROR_AUTH}
-    except Exception as error:
+    except (AuthError, BaseError, ClientError, TransportError, OSError, TimeoutError) as error:
         if is_unauthorized_error(error):
             return {"base": ERROR_AUTH}
-        if isinstance(error, RECOVERABLE_REFRESH_EXCEPTIONS):
+        if is_transient_transport_error(error):
             _LOGGER.debug(
                 "Transient transport error validating Carrier credentials", exc_info=error
             )
@@ -56,7 +58,7 @@ async def _async_validate_credentials(username: str, password: str) -> dict[str,
         if api_connection is not None:
             try:
                 await api_connection.cleanup()
-            except Exception:
+            except AuthError, BaseError, ClientError, TransportError, OSError, TimeoutError:
                 _LOGGER.exception(
                     "Failed to clean up Carrier API connection after credential validation"
                 )

@@ -188,18 +188,30 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator[list[dict[str, Any]]]):
         if not self.systems:
             self.systems = fresh_systems
         else:
+            existing_by_serial = {s.profile.serial: s for s in self.systems}
+            fresh_serials = {s.profile.serial for s in fresh_systems}
+
             for fresh_system in fresh_systems:
-                related_stale_system = self.system(fresh_system.profile.serial)
-                if related_stale_system is None:
-                    _LOGGER.error(
-                        "unable to find matching system, serial %s",
+                existing = existing_by_serial.get(fresh_system.profile.serial)
+                if existing is None:
+                    _LOGGER.info(
+                        "new system discovered, adding serial %s",
                         fresh_system.profile.serial,
                     )
+                    self.systems.append(fresh_system)
                 else:
-                    related_stale_system.profile = fresh_system.profile
-                    related_stale_system.status = fresh_system.status
-                    related_stale_system.config = fresh_system.config
-                    related_stale_system.energy = fresh_system.energy
+                    existing.profile = fresh_system.profile
+                    existing.status = fresh_system.status
+                    existing.config = fresh_system.config
+                    existing.energy = fresh_system.energy
+
+            stale = [s for s in self.systems if s.profile.serial not in fresh_serials]
+            for stale_system in stale:
+                _LOGGER.info(
+                    "system no longer present in Carrier account, removing serial %s",
+                    stale_system.profile.serial,
+                )
+                self.systems.remove(stale_system)
         if not self._websocket_initialized:
             self.websocket_data_updater = WebsocketDataUpdater(systems=self.systems)
             self.api_connection.api_websocket.callback_add(
@@ -314,7 +326,8 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator[list[dict[str, Any]]]):
                 self.resiliency.unauthorized_escalated_logged,
             )
 
-        if self.resiliency.suppress_recording:  # pragma: no cover - defensive logging only
+        prev_suppress = self.resiliency.suppress_recording
+        if prev_suppress:  # pragma: no cover - defensive logging only
             _LOGGER.debug(
                 "refresh after failed %s write is already suppressing resiliency recording",
                 operation_name,
@@ -343,7 +356,7 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator[list[dict[str, Any]]]):
                 refresh_error,
             )
         finally:
-            self.resiliency.suppress_recording = False
+            self.resiliency.suppress_recording = prev_suppress
 
     async def async_perform_api_call(
         self,
