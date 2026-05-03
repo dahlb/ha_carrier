@@ -6,8 +6,18 @@ from collections.abc import Iterable, Mapping
 import logging
 from typing import Any, overload
 
-from carrier_api import System
+from aiohttp import ClientError
+from carrier_api import AuthError, BaseError, System
+from gql.transport.exceptions import (
+    TransportConnectionFailed,
+    TransportError,
+    TransportProtocolError,
+    TransportQueryError,
+    TransportServerError,
+)
 from homeassistant.core import callback
+
+from .exceptions import CarrierUnauthorizedError
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 REDACTED = "**REDACTED**"
@@ -103,3 +113,80 @@ def async_redact_data(data: Any, to_redact: Iterable[Any]) -> Any:
             redacted[key] = [async_redact_data(item, to_redact) for item in value]
 
     return redacted
+
+
+TRANSIENT_TRANSPORT_EXCEPTIONS: tuple[type[BaseException], ...] = (
+    ClientError,
+    TimeoutError,
+    OSError,
+    TransportConnectionFailed,
+    TransportProtocolError,
+    TransportQueryError,
+)
+"""Transport-layer exceptions that should retry with backoff."""
+
+RECOVERABLE_REFRESH_EXCEPTIONS: tuple[type[BaseException], ...] = (
+    *TRANSIENT_TRANSPORT_EXCEPTIONS,
+    TransportError,
+    AuthError,
+    BaseError,
+)
+"""Exceptions a coordinator refresh may recover from on a later interval."""
+
+WEBSOCKET_RECOVERABLE_EXCEPTIONS: tuple[type[BaseException], ...] = (
+    CarrierUnauthorizedError,
+    *TRANSIENT_TRANSPORT_EXCEPTIONS,
+    TransportError,
+)
+"""Exceptions the websocket reconnect loop should treat as recoverable."""
+
+
+def _iter_exception_chain(error: BaseException) -> Iterable[BaseException]:
+    """Yield the exception followed by its __cause__/__context__ chain.
+
+    Args:
+        error: Exception to walk.
+
+    Yields:
+        BaseException: Each exception in the chain, deduplicated.
+    """
+    seen: set[int] = set()
+    current: BaseException | None = error
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        yield current
+        current = current.__cause__ or current.__context__
+
+
+def is_unauthorized_error(error: BaseException) -> bool:
+    """Return True if any exception in the chain represents a 401-style failure.
+
+    Args:
+        error: Exception raised by the Carrier client or transport.
+
+    Returns:
+        bool: True when the error or one of its causes is a 401.
+    """
+    for current in _iter_exception_chain(error):
+        if isinstance(current, CarrierUnauthorizedError | AuthError):
+            return True
+        if isinstance(current, TransportServerError):
+            status_code = getattr(current, "code", None) or getattr(current, "status", None)
+            if status_code == 401:
+                return True
+    return False
+
+
+def is_transient_transport_error(error: BaseException) -> bool:
+    """Return True if any exception in the chain is a transient transport error.
+
+    Args:
+        error: Exception raised by the Carrier client or transport.
+
+    Returns:
+        bool: True when the error or one of its causes is transient.
+    """
+    return any(
+        isinstance(current, TRANSIENT_TRANSPORT_EXCEPTIONS)
+        for current in _iter_exception_chain(error)
+    )
