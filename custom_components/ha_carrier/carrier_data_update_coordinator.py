@@ -36,7 +36,7 @@ from .const import (
 )
 from .exceptions import CarrierUnauthorizedError
 from .resiliency import ResiliencyState, RetryPolicy, async_call_with_retry
-from .util import async_redact_data, is_unauthorized_error
+from .util import RECOVERABLE_REFRESH_EXCEPTIONS, async_redact_data, is_unauthorized_error
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 
@@ -141,7 +141,22 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator[list[dict[str, Any]]]):
             SystemExit,
         ):
             raise
-        except Exception as error:
+        except TransportServerError as error:
+            self.data_flush = True
+            self.update_interval = timedelta(minutes=1)
+            if is_unauthorized_error(error):
+                _LOGGER.info(
+                    "Carrier %s returned unauthorized without crossing the reauth threshold.",
+                    refresh_context,
+                )
+                raise UpdateFailed(
+                    f"Carrier temporarily rejected {refresh_context}; will retry."
+                ) from error
+            _LOGGER.exception("Carrier %s failed", refresh_context, exc_info=error)
+            raise UpdateFailed(
+                f"Unexpected error during Carrier {refresh_context}: {error}"
+            ) from error
+        except RECOVERABLE_REFRESH_EXCEPTIONS as error:
             self.data_flush = True
             self.update_interval = timedelta(minutes=1)
             _LOGGER.exception("Carrier %s failed", refresh_context, exc_info=error)
@@ -201,8 +216,9 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator[list[dict[str, Any]]]):
         """Perform an energy-only refresh through the retry helper.
 
         A 401 from any one system is treated like the previous behavior:
-        preserve last known energy data and bump the unauthorized counter once
-        for the cycle. The helper handles retry + classification per system.
+        preserve last known energy data and bump the shared unauthorized counter
+        once for the whole cycle. The helper still owns transient retry /
+        backoff behavior per system.
 
         Raises:
             CarrierUnauthorizedError: When 401s escalate beyond the threshold.
@@ -217,19 +233,24 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator[list[dict[str, Any]]]):
                     state=self.resiliency,
                     operation_name="energy refresh",
                     logger=_LOGGER,
+                    manage_unauthorized_state=False,
+                    reset_unauthorized_on_success=False,
                 )
-            except CarrierUnauthorizedError:
+            except Exception as error:
+                if not is_unauthorized_error(error):
+                    raise
                 found_unauthorized = True
                 continue
             energy = Energy(raw=energy_response["infinityEnergy"])
             system.energy = energy
         if found_unauthorized:
             self.update_interval = timedelta(minutes=1)
-            if self.resiliency.consecutive_unauthorized >= self.resiliency.unauthorized_threshold:
+            if self.resiliency.record_unauthorized(_LOGGER, "energy refresh cycle"):
                 raise CarrierUnauthorizedError(
                     "Carrier API repeatedly rejected energy refresh requests."
                 )
         else:
+            self.resiliency.reset_unauthorized()
             self.timestamp_energy = datetime.now(UTC)
             self.update_interval = timedelta(minutes=DEFAULT_UPDATE_INTERVAL_MINUTES)
 
@@ -319,6 +340,8 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator[list[dict[str, Any]]]):
             # A write may have partially applied server-side before the transport
             # failed, so force a refresh before reporting or re-raising upstream.
             await self.async_refresh()
+        except ConfigEntryAuthFailed:
+            raise
         except (CarrierUnauthorizedError, HomeAssistantError, UpdateFailed) as refresh_error:
             # pragma: no cover - defensive logging only
             _LOGGER.debug(

@@ -30,8 +30,9 @@ class RetryPolicy:
         max_delay: Maximum backoff delay in seconds (after exponentiation).
         jitter_fraction: Symmetric jitter as a fraction of the computed delay.
         retry_on_unauthorized: When True, a 401 inside the threshold is retried
-            once with backoff; when False, a 401 is raised as
-            CarrierUnauthorizedError so the caller can escalate.
+            in-place with backoff; when False, non-escalated unauthorized
+            errors are re-raised to the caller and only threshold escalation
+            raises CarrierUnauthorizedError.
         retry_on_transient: When True, transient transport errors are retried.
     """
 
@@ -66,13 +67,21 @@ class ResiliencyState:
 
     def reset(self) -> None:
         """Zero counters and log flags after any successful operation."""
+        self.reset_unauthorized()
+        self.reset_transient()
+        # suppress_recording is a stable config flag, not a counter — intentionally not reset here
+
+    def reset_unauthorized(self) -> None:
+        """Clear only unauthorized counters and related log flags."""
         self.consecutive_unauthorized = 0
-        self.consecutive_transient = 0
         self.unauthorized_outage_logged = False
         self.unauthorized_escalated_logged = False
+
+    def reset_transient(self) -> None:
+        """Clear only transient counters and related log flags."""
+        self.consecutive_transient = 0
         self.transient_outage_logged = False
         self.transient_escalated_logged = False
-        # suppress_recording is a stable config flag, not a counter — intentionally not reset here
 
     def record_unauthorized(self, logger: logging.Logger, operation_name: str) -> bool:
         """Record a 401 response and decide whether escalation has occurred.
@@ -171,12 +180,17 @@ async def async_call_with_retry[T](
     state: ResiliencyState,
     operation_name: str,
     logger: logging.Logger,
+    manage_unauthorized_state: bool = True,
+    reset_unauthorized_on_success: bool = True,
+    reset_transient_on_success: bool = True,
 ) -> T:
     """Run `operation` with classification-driven retry and shared escalation state.
 
-    On success: state.reset() is called and the result is returned.
-    On unauthorized: state.record_unauthorized() is called; if escalated or the
-    policy disables unauthorized retry, raises CarrierUnauthorizedError.
+    On success: the selected portions of `state` are reset and the result is returned.
+    On unauthorized: state.record_unauthorized() is called when enabled; if the
+    unauthorized count escalates, raises CarrierUnauthorizedError. Otherwise,
+    unauthorized retry follows the policy and a non-escalated 401 re-raises the
+    original exception.
     On transient transport error: state.record_transient() is called; on
     escalation the original error is raised; otherwise the helper sleeps a
     computed backoff and retries until attempts are exhausted.
@@ -189,13 +203,18 @@ async def async_call_with_retry[T](
         state: Coordinator-shared escalation counters.
         operation_name: Friendly name used in logs and escalation messages.
         logger: Logger used for outage / escalation messages.
+        manage_unauthorized_state: Whether this call should increment / inspect
+            shared unauthorized escalation state.
+        reset_unauthorized_on_success: Whether a successful call should clear
+            shared unauthorized tracking.
+        reset_transient_on_success: Whether a successful call should clear
+            shared transient tracking.
 
     Returns:
         T: The result returned by `operation` on success.
 
     Raises:
-        CarrierUnauthorizedError: When 401s escalate or the policy disables
-            unauthorized retry.
+        CarrierUnauthorizedError: When 401s escalate beyond the shared threshold.
         BaseException: Any non-retryable error from `operation`, or the last
             transient error after attempts are exhausted or escalated.
     """
@@ -207,18 +226,21 @@ async def async_call_with_retry[T](
             raise
         except BaseException as error:
             if is_unauthorized_error(error):
-                escalated = state.record_unauthorized(logger, operation_name)
-                if escalated or not policy.retry_on_unauthorized:
+                if manage_unauthorized_state:
+                    escalated = state.record_unauthorized(logger, operation_name)
+                else:
+                    escalated = False
+                if escalated:
                     raise CarrierUnauthorizedError(
                         f"Carrier API rejected {operation_name} as unauthorized."
                     ) from error
-                if policy.max_attempts is not None and attempt + 1 >= policy.max_attempts:
-                    raise CarrierUnauthorizedError(
-                        f"Carrier API rejected {operation_name} as unauthorized after retry."
-                    ) from error
-                await asyncio.sleep(compute_backoff_delay(policy, attempt))
-                attempt += 1
-                continue
+                if policy.retry_on_unauthorized:
+                    if policy.max_attempts is not None and attempt + 1 >= policy.max_attempts:
+                        raise
+                    await asyncio.sleep(compute_backoff_delay(policy, attempt))
+                    attempt += 1
+                    continue
+                raise
             if policy.retry_on_transient and is_transient_transport_error(error):
                 escalated = state.record_transient(logger, operation_name, error)
                 if escalated:
@@ -230,5 +252,11 @@ async def async_call_with_retry[T](
                 continue
             raise
         else:
-            state.reset()
+            if reset_unauthorized_on_success and reset_transient_on_success:
+                state.reset()
+            else:
+                if reset_unauthorized_on_success:
+                    state.reset_unauthorized()
+                if reset_transient_on_success:
+                    state.reset_transient()
             return result
