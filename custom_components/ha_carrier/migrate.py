@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
 import logging
+from typing import Any
 
 from aiohttp import ClientError
 from carrier_api import ApiConnectionGraphql, AuthError, BaseError, System
@@ -610,10 +611,126 @@ async def migrate_1_to_2(hass: HomeAssistant, config_entry: ConfigEntry) -> bool
             [entry.entity_id for entry in unmatched_entries],
         )
     if systems_loaded:
-        hass.config_entries.async_update_entry(config_entry, version=CONFIG_FLOW_VERSION)
-        _LOGGER.info("Carrier config entry migration to version %s complete", CONFIG_FLOW_VERSION)
+        hass.config_entries.async_update_entry(config_entry, version=2)
+        _LOGGER.info("Carrier config entry migration to version 2 complete")
     else:
         _LOGGER.warning(
             "Carrier migration deferred due to data-load failure; will retry on next startup"
         )
+    return True
+
+
+async def migrate_2_to_3(hass: HomeAssistant, config_entry: ConfigEntry) -> bool:
+    """Migrate a Carrier config entry from version 2 to version 3.
+
+    Version 3 replaces username-based config-entry unique IDs with Carrier's
+    stable account ``identityId``. Entries that are already not keyed by their
+    saved username are treated as already migrated and only receive the version
+    bump.
+
+    Args:
+        hass: Home Assistant instance.
+        config_entry: Version 2 Carrier config entry being migrated.
+
+    Returns:
+        bool: True when the migration completed or was safely deferred.
+    """
+    username: str = config_entry.data[CONF_USERNAME]
+    if config_entry.unique_id is not None and config_entry.unique_id != username:
+        hass.config_entries.async_update_entry(
+            config_entry,
+            version=CONFIG_FLOW_VERSION,
+        )
+        _LOGGER.info("Carrier config entry migration to version %s complete", CONFIG_FLOW_VERSION)
+        return True
+
+    api_connection: ApiConnectionGraphql | None = None
+    try:
+        api_connection = ApiConnectionGraphql(
+            username=username,
+            password=config_entry.data[CONF_PASSWORD],
+        )
+        await api_connection.load_data()
+        user_info: dict[str, Any] = await api_connection.get_user_info()
+    except (
+        AuthError,
+        BaseError,
+        ClientError,
+        TimeoutError,
+        OSError,
+        TransportError,
+    ) as error:
+        _LOGGER.warning(
+            "Unable to load Carrier user identity for config entry migration; "
+            "will retry on next startup. %s: %s",
+            type(error).__name__,
+            error,
+        )
+        return True
+    finally:
+        if api_connection is not None:
+            try:
+                await api_connection.cleanup()
+            except (
+                AuthError,
+                BaseError,
+                ClientError,
+                TimeoutError,
+                OSError,
+                TransportError,
+            ):
+                _LOGGER.exception(
+                    "Failed to clean up Carrier API connection after config entry migration."
+                )
+    if not isinstance(user_info, dict) or not user_info:
+        _LOGGER.warning(
+            "Carrier API did not return user info for config entry migration; "
+            "will retry on next startup"
+        )
+        return True
+    user_details = user_info.get("user")
+    if not isinstance(user_details, dict) or not user_details:
+        _LOGGER.warning(
+            "Carrier API did not return a user section for config entry migration; "
+            "will retry on next startup"
+        )
+        return True
+    identity_id = user_details.get("identityId")
+    if not isinstance(identity_id, str) or not identity_id:
+        _LOGGER.warning(
+            "Carrier API did not return an identity ID for config entry migration; "
+            "will retry on next startup"
+        )
+        return True
+
+    conflicting_entry = next(
+        (
+            entry
+            for entry in hass.config_entries.async_entries(config_entry.domain)
+            if entry.entry_id != config_entry.entry_id and entry.unique_id == identity_id
+        ),
+        None,
+    )
+    if conflicting_entry is not None:
+        _LOGGER.error(
+            "Unable to migrate Carrier config entry %s to identity ID %s because entry %s "
+            "already uses that unique ID",
+            config_entry.entry_id,
+            identity_id,
+            conflicting_entry.entry_id,
+        )
+        return False
+
+    old_unique_id = config_entry.unique_id
+    hass.config_entries.async_update_entry(
+        config_entry,
+        unique_id=identity_id,
+        version=CONFIG_FLOW_VERSION,
+    )
+    _LOGGER.info(
+        "Migrated Carrier config entry %s unique ID from %s to Carrier identity ID %s",
+        config_entry.entry_id,
+        old_unique_id,
+        identity_id,
+    )
     return True
