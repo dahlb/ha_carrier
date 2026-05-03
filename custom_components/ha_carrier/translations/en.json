@@ -11,8 +11,17 @@
       },
       "reauth_confirm": {
         "title": "Carrier Auth",
-        "description": "Re-enter your Carrier password for {username}.",
+        "description": "Update the Carrier username or password for {username}. Leave the password blank to keep the saved password.",
         "data": {
+          "username": "Username",
+          "password": "Password"
+        }
+      },
+      "reconfigure": {
+        "title": "Carrier Auth",
+        "description": "Update the saved Carrier credentials for {username}. Leave the password blank to keep the saved password.",
+        "data": {
+          "username": "Username",
           "password": "Password"
         }
       }
@@ -24,7 +33,7 @@
     },
     "abort": {
       "reauth_successful": "Re-authentication was successful.",
-      "reauth_missing_username": "Unable to start re-authentication because the existing Carrier username is missing.",
+      "reconfigure_successful": "Reconfiguration was successful.",
       "already_configured": "This Carrier account is already configured."
     }
   },
