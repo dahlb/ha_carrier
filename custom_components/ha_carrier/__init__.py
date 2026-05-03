@@ -14,12 +14,14 @@ from homeassistant.helpers import config_validation as cv
 
 from .carrier_data_update_coordinator import CarrierDataUpdateCoordinator, CarrierUnauthorizedError
 from .const import (
+    CONFIG_FLOW_VERSION,
     DOMAIN,
     PLATFORMS,
     TO_REDACT,
     WEBSOCKET_RETRY_INITIAL_DELAY_SECONDS,
     WEBSOCKET_RETRY_MAX_DELAY_SECONDS,
 )
+from .migrate import migrate_1_to_2
 from .util import async_redact_data
 
 type ConfigEntryCarrier = ConfigEntry[CarrierDataUpdateCoordinator]
@@ -180,6 +182,35 @@ async def async_update_options(hass: HomeAssistant, config_entry: ConfigEntryCar
         None: This coroutine schedules and awaits the entry reload.
     """
     await hass.config_entries.async_reload(config_entry.entry_id)
+
+
+async def async_migrate_entry(hass: HomeAssistant, config_entry: ConfigEntryCarrier) -> bool:
+    """Migrate Carrier config entries between config flow versions.
+
+    Args:
+        hass: Home Assistant instance.
+        config_entry: Configuration entry being migrated.
+
+    Returns:
+        bool: True when migration succeeds.
+    """
+    _LOGGER.debug("Migrating Carrier config entry from version %s", config_entry.version)
+
+    if config_entry.version == CONFIG_FLOW_VERSION:
+        return True
+
+    if config_entry.version != 1:
+        _LOGGER.error(
+            "Unable to migrate Carrier config entry from version %s", config_entry.version
+        )
+        return False
+
+    if config_entry.version == 1:
+        return await migrate_1_to_2(hass=hass, config_entry=config_entry)
+
+    if config_entry.version == 2:
+        return True
+    return False
 
 
 async def async_unload_entry(hass: HomeAssistant, config_entry: ConfigEntryCarrier) -> bool:

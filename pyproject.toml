@@ -64,6 +64,7 @@ ignore = [
     "ANN401",   # any-type
     "ARG",      # flake8-unused-arguments
     "EM",       # flake8-errmsg
+    "ERA",      # eradicate
     "FBT",      # flake8-boolean-trap
     "PLC1901",  # {existing} can be simplified to {replacement} as an empty string is falsey; too many false positives
     "PLR0904",  # Too many public methods

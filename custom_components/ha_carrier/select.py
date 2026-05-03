@@ -6,14 +6,16 @@ from functools import partial
 import logging
 
 from carrier_api.const import HeatSourceTypes
-from homeassistant.components.select import SelectEntity, SelectEntityDescription
+from homeassistant.components.select import SelectEntity
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import ConfigEntryCarrier
 from .carrier_data_update_coordinator import CarrierDataUpdateCoordinator
 from .carrier_entity import CarrierEntity
 from .const import HEAT_SOURCE_IDU_ONLY_LABEL, HEAT_SOURCE_ODU_ONLY_LABEL, HEAT_SOURCE_SYSTEM_LABEL
+from .util import has_heat
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 
@@ -29,75 +31,107 @@ async def async_setup_entry(
         hass: Home Assistant instance.
         config_entry: Carrier integration config entry.
         async_add_entities: Callback used to register entity instances.
-
-    Returns:
-        None: Entities are registered through the callback.
     """
-    updater = config_entry.runtime_data
-    entities = []
-    for system in updater.systems:
-        entities.extend(
-            [
-                HeatSourceSelect(updater, system.profile.serial),
-            ]
-        )
+    coordinator = config_entry.runtime_data
+    entities: list[SelectEntity] = [
+        HeatSourceSelect(coordinator=coordinator, system_serial=system.profile.serial)
+        for system in coordinator.systems
+        if has_heat(system)
+    ]
     async_add_entities(entities)
 
 
-class HeatSourceSelect(CarrierEntity, SelectEntity):
+class CarrierSelect(CarrierEntity, SelectEntity):
+    """Shared Carrier base class for select entities."""
+
+    def __init__(
+        self,
+        entity_name: str,
+        coordinator: CarrierDataUpdateCoordinator,
+        system_serial: str | None = None,
+        unique_id_suffix: str | None = None,
+    ) -> None:
+        """Initialize a Carrier select entity.
+
+        Args:
+            entity_name: Friendly suffix used in entity name and unique ID.
+            coordinator: Coordinator that provides Carrier data.
+            system_serial: Carrier system serial for this entity.
+            unique_id_suffix: Optional stable suffix used for the entity unique ID.
+
+        Raises:
+            ValueError: Raised when no Carrier system serial is provided.
+        """
+        if system_serial is None:
+            raise ValueError("Carrier select system serial is required")
+        super().__init__(
+            entity_name=entity_name,
+            coordinator=coordinator,
+            system_serial=system_serial,
+            unique_id_suffix=unique_id_suffix,
+        )
+        self._sync_entity_attrs()
+
+    def _update_entity_attrs(self) -> None:
+        """Update select attrs from coordinator data."""
+        self._attr_available = False
+
+
+class HeatSourceSelect(CarrierSelect):
     """Select entity that controls which unit provides primary heating."""
 
     _attr_icon = "mdi:heat-pump"
+    _attr_options: list[str]
 
-    def __init__(self, updater: CarrierDataUpdateCoordinator, system_serial: str) -> None:
+    def __init__(self, coordinator: CarrierDataUpdateCoordinator, system_serial: str) -> None:
         """Initialize selectable heat source options for one system.
 
         Args:
-            updater: Coordinator that provides Carrier system state.
+            coordinator: Coordinator that provides Carrier system state.
             system_serial: Unique Carrier system serial number.
         """
-        super().__init__("Heat Source", updater, system_serial)
+        super().__init__("Heat Source", coordinator, system_serial)
         if self.carrier_system.profile.outdoor_unit_type in [
             "hp2stg",
             "varcaphp",
             "multistghp",
             "GeoHP",
         ]:
-            options = [
-                self.idu_only_label(),
+            self._attr_options = [
+                self._idu_only_label(self.carrier_system.profile.indoor_unit_source),
                 HEAT_SOURCE_ODU_ONLY_LABEL,
                 HEAT_SOURCE_SYSTEM_LABEL,
             ]
         else:
-            options = [self.idu_only_label(), HEAT_SOURCE_SYSTEM_LABEL]
-        self.entity_description = SelectEntityDescription(
-            key=f"#{self.carrier_system.profile.serial}-heat_source", options=options
-        )
+            self._attr_options = [
+                self._idu_only_label(self.carrier_system.profile.indoor_unit_source),
+                HEAT_SOURCE_SYSTEM_LABEL,
+            ]
 
-    def idu_only_label(self) -> str:
+    @staticmethod
+    def _idu_only_label(indoor_unit_source: str | None) -> str:
         """Return the label for indoor-unit-only heat source mode.
 
+        Args:
+            indoor_unit_source: Fuel source reported by the indoor unit.
+
         Returns:
-            str: Human-readable option label with the indoor fuel source when available.
+            str: Human-readable option label.
         """
-        if self.carrier_system.profile.indoor_unit_source is None:
+        if indoor_unit_source is None:
             return HEAT_SOURCE_IDU_ONLY_LABEL
-        return HEAT_SOURCE_IDU_ONLY_LABEL.replace(
-            "gas", self.carrier_system.profile.indoor_unit_source
-        )
+        return HEAT_SOURCE_IDU_ONLY_LABEL.replace("gas", indoor_unit_source)
 
-    @property
-    def current_option(self) -> str | None:
-        """Return the currently selected heat source option label.
-
-        Returns:
-            str | None: Matching option label for the active Carrier heat source.
-        """
-        return {
-            HeatSourceTypes.IDU_ONLY.value: self.idu_only_label(),
+    def _update_entity_attrs(self) -> None:
+        """Update heat source attrs from coordinator data."""
+        self._attr_current_option = {
+            HeatSourceTypes.IDU_ONLY.value: self._idu_only_label(
+                self.carrier_system.profile.indoor_unit_source
+            ),
             HeatSourceTypes.ODU_ONLY.value: HEAT_SOURCE_ODU_ONLY_LABEL,
             HeatSourceTypes.SYSTEM.value: HEAT_SOURCE_SYSTEM_LABEL,
         }.get(self.carrier_system.config.heat_source)
+        self._attr_available = self._attr_current_option is not None
 
     async def async_select_option(self, option: str) -> None:
         """Apply a new heat source option to the Carrier system.
@@ -105,14 +139,21 @@ class HeatSourceSelect(CarrierEntity, SelectEntity):
         Args:
             option: Selected Home Assistant option label.
 
-        Returns:
-            None: The state is updated in-place and written to Home Assistant.
+        Raises:
+            HomeAssistantError: Raised when the selected option is not a known heat source label.
         """
-        new_heat_source: HeatSourceTypes = {
-            self.idu_only_label(): HeatSourceTypes.IDU_ONLY,
+        heat_source_map: dict[str, HeatSourceTypes] = {
+            self._idu_only_label(
+                self.carrier_system.profile.indoor_unit_source
+            ): HeatSourceTypes.IDU_ONLY,
             HEAT_SOURCE_ODU_ONLY_LABEL: HeatSourceTypes.ODU_ONLY,
             HEAT_SOURCE_SYSTEM_LABEL: HeatSourceTypes.SYSTEM,
-        }.get(option, HeatSourceTypes.SYSTEM)
+        }
+        if option not in heat_source_map:
+            _LOGGER.error("Unsupported heat source option selected: %s", option)
+            raise HomeAssistantError(f"Unsupported heat source option: {option}")
+
+        new_heat_source = heat_source_map[option]
         _LOGGER.debug("Selected heat source: %s", new_heat_source)
         await self.coordinator.async_perform_api_call(
             "set heat source",
@@ -123,13 +164,4 @@ class HeatSourceSelect(CarrierEntity, SelectEntity):
             ),
         )
         self.carrier_system.config.heat_source = new_heat_source.value
-        self.async_write_ha_state()
-
-    @property
-    def available(self) -> bool:
-        """Indicate whether the select can present a valid option.
-
-        Returns:
-            bool: True when a current option can be resolved.
-        """
-        return self.current_option is not None
+        self._write_local_state()
