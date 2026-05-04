@@ -13,14 +13,16 @@ _LOGGER: logging.Logger = logging.getLogger(__name__)
 REDACTED = "**REDACTED**"
 
 HEAT_TYPES: list[str] = [
-    "hp_heat",
     "electric_heat",
-    "reheat",
+    "gas",
+    "hp_heat",
     "loop_pump",
+    "reheat",
 ]
 
 COOL_TYPES: list[str] = [
     "cooling",
+    "loop_pump",
 ]
 
 FAN_TYPES: list[str] = [
@@ -30,12 +32,13 @@ FAN_TYPES: list[str] = [
 
 ENERGY_METRIC_MAP: dict[str, str] = {
     "cooling": "coolingKwh",
-    "hp_heat": "hPHeatKwh",
-    "fan": "fanKwh",
     "electric_heat": "eHeatKwh",
-    "reheat": "reheatKwh",
     "fan_gas": "fanGasKwh",
+    "fan": "fanKwh",
+    "gas": "gasKwh",
+    "hp_heat": "hPHeatKwh",
     "loop_pump": "loopPumpKwh",
+    "reheat": "reheatKwh",
 }
 
 TIMESTAMP_TYPES: tuple[str, ...] = ("all_data", "websocket", "energy")
