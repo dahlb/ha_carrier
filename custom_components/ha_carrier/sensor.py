@@ -553,7 +553,6 @@ class OutdoorTemperatureSensor(CarrierSensor):
 
     _attr_device_class = SensorDeviceClass.TEMPERATURE
     _attr_state_class = SensorStateClass.MEASUREMENT
-    _attr_native_unit_of_measurement = UnitOfTemperature.FAHRENHEIT
 
     def __init__(self, coordinator: CarrierDataUpdateCoordinator, system_serial: str) -> None:
         """Initialize an outdoor temperature sensor.
