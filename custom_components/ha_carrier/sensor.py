@@ -553,6 +553,9 @@ class OutdoorTemperatureSensor(CarrierSensor):
 
     _attr_device_class = SensorDeviceClass.TEMPERATURE
     _attr_state_class = SensorStateClass.MEASUREMENT
+    # Outdoor temperature seems to always send as Fahrenheit regardless
+    # of what `temperature_unit` is set to
+    _attr_native_unit_of_measurement = UnitOfTemperature.FAHRENHEIT
 
     def __init__(self, coordinator: CarrierDataUpdateCoordinator, system_serial: str) -> None:
         """Initialize an outdoor temperature sensor.
@@ -569,10 +572,6 @@ class OutdoorTemperatureSensor(CarrierSensor):
 
     def _update_entity_attrs(self) -> None:
         """Update outdoor temperature attrs from coordinator data."""
-        if self.carrier_system.status.temperature_unit == TemperatureUnits.FAHRENHEIT:
-            self._attr_native_unit_of_measurement = UnitOfTemperature.FAHRENHEIT
-        else:
-            self._attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
         self._attr_native_value = self.carrier_system.status.outdoor_temperature
         self._attr_available = self._attr_native_value is not None
 
