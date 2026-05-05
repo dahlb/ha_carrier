@@ -8,12 +8,7 @@ from typing import Any, overload
 
 from aiohttp import ClientError
 from carrier_api import AuthError, BaseError, System
-from gql.transport.exceptions import (
-    TransportConnectionFailed,
-    TransportError,
-    TransportProtocolError,
-    TransportServerError,
-)
+from gql.transport.exceptions import TransportError, TransportProtocolError, TransportServerError
 from homeassistant.core import callback
 
 from .exceptions import CarrierUnauthorizedError
@@ -118,7 +113,6 @@ TRANSIENT_TRANSPORT_EXCEPTIONS: tuple[type[BaseException], ...] = (
     ClientError,
     TimeoutError,
     OSError,
-    TransportConnectionFailed,
     TransportProtocolError,
     TransportServerError,
 )
