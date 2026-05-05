@@ -21,12 +21,27 @@ namespaces = true
 version = { attr = "custom_components.ha_carrier.const.VERSION" }
 
 [dependency-groups]
-dev = [
+ha = [
     "carrier-api==2.11.3",
     "homeassistant",
+]
+lint = [
+    { include-group = "ha" },
     "mypy",
     "prek",
     "ruff",
+]
+pytest = [
+    { include-group = "ha" },
+    "pytest",
+    "pytest-asyncio",
+    "pytest-cov",
+    "pytest-homeassistant-custom-component",
+    "pytest-timeout",
+]
+dev = [
+    { include-group = "lint" },
+    { include-group = "pytest" },
 ]
 
 [tool.mypy]
@@ -41,6 +56,10 @@ warn_unused_configs = true
 
 [[tool.mypy.overrides]]
 module = ["carrier_api.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["pytest_homeassistant_custom_component.*"]
 ignore_missing_imports = true
 
 [tool.ruff]
@@ -128,5 +147,38 @@ max-complexity = 25
 [tool.ruff.lint.pydocstyle]
 convention = "google"
 
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = [
+    "B017",    # Don't assert blind Exception
+    "C90",     # mccabe, complexity
+    "E501",    # line too long
+    "S101",    # Use of assert detected
+    "S105",    # Possible hardcoded password
+    "S108",    # hardcoded-temp-file
+    "SLF001",  # Private member accessed
+]
+
 [tool.codespell]
 ignore-words-list = "hass"
+
+[tool.pytest.ini_options]
+addopts = """
+  --quiet
+  --timeout=20
+  --durations=10
+  -o console_output_style=progress
+  --cov=custom_components.ha_carrier
+  --cov-report=term-missing
+  --cov-report=html
+"""
+testpaths = ["tests"]
+asyncio_mode = "auto"
+
+[tool.coverage.run]
+branch = true
+source = ["custom_components.ha_carrier"]
+relative_files = true
+parallel = false
+
+[tool.coverage.report]
+show_missing = true
