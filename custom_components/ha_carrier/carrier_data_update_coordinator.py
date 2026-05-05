@@ -7,7 +7,7 @@ import functools
 import logging
 from typing import Any, NoReturn
 
-from carrier_api import ApiConnectionGraphql, Energy, System
+from carrier_api import ApiConnectionGraphql, AuthError, BaseError, Energy, System
 from carrier_api.api_websocket_data_updater import WebsocketDataUpdater
 from gql.transport.exceptions import TransportServerError
 from homeassistant.core import HomeAssistant
@@ -35,7 +35,12 @@ from .const import (
 )
 from .exceptions import CarrierUnauthorizedError
 from .resiliency import ResiliencyState, RetryPolicy, async_call_with_retry
-from .util import RECOVERABLE_REFRESH_EXCEPTIONS, async_redact_data, is_unauthorized_error
+from .util import (
+    RECOVERABLE_REFRESH_EXCEPTIONS,
+    RECOVERABLE_WRITE_COMMUNICATION_EXCEPTIONS,
+    async_redact_data,
+    is_unauthorized_error,
+)
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 
@@ -55,6 +60,11 @@ WRITE_RETRY_POLICY = RetryPolicy(
     max_delay=WRITE_RETRY_MAX_DELAY_SECONDS,
     jitter_fraction=RETRY_JITTER_FRACTION,
     retry_on_unauthorized=True,
+)
+
+ENERGY_REFRESH_EXCEPTIONS: tuple[type[BaseException], ...] = (
+    *RECOVERABLE_REFRESH_EXCEPTIONS,
+    CarrierUnauthorizedError,
 )
 
 
@@ -254,7 +264,7 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator[list[dict[str, Any]]]):
                     manage_unauthorized_state=False,
                     reset_unauthorized_on_success=False,
                 )
-            except Exception as error:
+            except ENERGY_REFRESH_EXCEPTIONS as error:
                 if not is_unauthorized_error(error):
                     raise
                 found_unauthorized = True
@@ -318,14 +328,6 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator[list[dict[str, Any]]]):
         if error is not None and is_unauthorized_error(error):
             self.data_flush = True
 
-        preserve_unauthorized_state = isinstance(error, CarrierUnauthorizedError)
-        if preserve_unauthorized_state:
-            unauthorized_state = (
-                self.resiliency.consecutive_unauthorized,
-                self.resiliency.unauthorized_outage_logged,
-                self.resiliency.unauthorized_escalated_logged,
-            )
-
         prev_suppress = self.resiliency.suppress_recording
         if prev_suppress:  # pragma: no cover - defensive logging only
             _LOGGER.debug(
@@ -337,15 +339,13 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator[list[dict[str, Any]]]):
         try:
             # A write may have partially applied server-side before the transport
             # failed, so force a refresh before reporting or re-raising upstream.
-            await self.async_refresh()
-            if preserve_unauthorized_state:
-                (
-                    self.resiliency.consecutive_unauthorized,
-                    self.resiliency.unauthorized_outage_logged,
-                    self.resiliency.unauthorized_escalated_logged,
-                ) = unauthorized_state
+            if isinstance(error, CarrierUnauthorizedError):
+                with self.resiliency.preserve_unauthorized():
+                    await self.async_refresh()
                 self.data_flush = True
                 self.update_interval = timedelta(minutes=1)
+            else:
+                await self.async_refresh()
         except ConfigEntryAuthFailed:
             raise
         except (CarrierUnauthorizedError, HomeAssistantError, UpdateFailed) as refresh_error:
@@ -402,10 +402,15 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator[list[dict[str, Any]]]):
             raise HomeAssistantError(
                 "Failed to communicate with Carrier service — operation could not be completed."
             ) from error
-        except RECOVERABLE_REFRESH_EXCEPTIONS as error:
+        except RECOVERABLE_WRITE_COMMUNICATION_EXCEPTIONS as error:
             await self._async_reconcile_failed_write(operation_name, error)
             raise HomeAssistantError(
                 "Failed to communicate with Carrier service — operation could not be completed."
+            ) from error
+        except (AuthError, BaseError) as error:
+            await self._async_reconcile_failed_write(operation_name, error)
+            raise HomeAssistantError(
+                "Carrier rejected the request. Check the requested setting and try again."
             ) from error
 
     def system(self, system_serial: str) -> System | None:

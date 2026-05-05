@@ -10,8 +10,9 @@ classified retries; the websocket loop reuses `RetryPolicy` and
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Awaitable, Callable
-from dataclasses import dataclass, field
+from collections.abc import Awaitable, Callable, Iterator
+from contextlib import contextmanager
+from dataclasses import dataclass, field, fields
 import logging
 from math import ceil, log2
 import random
@@ -83,6 +84,28 @@ class ResiliencyState:
         self.consecutive_transient = 0
         self.transient_outage_logged = False
         self.transient_escalated_logged = False
+
+    @contextmanager
+    def preserve_unauthorized(self) -> Iterator[None]:
+        """Restore unauthorized counters and log flags after a guarded block.
+
+        Yields:
+            None: Control to the guarded block.
+        """
+        unauthorized_state = {
+            dataclass_field.name: getattr(self, dataclass_field.name)
+            for dataclass_field in fields(self)
+            if dataclass_field.name == "consecutive_unauthorized"
+            or (
+                dataclass_field.name.startswith("unauthorized_")
+                and not dataclass_field.name.endswith("_threshold")
+            )
+        }
+        try:
+            yield
+        finally:
+            for name, value in unauthorized_state.items():
+                setattr(self, name, value)
 
     def record_unauthorized(self, logger: logging.Logger, operation_name: str) -> bool:
         """Record a 401 response and decide whether escalation has occurred.

@@ -18,7 +18,6 @@
       }
     },
     "error": {
-      "auth": "Login failed. Please use official app to logout and log back in and try again.",
       "invalid_auth": "Login failed. Please use official app to logout and log back in and try again.",
       "cannot_connect": "Unable to reach Carrier. Try again shortly.",
       "unknown": "Unexpected error contacting Carrier."

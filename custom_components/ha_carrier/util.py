@@ -126,6 +126,12 @@ RECOVERABLE_REFRESH_EXCEPTIONS: tuple[type[BaseException], ...] = (
 )
 """Exceptions a coordinator refresh may recover from on a later interval."""
 
+RECOVERABLE_WRITE_COMMUNICATION_EXCEPTIONS: tuple[type[BaseException], ...] = (
+    *TRANSIENT_TRANSPORT_EXCEPTIONS,
+    TransportError,
+)
+"""Transport exceptions a write should report as communication failures."""
+
 WEBSOCKET_RECOVERABLE_EXCEPTIONS: tuple[type[BaseException], ...] = (
     CarrierUnauthorizedError,
     *TRANSIENT_TRANSPORT_EXCEPTIONS,
