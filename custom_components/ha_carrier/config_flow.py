@@ -102,9 +102,6 @@ class ConfigFlowHandler(config_entries.ConfigFlow):
     """Authenticate a Carrier account and create or update a config entry."""
 
     VERSION = CONFIG_FLOW_VERSION
-    CONNECTION_CLASS = config_entries.CONN_CLASS_CLOUD_POLL
-
-    data: dict[str, Any]
     _reauth_username: str
 
     @staticmethod
@@ -122,8 +119,7 @@ class ConfigFlowHandler(config_entries.ConfigFlow):
 
     def __init__(self) -> None:
         """Initialize mutable state used while the flow runs."""
-        self.data = {}
-        self._reauth_username = ""
+        self.data: dict[str, Any] = {}
 
     async def async_step_user(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         """Handle username/password input and validate Carrier credentials.

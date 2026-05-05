@@ -122,8 +122,6 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntryCarrie
                     _LOGGER.debug("websocket task ending")
                     coordinator.data_flush = True
                     await coordinator.async_request_refresh()
-                    attempt = 0
-                    await asyncio.sleep(compute_backoff_delay(WEBSOCKET_RETRY_POLICY, 0))
                 except asyncio.CancelledError:
                     _LOGGER.debug("websocket task cancelled")
                     raise
@@ -140,6 +138,9 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntryCarrie
                     await coordinator.async_request_refresh()
                     await asyncio.sleep(delay)
                     attempt += 1
+                else:
+                    attempt = 0
+                    await asyncio.sleep(compute_backoff_delay(WEBSOCKET_RETRY_POLICY, attempt))
 
         websocket_task = hass.async_create_background_task(
             ws_updates(),
