@@ -196,7 +196,8 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator[list[dict[str, Any]]]):
             logger=_LOGGER,
         )
         if not self.systems:
-            self.systems = fresh_systems
+            self.systems.clear()
+            self.systems.extend(fresh_systems)
         else:
             existing_by_serial = {s.profile.serial: s for s in self.systems}
             fresh_serials = {s.profile.serial for s in fresh_systems}
@@ -263,6 +264,7 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator[list[dict[str, Any]]]):
                     logger=_LOGGER,
                     manage_unauthorized_state=False,
                     reset_unauthorized_on_success=False,
+                    reset_transient_on_success=False,
                 )
             except ENERGY_REFRESH_EXCEPTIONS as error:
                 if not is_unauthorized_error(error):

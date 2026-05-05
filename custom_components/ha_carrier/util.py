@@ -54,6 +54,38 @@ ENERGY_METRIC_MAP: dict[str, str] = {
 
 TIMESTAMP_TYPES: tuple[str, ...] = ("all_data", "websocket", "energy")
 
+TRANSIENT_TRANSPORT_EXCEPTIONS: tuple[type[BaseException], ...] = (
+    ClientError,
+    TimeoutError,
+    OSError,
+    TransportProtocolError,
+)
+"""Transport-layer exceptions that should retry with backoff."""
+
+RECOVERABLE_REFRESH_EXCEPTIONS: tuple[type[BaseException], ...] = (
+    *TRANSIENT_TRANSPORT_EXCEPTIONS,
+    TransportError,
+    TransportServerError,
+    AuthError,
+    BaseError,
+)
+"""Exceptions a coordinator refresh may recover from on a later interval."""
+
+RECOVERABLE_WRITE_COMMUNICATION_EXCEPTIONS: tuple[type[BaseException], ...] = (
+    *TRANSIENT_TRANSPORT_EXCEPTIONS,
+    TransportError,
+    TransportServerError,
+)
+"""Transport exceptions a write should report as communication failures."""
+
+WEBSOCKET_RECOVERABLE_EXCEPTIONS: tuple[type[BaseException], ...] = (
+    CarrierUnauthorizedError,
+    *TRANSIENT_TRANSPORT_EXCEPTIONS,
+    TransportError,
+    TransportServerError,
+)
+"""Exceptions the websocket reconnect loop should treat as recoverable."""
+
 
 def has_heat(carrier_system: System) -> bool:
     """Return True if the Carrier system supports heat source selection."""
@@ -116,41 +148,8 @@ def async_redact_data(data: Any, to_redact: Iterable[Any]) -> Any:
     return redacted
 
 
-TRANSIENT_TRANSPORT_EXCEPTIONS: tuple[type[BaseException], ...] = (
-    ClientError,
-    TimeoutError,
-    OSError,
-    TransportProtocolError,
-)
-"""Transport-layer exceptions that should retry with backoff."""
-
-RECOVERABLE_REFRESH_EXCEPTIONS: tuple[type[BaseException], ...] = (
-    *TRANSIENT_TRANSPORT_EXCEPTIONS,
-    TransportError,
-    TransportServerError,
-    AuthError,
-    BaseError,
-)
-"""Exceptions a coordinator refresh may recover from on a later interval."""
-
-RECOVERABLE_WRITE_COMMUNICATION_EXCEPTIONS: tuple[type[BaseException], ...] = (
-    *TRANSIENT_TRANSPORT_EXCEPTIONS,
-    TransportError,
-    TransportServerError,
-)
-"""Transport exceptions a write should report as communication failures."""
-
-WEBSOCKET_RECOVERABLE_EXCEPTIONS: tuple[type[BaseException], ...] = (
-    CarrierUnauthorizedError,
-    *TRANSIENT_TRANSPORT_EXCEPTIONS,
-    TransportError,
-    TransportServerError,
-)
-"""Exceptions the websocket reconnect loop should treat as recoverable."""
-
-
 def _iter_exception_chain(error: BaseException) -> Iterable[BaseException]:
-    """Yield the exception followed by its __cause__/__context__ chain.
+    """Yield the exception followed by its __cause__ and __context__ chains.
 
     Args:
         error: Exception to walk.
@@ -159,11 +158,17 @@ def _iter_exception_chain(error: BaseException) -> Iterable[BaseException]:
         BaseException: Each exception in the chain, deduplicated.
     """
     seen: set[int] = set()
-    current: BaseException | None = error
-    while current is not None and id(current) not in seen:
+    stack: list[BaseException] = [error]
+    while stack:
+        current = stack.pop()
+        if id(current) in seen:
+            continue
         seen.add(id(current))
         yield current
-        current = current.__cause__ or current.__context__
+        if current.__context__ is not None:
+            stack.append(current.__context__)
+        if current.__cause__ is not None:
+            stack.append(current.__cause__)
 
 
 def is_unauthorized_error(error: BaseException) -> bool:

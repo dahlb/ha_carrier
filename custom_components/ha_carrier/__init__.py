@@ -189,9 +189,7 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntryCarrie
     ):
         raise
     except ConfigEntryNotReady as err:
-        if is_unauthorized_error(err):
-            _LOGGER.exception("Carrier unauthorized during setup (ConfigEntryNotReady)")
-            raise ConfigEntryAuthFailed("Carrier API rejected credentials during setup.") from err
+        _LOGGER.debug("Carrier setup is not ready; Home Assistant will retry", exc_info=err)
         raise
 
     await hass.config_entries.async_forward_entry_setups(config_entry, PLATFORMS)
