@@ -165,8 +165,6 @@ class ConfigFlowHandler(config_entries.ConfigFlow):
             ConfigFlowResult: Response for the reauth confirmation step.
         """
         self._reauth_username = entry_data.get(CONF_USERNAME, "")
-        if self._reauth_username == "":
-            self._reauth_username = self._get_reauth_entry().data.get(CONF_USERNAME, "")
         return await self.async_step_reauth_confirm()
 
     async def async_step_reauth_confirm(

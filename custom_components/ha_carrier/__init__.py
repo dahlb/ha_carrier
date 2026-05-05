@@ -61,7 +61,7 @@ async def _async_await_websocket_task(websocket_task: asyncio.Task[None]) -> Non
         pass
     except WEBSOCKET_RECOVERABLE_EXCEPTIONS:
         _LOGGER.exception("websocket task raised during cancellation")
-    except Exception:
+    except RuntimeError, OSError:
         _LOGGER.exception("websocket task raised unexpected exception during cancellation")
 
 
