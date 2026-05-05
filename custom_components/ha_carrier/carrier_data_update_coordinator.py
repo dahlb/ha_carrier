@@ -249,8 +249,8 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator[list[dict[str, Any]]]):
 
         Energy refresh calls the API once per system, but all systems together
         are one logical coordinator refresh. A 401 from any system preserves that
-        system's previous energy payload and records one unauthorized failure for
-        the whole cycle after the loop finishes. Per-system helper successes use
+        system's previous energy payload and immediately records one unauthorized
+        failure for the whole cycle. Per-system helper successes use
         `reset_state_on_success=False` so a later successful system cannot erase
         failure evidence from an earlier system in the same cycle.
 
@@ -277,17 +277,17 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator[list[dict[str, Any]]]):
             except ENERGY_REFRESH_EXCEPTIONS as error:
                 if not is_unauthorized_error(error):
                     raise
-                found_unauthorized = True
+                if not found_unauthorized:
+                    found_unauthorized = True
+                    self.update_interval = timedelta(minutes=1)
+                    if self.resiliency.record_unauthorized(_LOGGER, "energy refresh cycle"):
+                        raise CarrierUnauthorizedError(
+                            "Carrier API repeatedly rejected energy refresh requests."
+                        ) from error
                 continue
             energy = Energy(raw=energy_response["infinityEnergy"])
             system.energy = energy
-        if found_unauthorized:
-            self.update_interval = timedelta(minutes=1)
-            if self.resiliency.record_unauthorized(_LOGGER, "energy refresh cycle"):
-                raise CarrierUnauthorizedError(
-                    "Carrier API repeatedly rejected energy refresh requests."
-                )
-        else:
+        if not found_unauthorized:
             self.resiliency.reset_unauthorized()
             self.resiliency.reset_transient()
             self.timestamp_energy = datetime.now(UTC)
@@ -346,7 +346,10 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator[list[dict[str, Any]]]):
             operation_name: Friendly name for the write operation that failed.
             error: Exception raised by the failed write, if available.
         """
-        if error is not None and is_unauthorized_error(error):
+        if error is not None and (
+            is_unauthorized_error(error)
+            or isinstance(error, RECOVERABLE_WRITE_COMMUNICATION_EXCEPTIONS)
+        ):
             self.data_flush = True
 
         try:

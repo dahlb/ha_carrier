@@ -24,7 +24,7 @@ from .const import (
 from .exceptions import CarrierUnauthorizedError
 from .migrate import migrate_1_to_2
 from .resiliency import RetryPolicy, compute_backoff_delay
-from .util import WEBSOCKET_RECOVERABLE_EXCEPTIONS, async_redact_data
+from .util import WEBSOCKET_RECOVERABLE_EXCEPTIONS, async_redact_data, is_unauthorized_error
 
 WEBSOCKET_RETRY_POLICY = RetryPolicy(
     name="carrier-websocket",
@@ -174,6 +174,9 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntryCarrie
     ):
         raise
     except ConfigEntryNotReady as err:
+        if is_unauthorized_error(err):
+            _LOGGER.exception("Carrier authentication failed during initial setup refresh")
+            raise ConfigEntryAuthFailed("Carrier API rejected credentials during setup.") from err
         _LOGGER.debug("Carrier setup is not ready; Home Assistant will retry", exc_info=err)
         raise
 
