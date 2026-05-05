@@ -289,6 +289,7 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator[list[dict[str, Any]]]):
                 )
         else:
             self.resiliency.reset_unauthorized()
+            self.resiliency.reset_transient()
             self.timestamp_energy = datetime.now(UTC)
             self.update_interval = timedelta(minutes=DEFAULT_UPDATE_INTERVAL_MINUTES)
 

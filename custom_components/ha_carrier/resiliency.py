@@ -44,7 +44,6 @@ class RetryPolicy:
             in-place with backoff; when False, non-escalated unauthorized
             errors are re-raised to the caller and only threshold escalation
             raises CarrierUnauthorizedError.
-        retry_on_transient: When True, transient transport errors are retried.
     """
 
     name: str
@@ -53,7 +52,6 @@ class RetryPolicy:
     max_delay: float
     jitter_fraction: float
     retry_on_unauthorized: bool
-    retry_on_transient: bool = True
 
 
 @dataclass
@@ -196,10 +194,11 @@ def compute_backoff_delay(policy: RetryPolicy, attempt: int) -> float:
     exponent = min(max(attempt, 0), max_exponent)
     raw = policy.base_delay * (2**exponent)
     capped = min(raw, policy.max_delay)
+    capped = max(0.0, capped)
     if policy.jitter_fraction <= 0:
         return capped
     jitter = capped * policy.jitter_fraction
-    return max(0.0, capped + random.uniform(-jitter, jitter))  # noqa: S311
+    return max(0.0, capped + random.uniform(-jitter, jitter))
 
 
 async def async_call_with_retry[T](
@@ -248,7 +247,8 @@ async def async_call_with_retry[T](
         T: The result returned by `operation` on success.
 
     Raises:
-        CarrierUnauthorizedError: When 401s escalate beyond the shared threshold.
+        CarrierUnauthorizedError: When 401s escalate beyond the shared threshold
+            or a retry-enabled unauthorized policy exhausts its attempts.
         BaseException: Any non-retryable error from `operation`, or the last
             transient error after attempts are exhausted or escalated.
     """
@@ -270,12 +270,14 @@ async def async_call_with_retry[T](
                     ) from error
                 if policy.retry_on_unauthorized:
                     if policy.max_attempts is not None and attempt + 1 >= policy.max_attempts:
-                        raise
+                        raise CarrierUnauthorizedError(
+                            f"Carrier API rejected {operation_name} after {attempt + 1} retries."
+                        ) from error
                     await asyncio.sleep(compute_backoff_delay(policy, attempt))
                     attempt += 1
                     continue
                 raise
-            if policy.retry_on_transient and is_transient_transport_error(error):
+            if is_transient_transport_error(error):
                 escalated = state.record_transient(logger, operation_name, error)
                 if escalated:
                     raise
