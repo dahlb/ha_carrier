@@ -289,6 +289,11 @@ class GasMeasurementSensor(CarrierSensor):
             return
 
         api_field = ENERGY_METRIC_MAP.get(self.metric)
+        if api_field is None:
+            _LOGGER.debug("Unknown gas usage metric requested: %s", self.metric)
+            self._attr_available = False
+            return
+
         energy_periods = self.carrier_system.energy.raw.get("energyPeriods", [])
         value: float | None = None
         for period in energy_periods:
@@ -352,6 +357,11 @@ class PropaneMeasurementSensor(CarrierSensor):
             return
 
         api_field = ENERGY_METRIC_MAP.get(self.metric)
+        if api_field is None:
+            _LOGGER.debug("Unknown propane usage metric requested: %s", self.metric)
+            self._attr_available = False
+            return
+
         energy_periods = self.carrier_system.energy.raw.get("energyPeriods", [])
         value: float | None = None
         for period in energy_periods:

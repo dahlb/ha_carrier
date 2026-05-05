@@ -1,4 +1,11 @@
-"""Utility helpers shared across Carrier integration modules."""
+"""Utility helpers shared across Carrier integration modules.
+
+`TransportServerError` is intentionally not a transient transport exception
+because 401 server responses must be classified by `is_unauthorized_error`
+before retry logic considers communication recovery. Call-site recoverable
+exception tuples include `TransportServerError` explicitly where server errors
+should still be reconciled or retried on a later interval.
+"""
 
 from __future__ import annotations
 
@@ -114,13 +121,13 @@ TRANSIENT_TRANSPORT_EXCEPTIONS: tuple[type[BaseException], ...] = (
     TimeoutError,
     OSError,
     TransportProtocolError,
-    TransportServerError,
 )
 """Transport-layer exceptions that should retry with backoff."""
 
 RECOVERABLE_REFRESH_EXCEPTIONS: tuple[type[BaseException], ...] = (
     *TRANSIENT_TRANSPORT_EXCEPTIONS,
     TransportError,
+    TransportServerError,
     AuthError,
     BaseError,
 )
@@ -129,6 +136,7 @@ RECOVERABLE_REFRESH_EXCEPTIONS: tuple[type[BaseException], ...] = (
 RECOVERABLE_WRITE_COMMUNICATION_EXCEPTIONS: tuple[type[BaseException], ...] = (
     *TRANSIENT_TRANSPORT_EXCEPTIONS,
     TransportError,
+    TransportServerError,
 )
 """Transport exceptions a write should report as communication failures."""
 
@@ -136,6 +144,7 @@ WEBSOCKET_RECOVERABLE_EXCEPTIONS: tuple[type[BaseException], ...] = (
     CarrierUnauthorizedError,
     *TRANSIENT_TRANSPORT_EXCEPTIONS,
     TransportError,
+    TransportServerError,
 )
 """Exceptions the websocket reconnect loop should treat as recoverable."""
 

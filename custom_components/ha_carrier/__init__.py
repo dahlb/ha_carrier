@@ -39,6 +39,10 @@ WEBSOCKET_RETRY_POLICY = RetryPolicy(
     jitter_fraction=RETRY_JITTER_FRACTION,
     retry_on_unauthorized=False,
 )
+# The websocket loop calls `compute_backoff_delay` directly, so
+# `retry_on_unauthorized` is not enforced by `async_call_with_retry` here. Use
+# `async_call_with_retry` with this `WEBSOCKET_RETRY_POLICY` and
+# `max_attempts=None` if websocket reconnections should enforce that flag.
 
 type ConfigEntryCarrier = ConfigEntry[CarrierDataUpdateCoordinator]
 

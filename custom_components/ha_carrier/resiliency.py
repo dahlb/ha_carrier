@@ -12,13 +12,20 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Awaitable, Callable, Iterator
 from contextlib import contextmanager
-from dataclasses import dataclass, field, fields
+from dataclasses import dataclass, field
 import logging
 from math import ceil, log2
 import random
 
 from .exceptions import CarrierUnauthorizedError
 from .util import is_transient_transport_error, is_unauthorized_error
+
+UNAUTHORIZED_STATE_ATTRIBUTES: tuple[str, ...] = (
+    "unauthorized_threshold",
+    "consecutive_unauthorized",
+    "unauthorized_outage_logged",
+    "unauthorized_escalated_logged",
+)
 
 
 @dataclass(frozen=True)
@@ -93,13 +100,8 @@ class ResiliencyState:
             None: Control to the guarded block.
         """
         unauthorized_state = {
-            dataclass_field.name: getattr(self, dataclass_field.name)
-            for dataclass_field in fields(self)
-            if dataclass_field.name == "consecutive_unauthorized"
-            or (
-                dataclass_field.name.startswith("unauthorized_")
-                and not dataclass_field.name.endswith("_threshold")
-            )
+            attribute_name: getattr(self, attribute_name)
+            for attribute_name in UNAUTHORIZED_STATE_ATTRIBUTES
         }
         try:
             yield

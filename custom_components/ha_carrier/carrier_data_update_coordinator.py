@@ -137,10 +137,10 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator[list[dict[str, Any]]]):
 
         if self.data_flush:
             refresh_context = "full data refresh"
-            refresh_operation = functools.partial(self._async_full_refresh)
+            refresh_operation = self._async_full_refresh
         else:
             refresh_context = "energy refresh"
-            refresh_operation = functools.partial(self._async_energy_refresh)
+            refresh_operation = self._async_energy_refresh
 
         try:
             await refresh_operation()
@@ -346,9 +346,12 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator[list[dict[str, Any]]]):
                 self.update_interval = timedelta(minutes=1)
             else:
                 await self.async_refresh()
-        except ConfigEntryAuthFailed:
-            raise
-        except (CarrierUnauthorizedError, HomeAssistantError, UpdateFailed) as refresh_error:
+        except (
+            CarrierUnauthorizedError,
+            ConfigEntryAuthFailed,
+            HomeAssistantError,
+            UpdateFailed,
+        ) as refresh_error:
             # pragma: no cover - defensive logging only
             _LOGGER.debug(
                 "refresh after failed %s write failed: %s",
@@ -397,11 +400,6 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator[list[dict[str, Any]]]):
         except TimeoutError as error:
             await self._async_handle_failed_write(operation_name, error)
             raise AssertionError("unreachable after failed write handling") from error
-        except TransportServerError as error:
-            await self._async_reconcile_failed_write(operation_name, error)
-            raise HomeAssistantError(
-                "Failed to communicate with Carrier service — operation could not be completed."
-            ) from error
         except RECOVERABLE_WRITE_COMMUNICATION_EXCEPTIONS as error:
             await self._async_reconcile_failed_write(operation_name, error)
             raise HomeAssistantError(

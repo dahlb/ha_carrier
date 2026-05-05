@@ -24,6 +24,7 @@
     },
     "abort": {
       "reauth_successful": "Re-authentication was successful.",
+      "reauth_missing_username": "Unable to start re-authentication because the existing Carrier username is missing.",
       "already_configured": "This Carrier account is already configured."
     }
   },

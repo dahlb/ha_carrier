@@ -91,6 +91,7 @@ ignore = [
     "TC001",    # Move application import {} into a type-checking block
     "TC002",    # Move third-party import {} into a type-checking block
     "TC003",    # Move standard library import {} into a type-checking block
+    "TD003",    # missing-todo-link
     "TRY003",   # Avoid specifying long messages outside the exception class
     "TRY301",   # raise-within-try
     "TRY400",   # Use `logging.exception` instead of `logging.error`
