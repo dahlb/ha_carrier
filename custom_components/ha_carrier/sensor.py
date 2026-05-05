@@ -177,7 +177,13 @@ class CarrierSensor(CarrierEntity, SensorEntity):
         self._sync_entity_attrs()
 
     def _update_entity_attrs(self) -> None:
-        """Update sensor attrs from coordinator data."""
+        """Default to unavailable so concrete sensors must opt in to data.
+
+        Each concrete sensor subclass overrides this to populate
+        ``_attr_native_value`` (and unit / state class metadata where it
+        depends on system configuration) and to flip ``_attr_available`` to
+        True once a usable reading is present.
+        """
         self._attr_available = False
 
 

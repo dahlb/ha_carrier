@@ -84,7 +84,12 @@ class CarrierBinarySensor(CarrierEntity, BinarySensorEntity):
         self._sync_entity_attrs()
 
     def _update_entity_attrs(self) -> None:
-        """Update binary sensor attrs from coordinator data."""
+        """Default to unavailable so concrete sensors must opt in to data.
+
+        Each concrete binary sensor subclass overrides this to set
+        ``_attr_is_on`` and to flip ``_attr_available`` to True once it has
+        successfully read its value from the coordinator.
+        """
         self._attr_available = False
 
 

@@ -73,7 +73,12 @@ class CarrierSelect(CarrierEntity, SelectEntity):
         self._sync_entity_attrs()
 
     def _update_entity_attrs(self) -> None:
-        """Update select attrs from coordinator data."""
+        """Default to unavailable so concrete selects must opt in to data.
+
+        Each concrete select subclass overrides this to set
+        ``_attr_current_option`` from the latest Carrier configuration and to
+        flip ``_attr_available`` to True once that mapping resolved.
+        """
         self._attr_available = False
 
 

@@ -49,13 +49,22 @@ class CarrierEntity(CoordinatorEntity[CarrierDataUpdateCoordinator]):
         )
 
     def _update_entity_attrs(self) -> None:
-        """Update Home Assistant attrs from the latest coordinator data.
+        """Populate ``self._attr_*`` values from the current coordinator payload.
 
-        Subclasses should populate their supported ``self._attr_*`` values here.
+        The base class is a no-op so each entity subclass can override it with
+        the specific attribute calculations (state, availability, unit, icon)
+        that map Carrier's data model onto Home Assistant's entity attributes.
         """
 
     def _sync_entity_attrs(self) -> None:
-        """Refresh entity attrs from coordinator data with shared error handling."""
+        """Run ``_update_entity_attrs`` and mark the entity unavailable on data errors.
+
+        Carrier payloads occasionally arrive partially populated during outages
+        and pre-warmed startup, so any ``ValueError``/``AttributeError``/
+        ``KeyError``/``TypeError`` raised while reading them is treated as
+        "data not ready yet" — the entity is flipped to unavailable instead of
+        bubbling the error up into Home Assistant's update pipeline.
+        """
         try:
             self._update_entity_attrs()
         except (ValueError, AttributeError, KeyError, TypeError) as error:
@@ -69,13 +78,22 @@ class CarrierEntity(CoordinatorEntity[CarrierDataUpdateCoordinator]):
 
     @callback
     def _handle_coordinator_update(self) -> None:
-        """Refresh entity attrs after a coordinator update."""
+        """Recompute attrs and let CoordinatorEntity push them to Home Assistant.
+
+        Called by the DataUpdateCoordinator each time fresh Carrier data lands
+        (poll, websocket, or manual refresh).
+        """
         self._sync_entity_attrs()
         super()._handle_coordinator_update()
 
     @callback
     def _write_local_state(self) -> None:
-        """Refresh attrs after local state mutation and write them to Home Assistant."""
+        """Recompute attrs from cached state and write them immediately.
+
+        Used after an outbound write (set temperature, set hvac mode, etc.) so
+        the entity reflects the user's change without waiting for the next
+        coordinator refresh round-trip.
+        """
         self._sync_entity_attrs()
         self.async_write_ha_state()
 
@@ -130,7 +148,13 @@ class CarrierEntity(CoordinatorEntity[CarrierDataUpdateCoordinator]):
 
     @property
     def available(self) -> bool:
-        """Return if entity is available."""
+        """Combine coordinator health with entity-specific availability.
+
+        Returns:
+            bool: True only when the last coordinator refresh succeeded and the
+                subclass has not flagged its own data missing via
+                ``self._attr_available``.
+        """
         return self.coordinator.last_update_success and getattr(self, "_attr_available", True)
 
 
