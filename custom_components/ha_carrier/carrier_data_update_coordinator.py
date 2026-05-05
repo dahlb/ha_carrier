@@ -155,10 +155,10 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator[list[dict[str, Any]]]):
             SystemExit,
         ):
             raise
-        except TransportServerError as error:
+        except RECOVERABLE_REFRESH_EXCEPTIONS as error:
             self.data_flush = True
             self.update_interval = timedelta(minutes=1)
-            if is_unauthorized_error(error):
+            if isinstance(error, TransportServerError) and is_unauthorized_error(error):
                 _LOGGER.info(
                     "Carrier %s returned unauthorized without crossing the reauth threshold.",
                     refresh_context,
@@ -166,13 +166,6 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator[list[dict[str, Any]]]):
                 raise UpdateFailed(
                     f"Carrier temporarily rejected {refresh_context}; will retry."
                 ) from error
-            _LOGGER.exception("Carrier %s failed", refresh_context, exc_info=error)
-            raise UpdateFailed(
-                f"Unexpected error during Carrier {refresh_context}: {error}"
-            ) from error
-        except RECOVERABLE_REFRESH_EXCEPTIONS as error:
-            self.data_flush = True
-            self.update_interval = timedelta(minutes=1)
             _LOGGER.exception("Carrier %s failed", refresh_context, exc_info=error)
             raise UpdateFailed(
                 f"Unexpected error during Carrier {refresh_context}: {error}"

@@ -102,7 +102,6 @@ class ConfigFlowHandler(config_entries.ConfigFlow):
     """Authenticate a Carrier account and create or update a config entry."""
 
     VERSION = CONFIG_FLOW_VERSION
-    _reauth_username: str
 
     @staticmethod
     @callback
@@ -120,6 +119,7 @@ class ConfigFlowHandler(config_entries.ConfigFlow):
     def __init__(self) -> None:
         """Initialize mutable state used while the flow runs."""
         self.data: dict[str, Any] = {}
+        self._reauth_username: str | None = None
 
     async def async_step_user(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         """Handle username/password input and validate Carrier credentials.
@@ -178,6 +178,8 @@ class ConfigFlowHandler(config_entries.ConfigFlow):
         Returns:
             ConfigFlowResult: Form response with errors or a completed reauth result.
         """
+        if not isinstance(self._reauth_username, str) or not self._reauth_username:
+            return self.async_abort(reason="reauth_missing_username")
         errors: dict[str, str] = {}
 
         if user_input is not None:
