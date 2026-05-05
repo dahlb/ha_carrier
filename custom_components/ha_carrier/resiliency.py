@@ -1,18 +1,23 @@
-"""Centralized retry policies, escalation state, and retry helper.
+"""Retry policies and shared escalation state for Carrier API operations.
 
-A single coordinator-owned `ResiliencyState` instance is shared across reads,
-writes, and the websocket loop so a 401 seen on any surface increments the same
-counter the others check. `async_call_with_retry` is the one funnel for bounded,
-classified retries; the websocket loop reuses `RetryPolicy` and
-`compute_backoff_delay` directly because it manages its own long-running state.
+Carrier can return short-lived 401s and transient transport failures during
+service outages, so the integration does not treat the first failure as a hard
+reauth or permanent outage. Each coordinator owns one `ResiliencyState` shared
+by refresh and write API calls. Websocket failures request a refresh instead of
+changing counters directly, so the refresh path remains the owner of outage
+accounting. A later successful API operation clears stale counters unless the
+caller is intentionally doing cycle-level accounting.
+
+`async_call_with_retry` is the shared helper for bounded API calls. The websocket
+loop reuses `RetryPolicy` and `compute_backoff_delay` directly because it manages
+its own long-running listener and reconnect cycle.
 """
 
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Awaitable, Callable, Iterator
-from contextlib import contextmanager
-from dataclasses import dataclass, field
+from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
 import logging
 from math import ceil, log2
 import random
@@ -20,17 +25,14 @@ import random
 from .exceptions import CarrierUnauthorizedError
 from .util import is_transient_transport_error, is_unauthorized_error
 
-UNAUTHORIZED_STATE_ATTRIBUTES: tuple[str, ...] = (
-    "unauthorized_threshold",
-    "consecutive_unauthorized",
-    "unauthorized_outage_logged",
-    "unauthorized_escalated_logged",
-)
-
 
 @dataclass(frozen=True)
 class RetryPolicy:
-    """Declarative retry behavior for one logical operation type.
+    """Declarative retry behavior for one logical API operation type.
+
+    The policy describes how one call retries after a classified failure. It
+    does not own escalation counters; those live in `ResiliencyState` so
+    refreshes and writes contribute to the same outage window.
 
     Attributes:
         name: Short identifier used in log messages.
@@ -58,10 +60,29 @@ class RetryPolicy:
 class ResiliencyState:
     """Cross-call escalation counters shared across coordinator surfaces.
 
+    Unauthorized and transient failures are tracked separately because they
+    escalate to different Home Assistant behavior: persistent 401s trigger
+    reauthentication, while persistent transport failures surface as retryable
+    update/write failures. A successful normal operation resets both counters.
+    Callers that need cycle-level accounting, such as per-system energy refresh,
+    can defer success resets and record the cycle result explicitly.
+
     Attributes:
         unauthorized_threshold: Consecutive 401 count that triggers escalation.
         transient_threshold: Consecutive transient failure count that triggers
             escalation.
+        consecutive_unauthorized: Current count of consecutive 401-style
+            failures in the shared outage window.
+        consecutive_transient: Current count of consecutive transient transport
+            failures in the shared outage window.
+        unauthorized_outage_logged: Whether the current unauthorized outage has
+            already emitted its first log message.
+        unauthorized_escalated_logged: Whether the current unauthorized outage
+            has already emitted its escalation log message.
+        transient_outage_logged: Whether the current transient outage has
+            already emitted its first log message.
+        transient_escalated_logged: Whether the current transient outage has
+            already emitted its escalation log message.
     """
 
     unauthorized_threshold: int
@@ -72,13 +93,11 @@ class ResiliencyState:
     unauthorized_escalated_logged: bool = False
     transient_outage_logged: bool = False
     transient_escalated_logged: bool = False
-    suppress_recording: bool = field(default=False, repr=False)
 
     def reset(self) -> None:
-        """Zero counters and log flags after any successful operation."""
+        """Clear all retry counters and log flags after a normal success."""
         self.reset_unauthorized()
         self.reset_transient()
-        # suppress_recording is a stable config flag, not a counter — intentionally not reset here
 
     def reset_unauthorized(self) -> None:
         """Clear only unauthorized counters and related log flags."""
@@ -92,23 +111,6 @@ class ResiliencyState:
         self.transient_outage_logged = False
         self.transient_escalated_logged = False
 
-    @contextmanager
-    def preserve_unauthorized(self) -> Iterator[None]:
-        """Restore unauthorized counters and log flags after a guarded block.
-
-        Yields:
-            None: Control to the guarded block.
-        """
-        unauthorized_state = {
-            attribute_name: getattr(self, attribute_name)
-            for attribute_name in UNAUTHORIZED_STATE_ATTRIBUTES
-        }
-        try:
-            yield
-        finally:
-            for name, value in unauthorized_state.items():
-                setattr(self, name, value)
-
     def record_unauthorized(self, logger: logging.Logger, operation_name: str) -> bool:
         """Record a 401 response and decide whether escalation has occurred.
 
@@ -119,8 +121,6 @@ class ResiliencyState:
         Returns:
             bool: True when the count has reached or exceeded the threshold.
         """
-        if self.suppress_recording:
-            return self.consecutive_unauthorized >= self.unauthorized_threshold
         self.consecutive_unauthorized += 1
         if not self.unauthorized_outage_logged:
             logger.info(
@@ -145,7 +145,7 @@ class ResiliencyState:
         operation_name: str,
         error: BaseException,
     ) -> bool:
-        """Record a transient transport failure and decide whether escalation has occurred.
+        """Record a transient transport failure and decide whether it escalated.
 
         Args:
             logger: Logger used for outage / escalation messages.
@@ -155,8 +155,6 @@ class ResiliencyState:
         Returns:
             bool: True when the count has reached or exceeded the threshold.
         """
-        if self.suppress_recording:
-            return self.consecutive_transient >= self.transient_threshold
         self.consecutive_transient += 1
         if not self.transient_outage_logged:
             logger.info(
@@ -212,21 +210,27 @@ async def async_call_with_retry[T](
     operation_name: str,
     logger: logging.Logger,
     manage_unauthorized_state: bool = True,
-    reset_unauthorized_on_success: bool = True,
-    reset_transient_on_success: bool = True,
+    reset_state_on_success: bool = True,
 ) -> T:
     """Run `operation` with classification-driven retry and shared escalation state.
 
-    On success: the selected portions of `state` are reset and the result is returned.
-    On unauthorized: state.record_unauthorized() is called when enabled; if the
-    unauthorized count escalates, raises CarrierUnauthorizedError. Otherwise,
-    unauthorized retry follows the policy and a non-escalated 401 re-raises the
-    original exception.
-    On transient transport error: state.record_transient() is called; on
-    escalation the original error is raised; otherwise the helper sleeps a
-    computed backoff and retries until attempts are exhausted.
-    Other exceptions propagate immediately. asyncio.CancelledError,
-    KeyboardInterrupt, SystemExit are always re-raised.
+    The helper classifies failures before deciding whether to retry, escalate,
+    or re-raise. Unauthorized failures optionally update the shared auth counter;
+    once the threshold is crossed, `CarrierUnauthorizedError` is raised so the
+    coordinator can trigger Home Assistant reauth. Non-escalated 401s either
+    retry in-place when the policy allows it or propagate to the caller for
+    cycle-level handling.
+
+    Transient transport failures update the shared transient counter. They retry
+    with exponential backoff until the policy's attempt limit is reached or the
+    shared transient threshold escalates, in which case the original error is
+    raised.
+
+    A successful call normally resets all shared resiliency state. Callers set
+    `reset_state_on_success=False` only when one logical operation is made from
+    multiple helper calls and will record/reset state after the full cycle. Other
+    exceptions propagate immediately. `asyncio.CancelledError`, `KeyboardInterrupt`,
+    and `SystemExit` are always re-raised.
 
     Args:
         operation: Awaitable callable performing the underlying API call.
@@ -236,10 +240,9 @@ async def async_call_with_retry[T](
         logger: Logger used for outage / escalation messages.
         manage_unauthorized_state: Whether this call should increment / inspect
             shared unauthorized escalation state.
-        reset_unauthorized_on_success: Whether a successful call should clear
-            shared unauthorized tracking.
-        reset_transient_on_success: Whether a successful call should clear
-            shared transient tracking.
+        reset_state_on_success: Whether a successful call should clear shared
+            resiliency tracking. Set False only for cycle-scoped callers that
+            finalize shared state outside the helper.
 
     Returns:
         T: The result returned by `operation` on success.
@@ -283,11 +286,6 @@ async def async_call_with_retry[T](
                 continue
             raise
         else:
-            if reset_unauthorized_on_success and reset_transient_on_success:
+            if reset_state_on_success:
                 state.reset()
-            else:
-                if reset_unauthorized_on_success:
-                    state.reset_unauthorized()
-                if reset_transient_on_success:
-                    state.reset_transient()
             return result

@@ -24,12 +24,7 @@ from .const import (
 from .exceptions import CarrierUnauthorizedError
 from .migrate import migrate_1_to_2
 from .resiliency import RetryPolicy, compute_backoff_delay
-from .util import (
-    WEBSOCKET_RECOVERABLE_EXCEPTIONS,
-    async_redact_data,
-    is_transient_transport_error,
-    is_unauthorized_error,
-)
+from .util import WEBSOCKET_RECOVERABLE_EXCEPTIONS, async_redact_data
 
 WEBSOCKET_RETRY_POLICY = RetryPolicy(
     name="carrier-websocket",
@@ -110,8 +105,11 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntryCarrie
 
             The loop exits on cancellation and forces a coordinator refresh if
             websocket handling fails so entity state can recover gracefully.
-            Retry delays back off after repeated transport failures and reset
-            after a successful listener session.
+            Retry delays back off after repeated websocket failures and reset
+            after a successful listener session. The websocket loop does not
+            update resiliency counters directly; it requests a coordinator
+            refresh, and the refresh path owns outage accounting and any reauth
+            escalation.
 
             Returns:
                 None: This coroutine runs until cancelled.
@@ -130,24 +128,11 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntryCarrie
                     _LOGGER.debug("websocket task cancelled")
                     raise
                 except WEBSOCKET_RECOVERABLE_EXCEPTIONS as error:
-                    if is_unauthorized_error(error):
-                        coordinator.resiliency.record_unauthorized(_LOGGER, "websocket listener")
-                        _LOGGER.info(
-                            "websocket listener received unauthorized error; "
-                            "triggering coordinator refresh and retrying"
-                        )
-                    elif is_transient_transport_error(error):
-                        coordinator.resiliency.record_transient(
-                            _LOGGER,
-                            "websocket listener",
-                            error,
-                        )
-                    else:
-                        _LOGGER.exception("websocket task exception")
-
                     delay = compute_backoff_delay(WEBSOCKET_RETRY_POLICY, attempt)
                     _LOGGER.debug(
-                        "websocket task retrying in %.1f seconds (attempt %d)",
+                        "websocket task hit %s; requesting refresh and retrying in %.1f "
+                        "seconds (attempt %d)",
+                        type(error).__name__,
                         delay,
                         attempt + 1,
                     )

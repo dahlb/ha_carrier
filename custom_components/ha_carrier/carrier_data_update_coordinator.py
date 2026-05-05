@@ -69,7 +69,7 @@ ENERGY_REFRESH_EXCEPTIONS: tuple[type[BaseException], ...] = (
 
 
 class CarrierDataUpdateCoordinator(DataUpdateCoordinator[list[dict[str, Any]]]):
-    """Maintain synchronized Carrier system data for all integration entities."""
+    """Maintain Carrier data and shared API resiliency state for one account."""
 
     def __init__(
         self,
@@ -113,11 +113,16 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator[list[dict[str, Any]]]):
         )
 
     async def _async_update_data(self) -> list[dict[str, Any]]:
-        """Fetch the latest Carrier data via the centralized retry helper.
+        """Fetch Carrier data and translate escalated failures for Home Assistant.
 
         Performs either a full system refresh or a lighter energy-only refresh,
         depending on whether the coordinator has been marked dirty. The shared
-        `ResiliencyState` decides when 401s or transient failures escalate.
+        `ResiliencyState` tracks 401 and transient failures across API calls.
+        Unauthorized failures only become `ConfigEntryAuthFailed` after a fresh
+        refresh attempt fails and crosses the shared threshold, so a later
+        successful refresh can still clear an old outage window. Non-escalated
+        refresh failures remain `UpdateFailed`, which lets Home Assistant retry
+        later.
 
         Returns:
             list[dict[str, Any]]: List of mappings representing tracked systems.
@@ -128,13 +133,6 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator[list[dict[str, Any]]]):
             UpdateFailed: Raised when transient failures escalate or refresh
                 cannot complete successfully for other reasons.
         """
-        if self.resiliency.consecutive_unauthorized >= self.resiliency.unauthorized_threshold:
-            self.data_flush = True
-            self.update_interval = timedelta(minutes=1)
-            raise ConfigEntryAuthFailed(
-                "Carrier API rejected credentials; reauthentication required."
-            )
-
         if self.data_flush:
             refresh_context = "full data refresh"
             refresh_operation = self._async_full_refresh
@@ -181,7 +179,12 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator[list[dict[str, Any]]]):
             ) from error
 
     async def _async_full_refresh(self) -> None:
-        """Perform a full system refresh through the retry helper.
+        """Load all Carrier systems through the normal retry path.
+
+        A successful full refresh represents a healthy API round trip, so the
+        retry helper uses its default behavior and resets shared resiliency
+        counters. System objects are then updated in place so websocket callbacks
+        and entity references keep pointing at the live coordinator list.
 
         Raises:
             CarrierUnauthorizedError: When 401s escalate beyond the threshold.
@@ -242,12 +245,18 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator[list[dict[str, Any]]]):
         self.update_interval = timedelta(minutes=DEFAULT_UPDATE_INTERVAL_MINUTES)
 
     async def _async_energy_refresh(self) -> None:
-        """Perform an energy-only refresh through the retry helper.
+        """Refresh energy data while accounting for failures once per cycle.
 
-        A 401 from any one system is treated like the previous behavior:
-        preserve last known energy data and bump the shared unauthorized counter
-        once for the whole cycle. The helper still owns transient retry /
-        backoff behavior per system.
+        Energy refresh calls the API once per system, but all systems together
+        are one logical coordinator refresh. A 401 from any system preserves that
+        system's previous energy payload and records one unauthorized failure for
+        the whole cycle after the loop finishes. Per-system helper successes use
+        `reset_state_on_success=False` so a later successful system cannot erase
+        failure evidence from an earlier system in the same cycle.
+
+        The helper still owns per-system transient retry and backoff. A fully
+        successful energy cycle clears unauthorized tracking and restores the
+        normal polling interval.
 
         Raises:
             CarrierUnauthorizedError: When 401s escalate beyond the threshold.
@@ -263,8 +272,7 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator[list[dict[str, Any]]]):
                     operation_name="energy refresh",
                     logger=_LOGGER,
                     manage_unauthorized_state=False,
-                    reset_unauthorized_on_success=False,
-                    reset_transient_on_success=False,
+                    reset_state_on_success=False,
                 )
             except ENERGY_REFRESH_EXCEPTIONS as error:
                 if not is_unauthorized_error(error):
@@ -289,10 +297,13 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator[list[dict[str, Any]]]):
         operation_name: str,
         error: Exception,
     ) -> NoReturn:
-        """Recover from a failed write and raise a user-facing Home Assistant error.
+        """Recover from an exhausted retryable write and raise a HA error.
 
         Forces a refresh so entity state is reconciled with the Carrier backend
-        before surfacing the failure to the user.
+        before surfacing the failure to the user. If reconciliation succeeds,
+        that successful refresh clears the shared counters. If credentials are
+        still rejected, the reconciliation refresh or a later scheduled refresh
+        will record a fresh unauthorized failure and trigger reauthentication.
 
         Args:
             operation_name: Friendly name for the write operation that failed.
@@ -307,11 +318,12 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator[list[dict[str, Any]]]):
         await self._async_reconcile_failed_write(operation_name, error)
 
         if is_unauthorized:
-            # The helper already crossed the threshold before raising; the next
-            # refresh tick will see the same counter and raise
-            # ConfigEntryAuthFailed, which triggers HA's reauth flow.
+            # The write crossed the auth threshold, but reconciliation may have
+            # already cleared stale counters. Reauth is left to a fresh failed
+            # refresh so one recovered write outage does not force credentials
+            # invalid.
             raise HomeAssistantError(
-                "Carrier repeatedly rejected requests. Reauthentication will be triggered shortly."
+                "Carrier rejected repeated write attempts. Try again shortly."
             ) from error
 
         raise HomeAssistantError(
@@ -323,6 +335,12 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator[list[dict[str, Any]]]):
     ) -> None:
         """Refresh coordinator state after a write may have partially applied.
 
+        Carrier can accept a write server-side and still fail the client request
+        because of a timeout or transport interruption. Reconciliation forces a
+        normal coordinator refresh before the user-facing error is raised. That
+        refresh owns its own retry accounting: success clears stale counters,
+        while continued failures record fresh evidence.
+
         Args:
             operation_name: Friendly name for the write operation that failed.
             error: Exception raised by the failed write, if available.
@@ -330,24 +348,10 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator[list[dict[str, Any]]]):
         if error is not None and is_unauthorized_error(error):
             self.data_flush = True
 
-        prev_suppress = self.resiliency.suppress_recording
-        if prev_suppress:  # pragma: no cover - defensive logging only
-            _LOGGER.debug(
-                "refresh after failed %s write is already suppressing resiliency recording",
-                operation_name,
-            )
-
-        self.resiliency.suppress_recording = True
         try:
-            # A write may have partially applied server-side before the transport
-            # failed, so force a refresh before reporting or re-raising upstream.
-            if isinstance(error, CarrierUnauthorizedError):
-                with self.resiliency.preserve_unauthorized():
-                    await self.async_refresh()
-                self.data_flush = True
-                self.update_interval = timedelta(minutes=1)
-            else:
-                await self.async_refresh()
+            # Refresh may repair local state after a server-side partial write.
+            # It also provides the fresh success/failure signal used for counters.
+            await self.async_refresh()
         except (
             CarrierUnauthorizedError,
             ConfigEntryAuthFailed,
@@ -360,8 +364,6 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator[list[dict[str, Any]]]):
                 operation_name,
                 refresh_error,
             )
-        finally:
-            self.resiliency.suppress_recording = prev_suppress
 
     async def async_perform_api_call(
         self,
