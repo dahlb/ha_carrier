@@ -10,7 +10,6 @@ from homeassistant import config_entries
 from homeassistant.config_entries import ConfigFlowResult
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 from homeassistant.core import callback
-from homeassistant.exceptions import ConfigEntryAuthFailed
 import homeassistant.helpers.config_validation as cv
 import voluptuous as vol
 
@@ -42,8 +41,6 @@ async def _async_validate_credentials(username: str, password: str) -> dict[str,
     try:
         api_connection = ApiConnectionGraphql(username=username, password=password)
         await api_connection.load_data()
-    except ConfigEntryAuthFailed:
-        return {"base": ERROR_AUTH}
     except (AuthError, BaseError, ClientError, TransportError, OSError, TimeoutError) as error:
         if is_unauthorized_error(error):
             return {"base": ERROR_AUTH}
@@ -148,12 +145,12 @@ class ConfigFlowHandler(config_entries.ConfigFlow):
         if user_input is not None:
             username = user_input[CONF_USERNAME]
             password = user_input[CONF_PASSWORD]
+            await self.async_set_unique_id(username)
+            self._abort_if_unique_id_configured()
             errors = await _async_validate_credentials(username, password)
 
             if not errors:
                 self.data.update(user_input)
-                await self.async_set_unique_id(username)
-                self._abort_if_unique_id_configured()
                 return self.async_create_entry(title=username, data=self.data)
 
         return self.async_show_form(step_id="user", data_schema=data_schema, errors=errors)
