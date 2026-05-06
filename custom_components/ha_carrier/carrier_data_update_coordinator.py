@@ -3,21 +3,15 @@
 import asyncio
 from collections.abc import Awaitable, Callable, Mapping
 from datetime import UTC, datetime, timedelta
+import functools
 import logging
 from typing import Any, NoReturn
 
-from aiohttp import ClientError
 from carrier_api import ApiConnectionGraphql, AuthError, BaseError, Energy, System
 from carrier_api.api_websocket_data_updater import WebsocketDataUpdater
-from gql.transport.exceptions import (
-    TransportConnectionFailed,
-    TransportError,
-    TransportProtocolError,
-    TransportQueryError,
-    TransportServerError,
-)
+from gql.transport.exceptions import TransportServerError
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import HomeAssistantError
+from homeassistant.exceptions import ConfigEntryAuthFailed, HomeAssistantError
 from homeassistant.helpers.debounce import Debouncer
 from homeassistant.helpers.update_coordinator import (
     REQUEST_REFRESH_DEFAULT_COOLDOWN,
@@ -28,22 +22,54 @@ from homeassistant.helpers.update_coordinator import (
 from .const import (
     DEFAULT_UPDATE_INTERVAL_MINUTES,
     DOMAIN,
+    MAX_REFRESH_ATTEMPTS,
     MAX_WRITE_ATTEMPTS,
+    REFRESH_RETRY_BASE_DELAY_SECONDS,
+    REFRESH_RETRY_MAX_DELAY_SECONDS,
+    RETRY_JITTER_FRACTION,
     TO_REDACT_MAPPED,
+    TRANSIENT_FAILURE_THRESHOLD,
     UNAUTHORIZED_RETRY_THRESHOLD,
-    WRITE_RETRY_DELAY_SECONDS,
+    WRITE_RETRY_BASE_DELAY_SECONDS,
+    WRITE_RETRY_MAX_DELAY_SECONDS,
 )
-from .util import async_redact_data
+from .exceptions import CarrierUnauthorizedError
+from .resiliency import ResiliencyState, RetryPolicy, async_call_with_retry
+from .util import (
+    RECOVERABLE_REFRESH_EXCEPTIONS,
+    RECOVERABLE_WRITE_COMMUNICATION_EXCEPTIONS,
+    async_redact_data,
+    is_unauthorized_error,
+)
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 
+REFRESH_RETRY_POLICY = RetryPolicy(
+    name="carrier-refresh",
+    max_attempts=MAX_REFRESH_ATTEMPTS,
+    base_delay=REFRESH_RETRY_BASE_DELAY_SECONDS,
+    max_delay=REFRESH_RETRY_MAX_DELAY_SECONDS,
+    jitter_fraction=RETRY_JITTER_FRACTION,
+    retry_on_unauthorized=False,
+)
 
-class CarrierUnauthorizedError(Exception):
-    """Raised when unauthorized responses stop looking transient."""
+WRITE_RETRY_POLICY = RetryPolicy(
+    name="carrier-write",
+    max_attempts=MAX_WRITE_ATTEMPTS,
+    base_delay=WRITE_RETRY_BASE_DELAY_SECONDS,
+    max_delay=WRITE_RETRY_MAX_DELAY_SECONDS,
+    jitter_fraction=RETRY_JITTER_FRACTION,
+    retry_on_unauthorized=True,
+)
+
+ENERGY_REFRESH_EXCEPTIONS: tuple[type[BaseException], ...] = (
+    *RECOVERABLE_REFRESH_EXCEPTIONS,
+    CarrierUnauthorizedError,
+)
 
 
 class CarrierDataUpdateCoordinator(DataUpdateCoordinator[list[dict[str, Any]]]):
-    """Maintain synchronized Carrier system data for all integration entities."""
+    """Maintain Carrier data and shared API resiliency state for one account."""
 
     def __init__(
         self,
@@ -58,10 +84,10 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator[list[dict[str, Any]]]):
         """
         self.hass: HomeAssistant = hass
         self.api_connection: ApiConnectionGraphql = api_connection
-        self.consecutive_unauthorized_count = 0
-        self.unauthorized_outage_logged = False
-        self.unauthorized_escalated_logged = False
-        self._suppress_unauthorized_recording = False
+        self.resiliency = ResiliencyState(
+            unauthorized_threshold=UNAUTHORIZED_RETRY_THRESHOLD,
+            transient_threshold=TRANSIENT_FAILURE_THRESHOLD,
+        )
         self.systems: list[System] = []
         self.websocket_data_updater: WebsocketDataUpdater | None = None
         self.websocket_task: asyncio.Task[None] | None = None
@@ -87,243 +113,211 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator[list[dict[str, Any]]]):
         )
 
     async def _async_update_data(self) -> list[dict[str, Any]]:
-        """Fetch the latest Carrier data for entities backed by the coordinator.
+        """Fetch Carrier data and translate escalated failures for Home Assistant.
 
         Performs either a full system refresh or a lighter energy-only refresh,
-        depending on whether the coordinator has been marked dirty. Unauthorized
-        responses are tracked separately so transient Carrier outages can be
-        retried quickly without immediately treating credentials as invalid.
+        depending on whether the coordinator has been marked dirty. The shared
+        `ResiliencyState` tracks 401 and transient failures across API calls.
+        Unauthorized failures only become `ConfigEntryAuthFailed` after a fresh
+        refresh attempt fails and crosses the shared threshold, so a later
+        successful refresh can still clear an old outage window. Non-escalated
+        refresh failures remain `UpdateFailed`, which lets Home Assistant retry
+        later.
 
         Returns:
             list[dict[str, Any]]: List of mappings representing tracked systems.
 
         Raises:
-            UpdateFailed: Raised when the refresh cannot complete successfully.
+            ConfigEntryAuthFailed: Raised when 401 responses cross the
+                unauthorized threshold; HA prompts reauth.
+            UpdateFailed: Raised when transient failures escalate or refresh
+                cannot complete successfully for other reasons.
         """
-        refresh_context = "full data refresh" if self.data_flush else "energy refresh"
+        if self.data_flush:
+            refresh_context = "full data refresh"
+            refresh_operation = self._async_full_refresh
+        else:
+            refresh_context = "energy refresh"
+            refresh_operation = self._async_energy_refresh
+
         try:
-            if self.data_flush:
-                _LOGGER.debug("fetching fresh all data")
-                fresh_systems: list[System] = await self.api_connection.load_data()
-                if not self.systems:
-                    self.systems = fresh_systems
-                else:
-                    for fresh_system in fresh_systems:
-                        related_stale_system = self.system(fresh_system.profile.serial)
-                        if related_stale_system is None:
-                            _LOGGER.error(
-                                "unable to find matching system, serial %s",
-                                fresh_system.profile.serial,
-                            )
-                        else:
-                            related_stale_system.profile = fresh_system.profile
-                            related_stale_system.status = fresh_system.status
-                            related_stale_system.config = fresh_system.config
-                            related_stale_system.energy = fresh_system.energy
-                if not self._websocket_initialized:
-                    self.websocket_data_updater = WebsocketDataUpdater(systems=self.systems)
-                    self.api_connection.api_websocket.callback_add(
-                        self.websocket_data_updater.message_handler
-                    )
-                    self.api_connection.api_websocket.callback_add(self.updated_callback)
-                    self._websocket_initialized = True
-                if _LOGGER.isEnabledFor(logging.DEBUG):
-                    for system in self.systems:
-                        _LOGGER.debug(
-                            "%s",
-                            async_redact_data(self.mapped_system_data(system), TO_REDACT_MAPPED),
-                        )
-                self.timestamp_all_data = datetime.now(UTC)
-                self.timestamp_energy = self.timestamp_all_data
-                self.data_flush = False
-                self._reset_unauthorized_tracking()
-                self.update_interval = timedelta(minutes=DEFAULT_UPDATE_INTERVAL_MINUTES)
-            else:
-                _LOGGER.debug("fetching energy data")
-                found_unauthorized = False
-                for system in self.systems:
-                    try:
-                        energy_response = await self.api_connection.get_energy(
-                            system.profile.serial
-                        )
-                    except TransportServerError as server_error:
-                        if not self._is_unauthorized_error(server_error):
-                            raise
-                        # Preserve the last known energy payload while probing whether
-                        # the unauthorized response is just a transient Carrier outage.
-                        found_unauthorized = True
-                        continue
-                    energy = Energy(raw=energy_response["infinityEnergy"])
-                    system.energy = energy
-                if found_unauthorized:
-                    if self._record_unauthorized("energy refresh cycle"):
-                        raise CarrierUnauthorizedError(
-                            "Carrier API repeatedly rejected energy refresh requests; "
-                            "check credentials or service health."
-                        )
-                    self.update_interval = timedelta(minutes=1)
-                else:
-                    self.timestamp_energy = datetime.now(UTC)
-                    self._reset_unauthorized_tracking()
-                    self.update_interval = timedelta(minutes=DEFAULT_UPDATE_INTERVAL_MINUTES)
+            await refresh_operation()
             return [self.mapped_system_data(system) for system in self.systems]
         except CarrierUnauthorizedError as error:
             self.data_flush = True
             self.update_interval = timedelta(minutes=1)
-            raise UpdateFailed(str(error)) from error
-        except TransportServerError as server_error:
-            self.data_flush = True
-            if self._is_unauthorized_error(server_error):
-                should_escalate = self._record_unauthorized(refresh_context)
-                self.update_interval = timedelta(minutes=1)
-                if should_escalate:
-                    raise UpdateFailed(
-                        "Carrier API repeatedly rejected refresh requests; "
-                        "check credentials or service health."
-                    ) from server_error
-                raise UpdateFailed(
-                    "Carrier API temporarily rejected the refresh; retrying soon."
-                ) from server_error
-            _LOGGER.exception("Carrier refresh hit a transport server error")
-            _LOGGER.debug("transport error likely carrier api maintenance so retrying in 1 minute.")
-            self.update_interval = timedelta(minutes=1)
-            raise UpdateFailed(
-                f"Carrier transport server error during refresh: {server_error}"
-            ) from server_error
-        except asyncio.CancelledError, KeyboardInterrupt, SystemExit:
-            raise
+            raise ConfigEntryAuthFailed(
+                "Carrier API rejected credentials; reauthentication required."
+            ) from error
         except (
-            AuthError,
-            BaseError,
-            ClientError,
-            TimeoutError,
-            TransportConnectionFailed,
-            TransportError,
-            TransportProtocolError,
-            TransportQueryError,
-        ) as error:
-            _LOGGER.exception("Carrier refresh failed with an unexpected error")
-            self.data_flush = True
-            self.update_interval = timedelta(minutes=DEFAULT_UPDATE_INTERVAL_MINUTES)
-            _LOGGER.debug(
-                "unrecognized error so retrying in default 30 minutes but refreshing all data then."
-            )
-            raise UpdateFailed(f"Unexpected error during Carrier refresh: {error}") from error
-
-    @staticmethod
-    def _is_unauthorized_error(error: Exception) -> bool:
-        """Determine whether an exception represents a Carrier unauthorized response.
-
-        Args:
-            error: Exception raised by the Carrier client or transport.
-
-        Returns:
-            bool: True when the error maps to an HTTP 401-style failure.
-        """
-        status_code = getattr(error, "code", None) or getattr(error, "status", None)
-        return status_code == 401
-
-    def _reset_unauthorized_tracking(self) -> None:
-        """Clear the unauthorized counters after a successful Carrier request.
-
-        A successful read or write means the most recent authentication issue was
-        transient, so subsequent failures should start a new outage window.
-        """
-        self.consecutive_unauthorized_count = 0
-        self.unauthorized_outage_logged = False
-        self.unauthorized_escalated_logged = False
-
-    def _record_unauthorized(self, context: str) -> bool:
-        """Record an unauthorized response and decide whether to escalate it.
-
-        Args:
-            context: Short description of the request path that failed.
-
-        Returns:
-            bool: True when repeated unauthorized responses have crossed the
-            escalation threshold.
-        """
-        if self._suppress_unauthorized_recording:
-            return self.consecutive_unauthorized_count >= UNAUTHORIZED_RETRY_THRESHOLD
-
-        self.consecutive_unauthorized_count += 1
-        if not self.unauthorized_outage_logged:
-            _LOGGER.info(
-                "Carrier API returned unauthorized during %s; treating it as a transient blip.",
-                context,
-            )
-            self.unauthorized_outage_logged = True
-        if (
-            self.consecutive_unauthorized_count >= UNAUTHORIZED_RETRY_THRESHOLD
-            and not self.unauthorized_escalated_logged
+            asyncio.CancelledError,
+            KeyboardInterrupt,
+            SystemExit,
         ):
-            _LOGGER.error(
-                "Carrier API returned unauthorized %s consecutive times; "
-                "this no longer looks transient.",
-                self.consecutive_unauthorized_count,
+            raise
+        except RECOVERABLE_REFRESH_EXCEPTIONS as error:
+            self.data_flush = True
+            self.update_interval = timedelta(minutes=1)
+            if isinstance(error, TransportServerError) and is_unauthorized_error(error):
+                _LOGGER.info(
+                    "Carrier %s returned unauthorized without crossing the reauth threshold.",
+                    refresh_context,
+                )
+                raise UpdateFailed(
+                    f"Carrier temporarily rejected {refresh_context}; will retry."
+                ) from error
+            _LOGGER.exception("Carrier %s failed", refresh_context, exc_info=error)
+            raise UpdateFailed(
+                f"Unexpected error during Carrier {refresh_context}: {error}"
+            ) from error
+
+    async def _async_full_refresh(self) -> None:
+        """Load all Carrier systems through the normal retry path.
+
+        A successful full refresh represents a healthy API round trip, so the
+        retry helper uses its default behavior and resets shared resiliency
+        counters. System objects are then updated in place so websocket callbacks
+        and entity references keep pointing at the live coordinator list.
+
+        Raises:
+            CarrierUnauthorizedError: When 401s escalate beyond the threshold.
+            BaseException: Any transient error that escalates beyond the threshold.
+        """
+        _LOGGER.debug("fetching fresh all data")
+        fresh_systems: list[System] = await async_call_with_retry(
+            self.api_connection.load_data,
+            policy=REFRESH_RETRY_POLICY,
+            state=self.resiliency,
+            operation_name="full data refresh",
+            logger=_LOGGER,
+        )
+        if not self.systems:
+            self.systems.clear()
+            self.systems.extend(fresh_systems)
+        else:
+            existing_by_serial = {s.profile.serial: s for s in self.systems}
+            fresh_serials = {s.profile.serial for s in fresh_systems}
+
+            for fresh_system in fresh_systems:
+                existing = existing_by_serial.get(fresh_system.profile.serial)
+                if existing is None:
+                    _LOGGER.info(
+                        "new system discovered, adding serial %s",
+                        fresh_system.profile.serial,
+                    )
+                    self.systems.append(fresh_system)
+                else:
+                    existing.profile = fresh_system.profile
+                    existing.status = fresh_system.status
+                    existing.config = fresh_system.config
+                    existing.energy = fresh_system.energy
+
+            stale = [s for s in self.systems if s.profile.serial not in fresh_serials]
+            for stale_system in stale:
+                _LOGGER.info(
+                    "system no longer present in Carrier account, removing serial %s",
+                    stale_system.profile.serial,
+                )
+                self.systems.remove(stale_system)
+        if not self._websocket_initialized:
+            self.websocket_data_updater = WebsocketDataUpdater(systems=self.systems)
+            self.api_connection.api_websocket.callback_add(
+                self.websocket_data_updater.message_handler
             )
-            self.unauthorized_escalated_logged = True
-        return self.consecutive_unauthorized_count >= UNAUTHORIZED_RETRY_THRESHOLD
+            self.api_connection.api_websocket.callback_add(self.updated_callback)
+            self._websocket_initialized = True
+        if _LOGGER.isEnabledFor(logging.DEBUG):
+            for system in self.systems:
+                _LOGGER.debug(
+                    "%s",
+                    async_redact_data(self.mapped_system_data(system), TO_REDACT_MAPPED),
+                )
+        self.timestamp_all_data = datetime.now(UTC)
+        self.timestamp_energy = self.timestamp_all_data
+        self.data_flush = False
+        self.update_interval = timedelta(minutes=DEFAULT_UPDATE_INTERVAL_MINUTES)
 
-    def _is_retryable_write_error(self, error: Exception) -> bool:
-        """Return whether a write failure should be retried once.
+    async def _async_energy_refresh(self) -> None:
+        """Refresh energy data while accounting for failures once per cycle.
 
-        Args:
-            error: Exception raised while sending a Carrier write request.
+        Energy refresh calls the API once per system, but all systems together
+        are one logical coordinator refresh. A 401 from any system preserves that
+        system's previous energy payload and immediately records one unauthorized
+        failure for the whole cycle. Per-system helper successes use
+        `reset_state_on_success=False` so a later successful system cannot erase
+        failure evidence from an earlier system in the same cycle.
 
-        Returns:
-            bool: True when the failure matches a transient unauthorized or
-            timeout condition.
+        The helper still owns per-system transient retry and backoff. A fully
+        successful energy cycle clears unauthorized tracking and restores the
+        normal polling interval.
+
+        Raises:
+            CarrierUnauthorizedError: When 401s escalate beyond the threshold.
         """
-        if isinstance(error, TransportServerError):
-            return self._is_unauthorized_error(error)
-        return isinstance(error, TimeoutError)
+        _LOGGER.debug("fetching energy data")
+        found_unauthorized = False
+        for system in self.systems:
+            try:
+                energy_response = await async_call_with_retry(
+                    functools.partial(self.api_connection.get_energy, system.profile.serial),
+                    policy=REFRESH_RETRY_POLICY,
+                    state=self.resiliency,
+                    operation_name="energy refresh",
+                    logger=_LOGGER,
+                    manage_unauthorized_state=False,
+                    reset_state_on_success=False,
+                )
+            except ENERGY_REFRESH_EXCEPTIONS as error:
+                if not is_unauthorized_error(error):
+                    raise
+                if not found_unauthorized:
+                    found_unauthorized = True
+                    self.update_interval = timedelta(minutes=1)
+                    if self.resiliency.record_unauthorized(_LOGGER, "energy refresh cycle"):
+                        raise CarrierUnauthorizedError(
+                            "Carrier API repeatedly rejected energy refresh requests."
+                        ) from error
+                continue
+            energy = Energy(raw=energy_response["infinityEnergy"])
+            system.energy = energy
+        if not found_unauthorized:
+            self.resiliency.reset_unauthorized()
+            self.resiliency.reset_transient()
+            self.timestamp_energy = datetime.now(UTC)
+            self.update_interval = timedelta(minutes=DEFAULT_UPDATE_INTERVAL_MINUTES)
 
-    async def _async_retry_write(self, attempt: int) -> bool:
-        """Delay before retrying a failed write when attempts remain.
-
-        Args:
-            attempt: Zero-based attempt number for the current request.
-
-        Returns:
-            bool: True when the caller should issue one more write attempt.
-        """
-        if attempt >= MAX_WRITE_ATTEMPTS - 1:
-            return False
-        await asyncio.sleep(WRITE_RETRY_DELAY_SECONDS)
-        return True
-
-    async def _async_handle_failed_write(self, operation_name: str, error: Exception) -> NoReturn:
-        """Recover from a failed write and raise a user-facing Home Assistant error.
+    async def _async_handle_failed_write(
+        self,
+        operation_name: str,
+        error: Exception,
+    ) -> NoReturn:
+        """Recover from an exhausted retryable write and raise a HA error.
 
         Forces a refresh so entity state is reconciled with the Carrier backend
-        before surfacing the failure to the user.
+        before surfacing the failure to the user. If reconciliation succeeds,
+        that successful refresh clears the shared counters. If credentials are
+        still rejected, the reconciliation refresh or a later scheduled refresh
+        will record a fresh unauthorized failure and trigger reauthentication.
 
         Args:
             operation_name: Friendly name for the write operation that failed.
-            error: Exception raised by the Carrier API client.
+            error: Exception raised by the Carrier API client. Either a
+                CarrierUnauthorizedError (already escalated by the helper) or
+                a TimeoutError that exhausted retries.
 
         Raises:
             HomeAssistantError: Raised with a message tailored to the failure type.
         """
-        is_unauthorized_write = isinstance(
-            error, TransportServerError
-        ) and self._is_unauthorized_error(error)
-        should_escalate = False
-
-        if is_unauthorized_write:
-            should_escalate = self._record_unauthorized(operation_name)
-
+        is_unauthorized = isinstance(error, CarrierUnauthorizedError)
         await self._async_reconcile_failed_write(operation_name, error)
 
-        if is_unauthorized_write:
-            if should_escalate:
-                raise HomeAssistantError(
-                    "Carrier repeatedly rejected requests. "
-                    "Check credentials or Carrier service health."
-                ) from error
+        if is_unauthorized:
+            # The write crossed the auth threshold, but reconciliation may have
+            # already cleared stale counters. Reauth is left to a fresh failed
+            # refresh so one recovered write outage does not force credentials
+            # invalid.
             raise HomeAssistantError(
-                "Carrier temporarily rejected the request. Try again shortly."
+                "Carrier rejected repeated write attempts. Try again shortly."
             ) from error
 
         raise HomeAssistantError(
@@ -331,43 +325,49 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator[list[dict[str, Any]]]):
         ) from error
 
     async def _async_reconcile_failed_write(
-        self, operation_name: str, error: Exception | None = None
+        self, operation_name: str, error: BaseException | None = None
     ) -> None:
         """Refresh coordinator state after a write may have partially applied.
+
+        Carrier can accept a write server-side and still fail the client request
+        because of a timeout or transport interruption. Reconciliation forces a
+        normal coordinator refresh before the user-facing error is raised. That
+        refresh owns its own retry accounting: success clears stale counters,
+        while continued failures record fresh evidence.
 
         Args:
             operation_name: Friendly name for the write operation that failed.
             error: Exception raised by the failed write, if available.
         """
-        if isinstance(error, TransportServerError) and self._is_unauthorized_error(error):
+        if error is not None and (
+            is_unauthorized_error(error)
+            or isinstance(error, RECOVERABLE_WRITE_COMMUNICATION_EXCEPTIONS)
+        ):
             self.data_flush = True
 
-        self._suppress_unauthorized_recording = True
         try:
-            # A write may have partially applied server-side before the transport
-            # failed, so force a refresh before reporting or re-raising upstream.
+            # Refresh may repair local state after a server-side partial write.
+            # It also provides the fresh success/failure signal used for counters.
             await self.async_refresh()
         except (
             CarrierUnauthorizedError,
+            ConfigEntryAuthFailed,
             HomeAssistantError,
-            TimeoutError,
-            TransportServerError,
             UpdateFailed,
-        ) as refresh_error:  # pragma: no cover - defensive logging only
+        ) as refresh_error:
+            # pragma: no cover - defensive logging only
             _LOGGER.debug(
                 "refresh after failed %s write failed: %s",
                 operation_name,
                 refresh_error,
             )
-        finally:
-            self._suppress_unauthorized_recording = False
 
     async def async_perform_api_call(
         self,
         operation_name: str,
         request: Callable[[], Awaitable[Any]],
     ) -> Any:
-        """Execute a Carrier write call with limited retry and recovery handling.
+        """Execute a Carrier write call via the centralized retry helper.
 
         Args:
             operation_name: Friendly name for the write operation, used in logs
@@ -379,31 +379,38 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator[list[dict[str, Any]]]):
 
         Raises:
             HomeAssistantError: Raised after retry and refresh recovery are
-                exhausted for retryable failures.
-            HomeAssistantError: Raised after reconciliation for non-retryable
-                request failures.
+                exhausted for retryable failures or for non-retryable failures.
         """
-        for attempt in range(MAX_WRITE_ATTEMPTS):
-            try:
-                result = await request()
-            except (TransportServerError, TimeoutError) as error:
-                if not self._is_retryable_write_error(error):
-                    await self._async_reconcile_failed_write(operation_name, error)
-                    raise HomeAssistantError(
-                        "Failed to communicate with Carrier service — "
-                        "operation could not be completed."
-                    ) from error
-                if await self._async_retry_write(attempt):
-                    continue
-                await self._async_handle_failed_write(operation_name, error)
-                raise AssertionError("unreachable after failed write handling") from error
-            else:
-                self._reset_unauthorized_tracking()
-                return result
-
-        raise HomeAssistantError(
-            "Carrier operation did not complete after the allowed retry attempts."
-        )
+        try:
+            return await async_call_with_retry(
+                request,
+                policy=WRITE_RETRY_POLICY,
+                state=self.resiliency,
+                operation_name=operation_name,
+                logger=_LOGGER,
+            )
+        except CarrierUnauthorizedError as error:
+            await self._async_handle_failed_write(operation_name, error)
+            raise AssertionError("unreachable after failed write handling") from error
+        except (
+            asyncio.CancelledError,
+            KeyboardInterrupt,
+            SystemExit,
+        ):
+            raise
+        except TimeoutError as error:
+            await self._async_handle_failed_write(operation_name, error)
+            raise AssertionError("unreachable after failed write handling") from error
+        except RECOVERABLE_WRITE_COMMUNICATION_EXCEPTIONS as error:
+            await self._async_reconcile_failed_write(operation_name, error)
+            raise HomeAssistantError(
+                "Failed to communicate with Carrier service — operation could not be completed."
+            ) from error
+        except (AuthError, BaseError) as error:
+            await self._async_reconcile_failed_write(operation_name, error)
+            raise HomeAssistantError(
+                "Carrier rejected the request. Check the requested setting and try again."
+            ) from error
 
     def system(self, system_serial: str) -> System | None:
         """Return the tracked system matching a Carrier serial.

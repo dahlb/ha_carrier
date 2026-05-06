@@ -8,10 +8,24 @@
           "username": "Username",
           "password": "Password"
         }
+      },
+      "reauth_confirm": {
+        "title": "Carrier Auth",
+        "description": "Re-enter your Carrier password for {username}.",
+        "data": {
+          "password": "Password"
+        }
       }
     },
     "error": {
-      "auth": "Login failed. Please use official app to logout and log back in and try again."
+      "invalid_auth": "Login failed. Please use official app to logout and log back in and try again.",
+      "cannot_connect": "Unable to reach Carrier. Try again shortly.",
+      "unknown": "Unexpected error contacting Carrier."
+    },
+    "abort": {
+      "reauth_successful": "Re-authentication was successful.",
+      "reauth_missing_username": "Unable to start re-authentication because the existing Carrier username is missing.",
+      "already_configured": "This Carrier account is already configured."
     }
   },
   "options": {

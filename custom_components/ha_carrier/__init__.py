@@ -3,26 +3,41 @@
 import asyncio
 import logging
 
-from aiohttp import ClientError
 from carrier_api import ApiConnectionGraphql
-from gql.transport.exceptions import TransportError, TransportServerError
+from gql.transport.exceptions import TransportServerError
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import ConfigEntryNotReady
+from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
 from homeassistant.helpers import config_validation as cv
 
-from .carrier_data_update_coordinator import CarrierDataUpdateCoordinator, CarrierUnauthorizedError
+from .carrier_data_update_coordinator import CarrierDataUpdateCoordinator
 from .const import (
     CONFIG_FLOW_VERSION,
     DOMAIN,
     PLATFORMS,
+    RETRY_JITTER_FRACTION,
     TO_REDACT,
     WEBSOCKET_RETRY_INITIAL_DELAY_SECONDS,
     WEBSOCKET_RETRY_MAX_DELAY_SECONDS,
 )
+from .exceptions import CarrierUnauthorizedError
 from .migrate import migrate_1_to_2
-from .util import async_redact_data
+from .resiliency import RetryPolicy, compute_backoff_delay
+from .util import WEBSOCKET_RECOVERABLE_EXCEPTIONS, async_redact_data, is_unauthorized_error
+
+WEBSOCKET_RETRY_POLICY = RetryPolicy(
+    name="carrier-websocket",
+    max_attempts=None,
+    base_delay=float(WEBSOCKET_RETRY_INITIAL_DELAY_SECONDS),
+    max_delay=float(WEBSOCKET_RETRY_MAX_DELAY_SECONDS),
+    jitter_fraction=RETRY_JITTER_FRACTION,
+    retry_on_unauthorized=False,
+)
+# The websocket loop calls `compute_backoff_delay` directly, so
+# `retry_on_unauthorized` is not enforced by `async_call_with_retry` here. Use
+# `async_call_with_retry` with this `WEBSOCKET_RETRY_POLICY` and
+# `max_attempts=None` if websocket reconnections should enforce that flag.
 
 type ConfigEntryCarrier = ConfigEntry[CarrierDataUpdateCoordinator]
 
@@ -43,14 +58,10 @@ async def _async_await_websocket_task(websocket_task: asyncio.Task[None]) -> Non
         await websocket_task
     except asyncio.CancelledError:
         pass
-    except (
-        CarrierUnauthorizedError,
-        ClientError,
-        TimeoutError,
-        OSError,
-        TransportError,
-    ):
+    except WEBSOCKET_RECOVERABLE_EXCEPTIONS:
         _LOGGER.exception("websocket task raised during cancellation")
+    except RuntimeError:
+        _LOGGER.exception("websocket task raised RuntimeError during cancellation")
 
 
 async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntryCarrier) -> bool:
@@ -68,10 +79,10 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntryCarrie
         bool: True when setup succeeds.
 
     Raises:
-        ConfigEntryNotReady: Raised when authentication or initial data loading
-            fails and Home Assistant should retry setup later.
-        CarrierUnauthorizedError: Raised when repeated unauthorized responses
-            indicate invalid credentials rather than a transient outage.
+        ConfigEntryAuthFailed: Raised when Carrier setup fails due to invalid
+            or expired credentials.
+        ConfigEntryNotReady: Raised when initial setup fails for a retryable
+            transport or runtime reason.
     """
     _LOGGER.debug(
         "async setup entry: %s",
@@ -94,13 +105,16 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntryCarrie
 
             The loop exits on cancellation and forces a coordinator refresh if
             websocket handling fails so entity state can recover gracefully.
-            Retry delays back off after repeated transport failures and reset
-            after a successful listener session.
+            Retry delays back off after repeated websocket failures and reset
+            after a successful listener session. The websocket loop does not
+            update resiliency counters directly; it requests a coordinator
+            refresh, and the refresh path owns outage accounting and any reauth
+            escalation.
 
             Returns:
                 None: This coroutine runs until cancelled.
             """
-            retry_delay_seconds = WEBSOCKET_RETRY_INITIAL_DELAY_SECONDS
+            attempt = 0
             while True:
                 try:
                     _LOGGER.debug("websocket task listening")
@@ -108,27 +122,25 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntryCarrie
                     _LOGGER.debug("websocket task ending")
                     coordinator.data_flush = True
                     await coordinator.async_request_refresh()
-                    await asyncio.sleep(retry_delay_seconds)
-                    retry_delay_seconds = WEBSOCKET_RETRY_INITIAL_DELAY_SECONDS
                 except asyncio.CancelledError:
                     _LOGGER.debug("websocket task cancelled")
                     raise
-                except (
-                    CarrierUnauthorizedError,
-                    ClientError,
-                    TimeoutError,
-                    OSError,
-                    TransportError,
-                ):
-                    _LOGGER.exception(
-                        "websocket task exception; retrying in %s seconds", retry_delay_seconds
+                except WEBSOCKET_RECOVERABLE_EXCEPTIONS as error:
+                    delay = compute_backoff_delay(WEBSOCKET_RETRY_POLICY, attempt)
+                    _LOGGER.debug(
+                        "websocket task hit %s; requesting refresh and retrying in %.1f "
+                        "seconds (attempt %d)",
+                        type(error).__name__,
+                        delay,
+                        attempt + 1,
                     )
                     coordinator.data_flush = True
                     await coordinator.async_request_refresh()
-                    await asyncio.sleep(retry_delay_seconds)
-                    retry_delay_seconds = min(
-                        retry_delay_seconds * 2, WEBSOCKET_RETRY_MAX_DELAY_SECONDS
-                    )
+                    await asyncio.sleep(delay)
+                    attempt += 1
+                else:
+                    attempt = 0
+                    await asyncio.sleep(compute_backoff_delay(WEBSOCKET_RETRY_POLICY, attempt))
 
         websocket_task = hass.async_create_background_task(
             ws_updates(),
@@ -147,21 +159,26 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntryCarrie
             websocket_task.cancel()
 
         config_entry.async_on_unload(cancel_websocket_task)
+    except ConfigEntryAuthFailed:
+        _LOGGER.exception("Carrier authentication failed during setup")
+        raise
+    except CarrierUnauthorizedError as error:
+        _LOGGER.exception("Carrier unauthorized during setup")
+        raise ConfigEntryAuthFailed("Carrier API rejected credentials during setup.") from error
     except TransportServerError as error:
         _LOGGER.exception("Carrier transport error during setup")
         raise ConfigEntryNotReady(error) from error
-    except CarrierUnauthorizedError:
-        _LOGGER.exception("Carrier unauthorized during setup")
+    except (
+        asyncio.CancelledError,
+        KeyboardInterrupt,
+        SystemExit,
+    ):
         raise
-    except ConfigEntryNotReady as error:
-        if isinstance(error.__cause__, TransportServerError):
-            transport_error = error.__cause__
-            _LOGGER.exception("Carrier transport error during setup")
-            raise ConfigEntryNotReady(transport_error) from transport_error
-        if isinstance(error.__cause__, CarrierUnauthorizedError):
-            unauthorized_error = error.__cause__
-            _LOGGER.exception("Carrier unauthorized during setup")
-            raise unauthorized_error from error
+    except ConfigEntryNotReady as err:
+        if is_unauthorized_error(err):
+            _LOGGER.exception("Carrier authentication failed during initial setup refresh")
+            raise ConfigEntryAuthFailed("Carrier API rejected credentials during setup.") from err
+        _LOGGER.debug("Carrier setup is not ready; Home Assistant will retry", exc_info=err)
         raise
 
     await hass.config_entries.async_forward_entry_setups(config_entry, PLATFORMS)

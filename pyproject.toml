@@ -84,13 +84,14 @@ ignore = [
     "RUF002",   # Docstring contains ambiguous unicode character.
     "RUF003",   # Comment contains ambiguous unicode character.
     "RUF015",   # Prefer next(...) over single element slice
-    "SIM102",   # Use a single if statement instead of nested if statements
+    "S311",     # suspicious-non-cryptographic-random-usage
     "SIM103",   # Return the condition {condition} directly
     "SIM108",   # Use ternary operator {contents} instead of if-else-block
     "SIM115",   # Use context handler for opening files
     "TC001",    # Move application import {} into a type-checking block
     "TC002",    # Move third-party import {} into a type-checking block
     "TC003",    # Move standard library import {} into a type-checking block
+    "TD003",    # missing-todo-link
     "TRY003",   # Avoid specifying long messages outside the exception class
     "TRY301",   # raise-within-try
     "TRY400",   # Use `logging.exception` instead of `logging.error`

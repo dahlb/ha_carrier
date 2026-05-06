@@ -1,4 +1,11 @@
-"""Utility helpers shared across Carrier integration modules."""
+"""Utility helpers shared across Carrier integration modules.
+
+`TransportServerError` is intentionally not a transient transport exception
+because 401 server responses must be classified by `is_unauthorized_error`
+before retry logic considers communication recovery. Call-site recoverable
+exception tuples include `TransportServerError` explicitly where server errors
+should still be reconciled or retried on a later interval.
+"""
 
 from __future__ import annotations
 
@@ -6,8 +13,12 @@ from collections.abc import Iterable, Mapping
 import logging
 from typing import Any, overload
 
-from carrier_api import System
+from aiohttp import ClientError
+from carrier_api import AuthError, BaseError, System
+from gql.transport.exceptions import TransportError, TransportProtocolError, TransportServerError
 from homeassistant.core import callback
+
+from .exceptions import CarrierUnauthorizedError
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 REDACTED = "**REDACTED**"
@@ -42,6 +53,38 @@ ENERGY_METRIC_MAP: dict[str, str] = {
 }
 
 TIMESTAMP_TYPES: tuple[str, ...] = ("all_data", "websocket", "energy")
+
+TRANSIENT_TRANSPORT_EXCEPTIONS: tuple[type[BaseException], ...] = (
+    ClientError,
+    TimeoutError,
+    OSError,
+    TransportProtocolError,
+)
+"""Transport-layer exceptions that should retry with backoff."""
+
+RECOVERABLE_REFRESH_EXCEPTIONS: tuple[type[BaseException], ...] = (
+    *TRANSIENT_TRANSPORT_EXCEPTIONS,
+    TransportError,
+    TransportServerError,
+    AuthError,
+    BaseError,
+)
+"""Exceptions a coordinator refresh may recover from on a later interval."""
+
+RECOVERABLE_WRITE_COMMUNICATION_EXCEPTIONS: tuple[type[BaseException], ...] = (
+    *TRANSIENT_TRANSPORT_EXCEPTIONS,
+    TransportError,
+    TransportServerError,
+)
+"""Transport exceptions a write should report as communication failures."""
+
+WEBSOCKET_RECOVERABLE_EXCEPTIONS: tuple[type[BaseException], ...] = (
+    CarrierUnauthorizedError,
+    *TRANSIENT_TRANSPORT_EXCEPTIONS,
+    TransportError,
+    TransportServerError,
+)
+"""Exceptions the websocket reconnect loop should treat as recoverable."""
 
 
 def has_heat(carrier_system: System) -> bool:
@@ -103,3 +146,60 @@ def async_redact_data(data: Any, to_redact: Iterable[Any]) -> Any:
             redacted[key] = [async_redact_data(item, to_redact) for item in value]
 
     return redacted
+
+
+def _iter_exception_chain(error: BaseException) -> Iterable[BaseException]:
+    """Yield the exception followed by its __cause__ and __context__ chains.
+
+    Args:
+        error: Exception to walk.
+
+    Yields:
+        BaseException: Each exception in the chain, deduplicated.
+    """
+    seen: set[int] = set()
+    stack: list[BaseException] = [error]
+    while stack:
+        current = stack.pop()
+        if id(current) in seen:
+            continue
+        seen.add(id(current))
+        yield current
+        if current.__context__ is not None:
+            stack.append(current.__context__)
+        if current.__cause__ is not None:
+            stack.append(current.__cause__)
+
+
+def is_unauthorized_error(error: BaseException) -> bool:
+    """Return True if any exception in the chain represents a 401-style failure.
+
+    Args:
+        error: Exception raised by the Carrier client or transport.
+
+    Returns:
+        bool: True when the error or one of its causes is a 401.
+    """
+    for current in _iter_exception_chain(error):
+        if isinstance(current, CarrierUnauthorizedError | AuthError):
+            return True
+        if isinstance(current, TransportServerError):
+            status_code = getattr(current, "code", None) or getattr(current, "status", None)
+            if status_code == 401:
+                return True
+    return False
+
+
+def is_transient_transport_error(error: BaseException) -> bool:
+    """Return True if any exception in the chain is a transient transport error.
+
+    Args:
+        error: Exception raised by the Carrier client or transport.
+
+    Returns:
+        bool: True when the error or one of its causes is transient.
+    """
+    return any(
+        isinstance(current, TRANSIENT_TRANSPORT_EXCEPTIONS)
+        for current in _iter_exception_chain(error)
+    )

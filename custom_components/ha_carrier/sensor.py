@@ -177,7 +177,13 @@ class CarrierSensor(CarrierEntity, SensorEntity):
         self._sync_entity_attrs()
 
     def _update_entity_attrs(self) -> None:
-        """Update sensor attrs from coordinator data."""
+        """Default to unavailable so concrete sensors must opt in to data.
+
+        Each concrete sensor subclass overrides this to populate
+        ``_attr_native_value`` (and unit / state class metadata where it
+        depends on system configuration) and to flip ``_attr_available`` to
+        True once a usable reading is present.
+        """
         self._attr_available = False
 
 
@@ -263,6 +269,7 @@ class GasMeasurementSensor(CarrierSensor):
         Raises:
             ValueError: Raised when the system serial cannot be resolved.
         """
+        self.metric = "gas"
         self.fuel_type = fuel_type
         super().__init__(
             entity_name=f"{self.fuel_type.capitalize()} Usage Year to Date",
@@ -287,7 +294,12 @@ class GasMeasurementSensor(CarrierSensor):
             self._attr_available = False
             return
 
-        api_field = "gasKwh"
+        api_field = ENERGY_METRIC_MAP.get(self.metric)
+        if api_field is None:
+            _LOGGER.debug("Unknown gas usage metric requested: %s", self.metric)
+            self._attr_available = False
+            return
+
         energy_periods = self.carrier_system.energy.raw.get("energyPeriods", [])
         value: float | None = None
         for period in energy_periods:
@@ -337,6 +349,7 @@ class PropaneMeasurementSensor(CarrierSensor):
             coordinator: Coordinator that provides energy payloads.
             system_serial: Carrier system serial for this entity.
         """
+        self.metric = "gas"
         super().__init__(
             entity_name="Propane Consumption Year to Date",
             coordinator=coordinator,
@@ -349,7 +362,12 @@ class PropaneMeasurementSensor(CarrierSensor):
             self._attr_available = False
             return
 
-        api_field = "gasKwh"
+        api_field = ENERGY_METRIC_MAP.get(self.metric)
+        if api_field is None:
+            _LOGGER.debug("Unknown propane usage metric requested: %s", self.metric)
+            self._attr_available = False
+            return
+
         energy_periods = self.carrier_system.energy.raw.get("energyPeriods", [])
         value: float | None = None
         for period in energy_periods:
