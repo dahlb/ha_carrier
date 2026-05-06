@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
 import logging
-from typing import Any
 
 from aiohttp import ClientError
 from carrier_api import ApiConnectionGraphql, AuthError, BaseError, System
@@ -16,8 +15,7 @@ from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity_registry import EntityRegistry, RegistryEntry
 from homeassistant.util import slugify
 
-from .const import CONFIG_FLOW_VERSION
-from .util import ENERGY_METRIC_MAP, TIMESTAMP_TYPES, has_heat
+from .util import ENERGY_METRIC_MAP, TIMESTAMP_TYPES, async_get_carrier_identity_id, has_heat
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 
@@ -639,9 +637,9 @@ async def migrate_2_to_3(hass: HomeAssistant, config_entry: ConfigEntry) -> bool
     if config_entry.unique_id is not None and config_entry.unique_id != username:
         hass.config_entries.async_update_entry(
             config_entry,
-            version=CONFIG_FLOW_VERSION,
+            version=3,
         )
-        _LOGGER.info("Carrier config entry migration to version %s complete", CONFIG_FLOW_VERSION)
+        _LOGGER.info("Carrier config entry migration to version %s complete", 3)
         return True
 
     api_connection: ApiConnectionGraphql | None = None
@@ -650,8 +648,7 @@ async def migrate_2_to_3(hass: HomeAssistant, config_entry: ConfigEntry) -> bool
             username=username,
             password=config_entry.data[CONF_PASSWORD],
         )
-        await api_connection.load_data()
-        user_info: dict[str, Any] = await api_connection.get_user_info()
+        identity_id = await async_get_carrier_identity_id(api_connection)
     except (
         AuthError,
         BaseError,
@@ -682,21 +679,7 @@ async def migrate_2_to_3(hass: HomeAssistant, config_entry: ConfigEntry) -> bool
                 _LOGGER.exception(
                     "Failed to clean up Carrier API connection after config entry migration."
                 )
-    if not isinstance(user_info, dict) or not user_info:
-        _LOGGER.warning(
-            "Carrier API did not return user info for config entry migration; "
-            "will retry on next startup"
-        )
-        return True
-    user_details = user_info.get("user")
-    if not isinstance(user_details, dict) or not user_details:
-        _LOGGER.warning(
-            "Carrier API did not return a user section for config entry migration; "
-            "will retry on next startup"
-        )
-        return True
-    identity_id = user_details.get("identityId")
-    if not isinstance(identity_id, str) or not identity_id:
+    if identity_id is None:
         _LOGGER.warning(
             "Carrier API did not return an identity ID for config entry migration; "
             "will retry on next startup"
@@ -725,7 +708,7 @@ async def migrate_2_to_3(hass: HomeAssistant, config_entry: ConfigEntry) -> bool
     hass.config_entries.async_update_entry(
         config_entry,
         unique_id=identity_id,
-        version=CONFIG_FLOW_VERSION,
+        version=3,
     )
     _LOGGER.info(
         "Migrated Carrier config entry %s unique ID from %s to Carrier identity ID %s",

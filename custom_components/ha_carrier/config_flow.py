@@ -23,7 +23,7 @@ from .const import (
     ERROR_CANNOT_CONNECT,
     ERROR_UNKNOWN,
 )
-from .util import is_transient_transport_error, is_unauthorized_error
+from .util import async_get_carrier_identity_id, is_transient_transport_error, is_unauthorized_error
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 
@@ -45,8 +45,7 @@ async def _async_validate_credentials(
     api_connection: ApiConnectionGraphql | None = None
     try:
         api_connection = ApiConnectionGraphql(username=username, password=password)
-        await api_connection.load_data()
-        user_info = await api_connection.get_user_info()
+        identity_id = await async_get_carrier_identity_id(api_connection)
     except (AuthError, BaseError, ClientError, TransportError, OSError, TimeoutError) as error:
         if is_unauthorized_error(error):
             return {"base": ERROR_AUTH}, None
@@ -65,15 +64,7 @@ async def _async_validate_credentials(
                 _LOGGER.exception(
                     "Failed to clean up Carrier API connection after credential validation"
                 )
-    if not isinstance(user_info, dict) or not user_info:
-        _LOGGER.error("Carrier API did not return user info for validated credentials")
-        return {"base": ERROR_UNKNOWN}, None
-    user_details = user_info.get("user")
-    if not isinstance(user_details, dict) or not user_details:
-        _LOGGER.warning("Carrier API did not return a user section for validated credentials")
-        return {"base": ERROR_UNKNOWN}, None
-    identity_id = user_details.get("identityId")
-    if not isinstance(identity_id, str) or not identity_id:
+    if identity_id is None:
         _LOGGER.error("Carrier API did not return an identity ID for validated credentials")
         return {"base": ERROR_UNKNOWN}, None
 
@@ -92,6 +83,31 @@ class CarrierConfigFlow(ConfigFlow, domain=DOMAIN):
         """Initialize mutable state used while the flow runs."""
         self.data = {}
         self._reauth_entry_data = {}
+
+    @staticmethod
+    def _allows_legacy_reauth_unique_id_transition(
+        reauth_entry: ConfigEntry,
+        identity_id: str,
+    ) -> bool:
+        """Return whether reauth may replace a legacy username unique ID.
+
+        Args:
+            reauth_entry: Existing config entry being reauthenticated.
+            identity_id: Carrier identity ID returned for the new credentials.
+
+        Returns:
+            bool: True when the entry still uses its saved username as the
+                unique ID and should be allowed to migrate to ``identityId``
+                during reauth.
+        """
+        entry_unique_id = reauth_entry.unique_id
+        entry_username = reauth_entry.data.get(CONF_USERNAME)
+        return (
+            isinstance(entry_unique_id, str)
+            and isinstance(entry_username, str)
+            and entry_unique_id == entry_username
+            and entry_unique_id != identity_id
+        )
 
     @staticmethod
     def _credentials_schema(
@@ -188,8 +204,17 @@ class CarrierConfigFlow(ConfigFlow, domain=DOMAIN):
                         description_placeholders={"username": entry_username},
                         errors=errors,
                     )
-                await self.async_set_unique_id(identity_id)
-                self._abort_if_unique_id_mismatch()
+                existing_entry = await self.async_set_unique_id(identity_id)
+                if not self._allows_legacy_reauth_unique_id_transition(
+                    reconfigure_entry,
+                    identity_id,
+                ):
+                    self._abort_if_unique_id_mismatch()
+                if (
+                    existing_entry is not None
+                    and existing_entry.entry_id != reconfigure_entry.entry_id
+                ):
+                    self._abort_if_unique_id_configured()
                 return self.async_update_reload_and_abort(
                     reconfigure_entry,
                     unique_id=identity_id,
@@ -256,7 +281,11 @@ class CarrierConfigFlow(ConfigFlow, domain=DOMAIN):
                         errors=errors,
                     )
                 existing_entry = await self.async_set_unique_id(identity_id)
-                self._abort_if_unique_id_mismatch()
+                if not self._allows_legacy_reauth_unique_id_transition(
+                    reauth_entry,
+                    identity_id,
+                ):
+                    self._abort_if_unique_id_mismatch()
                 if existing_entry is not None and existing_entry.entry_id != reauth_entry.entry_id:
                     self._abort_if_unique_id_configured()
                 return self.async_update_reload_and_abort(
