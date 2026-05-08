@@ -22,7 +22,7 @@ version = { attr = "custom_components.ha_carrier.const.VERSION" }
 
 [dependency-groups]
 dev = [
-    "carrier-api==2.11.2",
+    "carrier-api==2.11.3",
     "homeassistant",
     "mypy",
     "prek",
