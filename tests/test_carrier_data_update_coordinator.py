@@ -53,7 +53,13 @@ async def test_energy_refresh_uses_cycle_scoped_success_reset(
     coordinator = CarrierDataUpdateCoordinator.__new__(CarrierDataUpdateCoordinator)
     coordinator.systems = [build_carrier_system()]
     coordinator.api_connection = carrier_api
-    coordinator.resiliency = cast("Any", SimpleNamespace(reset_unauthorized=lambda: None))
+    coordinator.resiliency = cast(
+        "Any",
+        SimpleNamespace(
+            reset_unauthorized=lambda: None,
+            reset_transient=lambda: None,
+        ),
+    )
     calls: list[dict[str, Any]] = []
 
     async def fake_retry(*_args: Any, **kwargs: Any) -> dict[str, Any]:

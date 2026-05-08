@@ -22,6 +22,7 @@ from custom_components.ha_carrier.const import DOMAIN
 
 USERNAME = "user@example.com"
 PASSWORD = "password"
+IDENTITY_ID = "identity-123"
 
 
 class FakeCarrierWebsocket:
@@ -52,6 +53,7 @@ class FakeCarrierApiConnection:
         *,
         username: str = USERNAME,
         password: str = PASSWORD,
+        identity_id: str = IDENTITY_ID,
         systems: list[System] | None = None,
     ) -> None:
         """Initialize the fake API connection.
@@ -59,10 +61,12 @@ class FakeCarrierApiConnection:
         Args:
             username: Carrier account username.
             password: Carrier account password.
+            identity_id: Carrier account identity ID returned by user info.
             systems: Systems returned by ``load_data``.
         """
         self.username = username
         self.password = password
+        self.identity_id = identity_id
         self.systems = systems or [build_carrier_system()]
         self.api_websocket = FakeCarrierWebsocket()
         self.calls: list[tuple[str, dict[str, Any]]] = []
@@ -79,6 +83,11 @@ class FakeCarrierApiConnection:
     async def cleanup(self) -> None:
         """Record credential-validation cleanup."""
         self.cleanup_calls += 1
+
+    async def get_user_info(self) -> dict[str, Any]:
+        """Return the fake Carrier account identity payload."""
+        self.calls.append(("get_user_info", {}))
+        return {"user": {"identityId": self.identity_id}}
 
     async def get_energy(self, system_serial: str) -> dict[str, Any]:
         """Return current energy payload for a Carrier system.

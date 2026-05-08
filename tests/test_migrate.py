@@ -9,7 +9,7 @@ from homeassistant.helpers import entity_registry as er
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.ha_carrier.const import CONFIG_FLOW_VERSION, DOMAIN
+from custom_components.ha_carrier.const import DOMAIN
 from custom_components.ha_carrier.migrate import migrate_1_to_2
 
 from .conftest import PASSWORD, USERNAME, FakeCarrierApiConnection
@@ -43,7 +43,7 @@ async def test_migration_updates_system_and_zone_unique_ids(
 
     assert await migrate_1_to_2(hass, config_entry)
 
-    assert config_entry.version == CONFIG_FLOW_VERSION
+    assert config_entry.version == 2
     assert ent_reg.async_get_entity_id("sensor", DOMAIN, "abc123_outdoor_temperature")
     assert ent_reg.async_get_entity_id("climate", DOMAIN, "abc123_zone_1_thermostat")
 

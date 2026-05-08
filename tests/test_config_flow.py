@@ -25,7 +25,7 @@ from custom_components.ha_carrier.const import (
     ERROR_UNKNOWN,
 )
 
-from .conftest import PASSWORD, USERNAME, FakeCarrierApiConnection
+from .conftest import IDENTITY_ID, PASSWORD, USERNAME, FakeCarrierApiConnection
 
 
 @pytest.mark.asyncio
@@ -43,6 +43,7 @@ async def test_user_flow_creates_entry_after_successful_validation(
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert result["title"] == USERNAME
     assert result["data"] == {CONF_USERNAME: USERNAME, CONF_PASSWORD: PASSWORD}
+    assert result["result"].unique_id == IDENTITY_ID
     assert patch_carrier_api.cleanup_calls == 1
 
 
@@ -52,7 +53,7 @@ async def test_user_flow_aborts_duplicate_account(
     patch_carrier_api: FakeCarrierApiConnection,
 ) -> None:
     """Abort a user flow when the Carrier username is already configured."""
-    config_entry = MockConfigEntry(domain=DOMAIN, unique_id=USERNAME, data={})
+    config_entry = MockConfigEntry(domain=DOMAIN, unique_id=IDENTITY_ID, data={})
     config_entry.add_to_hass(hass)
 
     result = await hass.config_entries.flow.async_init(
@@ -102,7 +103,7 @@ async def test_reauth_flow_updates_password(
     config_entry = MockConfigEntry(
         domain=DOMAIN,
         title=USERNAME,
-        unique_id=USERNAME,
+        unique_id=IDENTITY_ID,
         data={CONF_USERNAME: USERNAME, CONF_PASSWORD: "old"},
     )
     config_entry.add_to_hass(hass)
