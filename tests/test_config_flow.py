@@ -10,6 +10,7 @@ from typing import Any
 from aiohttp import ClientError
 from carrier_api import AuthError, BaseError
 from homeassistant import config_entries, data_entry_flow
+from homeassistant.config_entries import ConfigEntry, ConfigEntryState
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
@@ -122,6 +123,7 @@ async def test_reauth_flow_updates_password(
     assert result["reason"] == "reauth_successful"
     assert config_entry.data[CONF_PASSWORD] == PASSWORD
     assert patch_carrier_api.password == PASSWORD
+    await _async_unload_loaded_entry(hass, config_entry)
 
 
 @pytest.mark.asyncio
@@ -155,6 +157,7 @@ async def test_reauth_flow_updates_username_and_reuses_blank_password(
     assert config_entry.data == {CONF_USERNAME: new_username, CONF_PASSWORD: PASSWORD}
     assert patch_carrier_api.username == new_username
     assert patch_carrier_api.password == PASSWORD
+    await _async_unload_loaded_entry(hass, config_entry)
 
 
 def test_reconfigure_updates_username_and_reuses_blank_password(
@@ -330,3 +333,19 @@ def _run_async[T](awaitable: Coroutine[Any, Any, T]) -> T:
         T: Awaitable result.
     """
     return asyncio.run(awaitable)
+
+
+async def _async_unload_loaded_entry(
+    hass: HomeAssistant,
+    config_entry: ConfigEntry,
+) -> None:
+    """Unload a reloaded config entry before test harness teardown.
+
+    Args:
+        hass: Home Assistant test instance.
+        config_entry: Config entry that may have been reloaded by the flow.
+    """
+    await hass.async_block_till_done()
+    if config_entry.state is ConfigEntryState.LOADED:
+        assert await hass.config_entries.async_unload(config_entry.entry_id)
+        await hass.async_block_till_done()
