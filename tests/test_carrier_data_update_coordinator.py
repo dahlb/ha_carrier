@@ -6,7 +6,9 @@ from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import patch
 
+from gql.transport.exceptions import TransportServerError
 from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers.update_coordinator import UpdateFailed
 import pytest
 
 from custom_components.ha_carrier.carrier_data_update_coordinator import (
@@ -169,3 +171,156 @@ async def test_recoverable_write_communication_error_reconciles_and_raises_ha_er
         await coordinator.async_perform_api_call("set mode", request)
 
     assert reconciled is True
+
+
+@pytest.mark.asyncio
+async def test_update_data_translates_unauthorized_refresh_to_reauth() -> None:
+    """Escalate a fresh unauthorized refresh failure to HA reauthentication."""
+    coordinator = CarrierDataUpdateCoordinator.__new__(CarrierDataUpdateCoordinator)
+    coordinator.data_flush = True
+
+    async def fake_full_refresh() -> None:
+        """Raise an escalated Carrier auth failure."""
+        raise CarrierUnauthorizedError("unauthorized")
+
+    with (
+        patch.object(coordinator, "_async_full_refresh", fake_full_refresh),
+        pytest.raises(Exception) as exc_info,
+    ):
+        await coordinator._async_update_data()
+
+    assert exc_info.type.__name__ == "ConfigEntryAuthFailed"
+    assert coordinator.data_flush is True
+
+
+@pytest.mark.asyncio
+async def test_update_data_keeps_plain_unauthorized_server_error_retryable() -> None:
+    """Keep non-escalated unauthorized transport errors on HA retry cadence."""
+    coordinator = CarrierDataUpdateCoordinator.__new__(CarrierDataUpdateCoordinator)
+    coordinator.data_flush = True
+    coordinator.update_interval = None
+
+    async def fake_full_refresh() -> None:
+        """Raise a 401 transport response before resiliency escalation."""
+        raise TransportServerError("unauthorized", code=401)
+
+    with (
+        patch.object(coordinator, "_async_full_refresh", fake_full_refresh),
+        pytest.raises(UpdateFailed, match="temporarily rejected"),
+    ):
+        await coordinator._async_update_data()
+
+    assert coordinator.data_flush is True
+    assert coordinator.update_interval is not None
+
+
+@pytest.mark.asyncio
+async def test_full_refresh_merges_new_changed_and_stale_systems(
+    carrier_api: FakeCarrierApiConnection,
+) -> None:
+    """Merge fresh full-refresh systems in place and remove stale systems."""
+    coordinator = CarrierDataUpdateCoordinator.__new__(CarrierDataUpdateCoordinator)
+    existing = build_carrier_system(serial="ABC123", name="Old")
+    stale = build_carrier_system(serial="STALE", name="Stale")
+    fresh_existing = build_carrier_system(serial="ABC123", name="Updated")
+    fresh_new = build_carrier_system(serial="NEW123", name="New")
+    carrier_api.systems = [fresh_existing, fresh_new]
+    coordinator.systems = [existing, stale]
+    coordinator.api_connection = carrier_api
+    coordinator.resiliency = ResiliencyState(
+        unauthorized_threshold=UNAUTHORIZED_RETRY_THRESHOLD,
+        transient_threshold=TRANSIENT_FAILURE_THRESHOLD,
+    )
+    coordinator._websocket_initialized = False
+
+    await coordinator._async_full_refresh()
+
+    assert coordinator.systems[0] is existing
+    assert coordinator.systems[0].profile.name == "Updated"
+    assert [system.profile.serial for system in coordinator.systems] == ["ABC123", "NEW123"]
+    assert len(carrier_api.api_websocket.callbacks) == 2
+    assert coordinator.data_flush is False
+
+
+@pytest.mark.asyncio
+async def test_energy_refresh_records_one_unauthorized_per_cycle(
+    carrier_api: FakeCarrierApiConnection,
+) -> None:
+    """Preserve prior energy and escalate only one auth count per energy cycle."""
+    coordinator = CarrierDataUpdateCoordinator.__new__(CarrierDataUpdateCoordinator)
+    systems = [
+        build_carrier_system(serial="ABC123"),
+        build_carrier_system(serial="DEF456"),
+    ]
+    coordinator.systems = systems
+    coordinator.api_connection = carrier_api
+    coordinator.resiliency = ResiliencyState(unauthorized_threshold=2, transient_threshold=3)
+    coordinator.update_interval = None
+
+    async def fake_retry(*_args: Any, **_kwargs: Any) -> dict[str, Any]:
+        """Raise unauthorized for every per-system energy request."""
+        raise TransportServerError("unauthorized", code=401)
+
+    with patch(
+        "custom_components.ha_carrier.carrier_data_update_coordinator.async_call_with_retry",
+        fake_retry,
+    ):
+        await coordinator._async_energy_refresh()
+
+    assert coordinator.resiliency.consecutive_unauthorized == 1
+    assert coordinator.update_interval is not None
+    assert systems[0].energy.raw is not None
+
+
+@pytest.mark.asyncio
+async def test_energy_refresh_escalates_after_threshold(
+    carrier_api: FakeCarrierApiConnection,
+) -> None:
+    """Raise CarrierUnauthorizedError once the energy-cycle auth threshold is crossed."""
+    coordinator = CarrierDataUpdateCoordinator.__new__(CarrierDataUpdateCoordinator)
+    coordinator.systems = [build_carrier_system()]
+    coordinator.api_connection = carrier_api
+    coordinator.resiliency = ResiliencyState(unauthorized_threshold=1, transient_threshold=3)
+    coordinator.update_interval = None
+
+    async def fake_retry(*_args: Any, **_kwargs: Any) -> dict[str, Any]:
+        """Raise unauthorized for the energy request."""
+        raise TransportServerError("unauthorized", code=401)
+
+    with (
+        patch(
+            "custom_components.ha_carrier.carrier_data_update_coordinator.async_call_with_retry",
+            fake_retry,
+        ),
+        pytest.raises(CarrierUnauthorizedError),
+    ):
+        await coordinator._async_energy_refresh()
+
+
+@pytest.mark.asyncio
+async def test_updated_callback_records_timestamp_and_notifies_listeners() -> None:
+    """Handle websocket callbacks by timestamping and notifying listeners."""
+    coordinator = CarrierDataUpdateCoordinator.__new__(CarrierDataUpdateCoordinator)
+    coordinator.systems = [build_carrier_system()]
+    notified = False
+
+    def fake_update_listeners() -> None:
+        """Record listener notification."""
+        nonlocal notified
+        notified = True
+
+    with patch.object(coordinator, "async_update_listeners", fake_update_listeners):
+        await coordinator.updated_callback("{}")
+
+    assert coordinator.timestamp_websocket is not None
+    assert notified is True
+
+
+def test_system_returns_matching_system_or_none() -> None:
+    """Look up tracked systems by Carrier serial."""
+    coordinator = CarrierDataUpdateCoordinator.__new__(CarrierDataUpdateCoordinator)
+    system = build_carrier_system(serial="ABC123")
+    coordinator.systems = [system]
+
+    assert coordinator.system("ABC123") is system
+    assert coordinator.system("missing") is None
