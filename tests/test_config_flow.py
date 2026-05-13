@@ -125,6 +125,113 @@ async def test_reauth_flow_updates_password(
 
 
 @pytest.mark.asyncio
+async def test_reauth_flow_updates_username_and_reuses_blank_password(
+    hass: HomeAssistant,
+    patch_carrier_api: FakeCarrierApiConnection,
+) -> None:
+    """Validate a new username and keep the existing password when blank."""
+    config_entry = MockConfigEntry(
+        domain=DOMAIN,
+        title=USERNAME,
+        unique_id=IDENTITY_ID,
+        data={CONF_USERNAME: USERNAME, CONF_PASSWORD: PASSWORD},
+    )
+    config_entry.add_to_hass(hass)
+    new_username = "new@example.com"
+
+    form = await hass.config_entries.flow.async_init(
+        DOMAIN,
+        context={"source": config_entries.SOURCE_REAUTH, "entry_id": config_entry.entry_id},
+        data=config_entry.data,
+    )
+    result = await hass.config_entries.flow.async_configure(
+        form["flow_id"],
+        user_input={CONF_USERNAME: new_username},
+    )
+
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "reauth_successful"
+    assert config_entry.title == new_username
+    assert config_entry.data == {CONF_USERNAME: new_username, CONF_PASSWORD: PASSWORD}
+    assert patch_carrier_api.username == new_username
+    assert patch_carrier_api.password == PASSWORD
+
+
+def test_reconfigure_updates_username_and_reuses_blank_password(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Reconfigure can update username while keeping the saved password."""
+    reconfigure_entry = SimpleNamespace(
+        entry_id="entry-1",
+        unique_id=IDENTITY_ID,
+        data={CONF_USERNAME: USERNAME, CONF_PASSWORD: PASSWORD},
+        title=USERNAME,
+    )
+    updates: list[dict[str, Any]] = []
+
+    async def async_validate_credentials(
+        username: str,
+        password: str,
+    ) -> tuple[dict[str, str], str | None]:
+        """Return a validated identity for the submitted credentials.
+
+        Args:
+            username: Submitted Carrier account username.
+            password: Submitted Carrier account password.
+
+        Returns:
+            tuple[dict[str, str], str | None]: No errors and the existing identity ID.
+        """
+        assert username == "new@example.com"
+        assert password == PASSWORD
+        return {}, IDENTITY_ID
+
+    async def async_set_unique_id(unique_id: str) -> None:
+        """Set the flow unique ID without requiring a Home Assistant instance.
+
+        Args:
+            unique_id: Validated Carrier identity ID.
+        """
+        flow.context["unique_id"] = unique_id
+
+    def async_update_reload_and_abort(*args: Any, **kwargs: Any) -> dict[str, str]:
+        """Capture the requested reconfigure updates.
+
+        Args:
+            *args: Positional Home Assistant flow arguments.
+            **kwargs: Keyword Home Assistant flow arguments.
+
+        Returns:
+            dict[str, str]: Minimal flow result.
+        """
+        updates.append({"args": args, **kwargs})
+        return {"type": "abort", "reason": "reconfigure_successful"}
+
+    flow = config_flow.CarrierConfigFlow()
+    flow.context = {"source": "reconfigure", "entry_id": "entry-1"}
+
+    monkeypatch.setattr(config_flow, "_async_validate_credentials", async_validate_credentials)
+    monkeypatch.setattr(flow, "_get_reconfigure_entry", lambda: reconfigure_entry)
+    monkeypatch.setattr(flow, "async_set_unique_id", async_set_unique_id)
+    monkeypatch.setattr(flow, "async_update_reload_and_abort", async_update_reload_and_abort)
+
+    result = _run_async(flow.async_step_reconfigure({CONF_USERNAME: "new@example.com"}))
+
+    assert result["type"] == "abort"
+    assert updates == [
+        {
+            "args": (reconfigure_entry,),
+            "unique_id": IDENTITY_ID,
+            "title": "new@example.com",
+            "data_updates": {
+                CONF_USERNAME: "new@example.com",
+                CONF_PASSWORD: PASSWORD,
+            },
+        }
+    ]
+
+
+@pytest.mark.asyncio
 async def test_options_flow_updates_infinite_hold_option(hass: HomeAssistant) -> None:
     """Create options data from the Carrier options flow."""
     config_entry = MockConfigEntry(
