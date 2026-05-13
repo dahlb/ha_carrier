@@ -696,24 +696,20 @@ async def migrate_2_to_3(hass: HomeAssistant, config_entry: ConfigEntry) -> bool
     )
     if conflicting_entry is not None:
         _LOGGER.error(
-            "Unable to migrate Carrier config entry %s to identity ID %s because entry %s "
-            "already uses that unique ID",
+            "Unable to migrate Carrier config entry %s to Carrier identity ID because entry %s "
+            "already uses that identity",
             config_entry.entry_id,
-            identity_id,
             conflicting_entry.entry_id,
         )
         return False
 
-    old_unique_id = config_entry.unique_id
     hass.config_entries.async_update_entry(
         config_entry,
         unique_id=identity_id,
         version=3,
     )
     _LOGGER.info(
-        "Migrated Carrier config entry %s unique ID from %s to Carrier identity ID %s",
+        "Migrated Carrier config entry %s from legacy unique ID to Carrier identity ID",
         config_entry.entry_id,
-        old_unique_id,
-        identity_id,
     )
     return True
