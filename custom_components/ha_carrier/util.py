@@ -14,7 +14,7 @@ import logging
 from typing import Any, overload
 
 from aiohttp import ClientError
-from carrier_api import AuthError, BaseError, System
+from carrier_api import ApiConnectionGraphql, AuthError, BaseError, System
 from gql.transport.exceptions import TransportError, TransportProtocolError, TransportServerError
 from homeassistant.core import callback
 
@@ -85,6 +85,46 @@ WEBSOCKET_RECOVERABLE_EXCEPTIONS: tuple[type[BaseException], ...] = (
     TransportServerError,
 )
 """Exceptions the websocket reconnect loop should treat as recoverable."""
+
+
+async def async_get_carrier_identity_id(api_connection: ApiConnectionGraphql) -> str | None:
+    """Return the Carrier identity ID for an authenticated API connection.
+
+    ``async_get_carrier_identity_id`` calls ``api_connection.load_data`` and
+    ``api_connection.get_user_info`` on the supplied client. ``None`` is only
+    returned when the response payload is missing or has an unexpected shape;
+    transport and authentication failures raised by those calls propagate to
+    the caller.
+
+    Args:
+        api_connection: Connected Carrier API client to query.
+
+    Returns:
+        str | None: Non-empty Carrier ``identityId`` when the response shape is
+            valid, otherwise ``None``.
+
+    Raises:
+        AuthError: Credentials were rejected by the Carrier API.
+        BaseError: The Carrier API client reported a non-auth error.
+        ClientError: The underlying HTTP client failed.
+        TransportError: The GraphQL transport layer reported an error.
+        OSError: A socket-level error occurred while talking to Carrier.
+        TimeoutError: The request timed out before a response arrived.
+    """
+    await api_connection.load_data()
+    user_info = await api_connection.get_user_info()
+    if not isinstance(user_info, dict) or not user_info:
+        return None
+
+    user_details = user_info.get("user")
+    if not isinstance(user_details, dict) or not user_details:
+        return None
+
+    identity_id = user_details.get("identityId")
+    if not isinstance(identity_id, str) or not identity_id:
+        return None
+
+    return identity_id
 
 
 def has_heat(carrier_system: System) -> bool:

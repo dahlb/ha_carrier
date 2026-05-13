@@ -8,7 +8,7 @@ VERSION: str = "2.21.1"
 DOMAIN: str = "ha_carrier"
 
 # Integration Setting Constants
-CONFIG_FLOW_VERSION: int = 2
+CONFIG_FLOW_VERSION: int = 3
 PLATFORMS: list[Platform] = [
     Platform.BINARY_SENSOR,
     Platform.SENSOR,

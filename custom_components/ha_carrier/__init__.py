@@ -22,7 +22,7 @@ from .const import (
     WEBSOCKET_RETRY_MAX_DELAY_SECONDS,
 )
 from .exceptions import CarrierUnauthorizedError
-from .migrate import migrate_1_to_2
+from .migrate import migrate_1_to_2, migrate_2_to_3
 from .resiliency import RetryPolicy, compute_backoff_delay
 from .util import WEBSOCKET_RECOVERABLE_EXCEPTIONS, async_redact_data, is_unauthorized_error
 
@@ -216,18 +216,22 @@ async def async_migrate_entry(hass: HomeAssistant, config_entry: ConfigEntryCarr
     if config_entry.version == CONFIG_FLOW_VERSION:
         return True
 
-    if config_entry.version != 1:
+    if config_entry.version not in {1, 2}:
         _LOGGER.error(
             "Unable to migrate Carrier config entry from version %s", config_entry.version
         )
         return False
 
     if config_entry.version == 1:
-        return await migrate_1_to_2(hass=hass, config_entry=config_entry)
+        if not await migrate_1_to_2(hass=hass, config_entry=config_entry):
+            return False
+        if config_entry.version != 2:
+            return True
 
     if config_entry.version == 2:
-        return True
-    return False
+        return await migrate_2_to_3(hass=hass, config_entry=config_entry)
+
+    return config_entry.version == CONFIG_FLOW_VERSION
 
 
 async def async_unload_entry(hass: HomeAssistant, config_entry: ConfigEntryCarrier) -> bool:
