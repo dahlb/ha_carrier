@@ -267,7 +267,22 @@ def build_carrier_system(
     has_heat_pump: bool = True,
     disconnected: bool = False,
 ) -> System:
-    """Build a realistic Carrier system from ``carrier_api`` model classes."""
+    """Build a realistic Carrier system from ``carrier_api`` model classes.
+
+    Args:
+        serial: System serial number. Defaults to ``"ABC123"``.
+        name: Human-readable system name. Defaults to ``"Home"``.
+        zone_name: Display name for the single zone. Defaults to ``"Living Room"``.
+        zone_id: Identifier assigned to the zone. Defaults to ``"1"``.
+        has_heat_pump: When ``True``, configure the outdoor unit as a variable-capacity
+            heat pump; otherwise configure it as an air conditioner. Defaults to ``True``.
+        disconnected: When ``True``, mark the status payload as disconnected so tests can
+            exercise offline behavior. Defaults to ``False``.
+
+    Returns:
+        System: A ``carrier_api`` ``System`` instance populated with realistic profile,
+        config, status, and energy payloads.
+    """
     profile = Profile(
         {
             "name": name,

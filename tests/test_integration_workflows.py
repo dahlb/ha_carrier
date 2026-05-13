@@ -102,6 +102,13 @@ async def test_options_workflow_reloads_and_unloads_without_lingering_coordinato
     assert config_entry.runtime_data is not first_coordinator
     assert first_coordinator.websocket_task is None
 
+    current_coordinator = config_entry.runtime_data
+    assert await hass.config_entries.async_unload(config_entry.entry_id)
+    await hass.async_block_till_done()
+
+    assert config_entry.state is ConfigEntryState.NOT_LOADED
+    assert current_coordinator.websocket_task is None
+
 
 @pytest.mark.asyncio
 async def test_scheduled_refresh_uses_energy_path_and_unload_cancels_future_refresh(
