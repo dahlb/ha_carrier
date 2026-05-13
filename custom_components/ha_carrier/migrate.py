@@ -639,7 +639,7 @@ async def migrate_2_to_3(hass: HomeAssistant, config_entry: ConfigEntry) -> bool
             config_entry,
             version=3,
         )
-        _LOGGER.info("Carrier config entry migration to version %s complete", 3)
+        _LOGGER.info("Carrier config entry migration to version 3 complete")
         return True
 
     api_connection: ApiConnectionGraphql | None = None

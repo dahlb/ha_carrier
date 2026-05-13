@@ -205,11 +205,7 @@ class CarrierConfigFlow(ConfigFlow, domain=DOMAIN):
                         errors=errors,
                     )
                 existing_entry = await self.async_set_unique_id(identity_id)
-                if not self._allows_legacy_reauth_unique_id_transition(
-                    reconfigure_entry,
-                    identity_id,
-                ):
-                    self._abort_if_unique_id_mismatch()
+                self._abort_if_unique_id_mismatch()
                 if (
                     existing_entry is not None
                     and existing_entry.entry_id != reconfigure_entry.entry_id

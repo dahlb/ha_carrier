@@ -90,12 +90,26 @@ WEBSOCKET_RECOVERABLE_EXCEPTIONS: tuple[type[BaseException], ...] = (
 async def async_get_carrier_identity_id(api_connection: ApiConnectionGraphql) -> str | None:
     """Return the Carrier identity ID for an authenticated API connection.
 
+    ``async_get_carrier_identity_id`` calls ``api_connection.load_data`` and
+    ``api_connection.get_user_info`` on the supplied client. ``None`` is only
+    returned when the response payload is missing or has an unexpected shape;
+    transport and authentication failures raised by those calls propagate to
+    the caller.
+
     Args:
         api_connection: Connected Carrier API client to query.
 
     Returns:
         str | None: Non-empty Carrier ``identityId`` when the response shape is
             valid, otherwise ``None``.
+
+    Raises:
+        AuthError: Credentials were rejected by the Carrier API.
+        BaseError: The Carrier API client reported a non-auth error.
+        ClientError: The underlying HTTP client failed.
+        TransportError: The GraphQL transport layer reported an error.
+        OSError: A socket-level error occurred while talking to Carrier.
+        TimeoutError: The request timed out before a response arrived.
     """
     await api_connection.load_data()
     user_info = await api_connection.get_user_info()
