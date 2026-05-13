@@ -7,7 +7,7 @@ from typing import Any, cast
 from unittest.mock import patch
 
 from gql.transport.exceptions import TransportServerError
-from homeassistant.exceptions import HomeAssistantError
+from homeassistant.exceptions import ConfigEntryAuthFailed, HomeAssistantError
 from homeassistant.helpers.update_coordinator import UpdateFailed
 import pytest
 
@@ -185,7 +185,7 @@ async def test_update_data_translates_unauthorized_refresh_to_reauth() -> None:
 
     with (
         patch.object(coordinator, "_async_full_refresh", fake_full_refresh),
-        pytest.raises(Exception) as exc_info,
+        pytest.raises(ConfigEntryAuthFailed) as exc_info,
     ):
         await coordinator._async_update_data()
 
