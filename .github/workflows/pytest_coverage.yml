@@ -10,7 +10,12 @@ on:
 jobs:
   tests:
     name: pytest and coverage report
-    if: ${{ !(github.event_name == 'pull_request' && ( contains(github.event.pull_request.labels.*.name, 'dependencies') || github.event.pull_request.user.type == 'Bot' )) }}
+    if: >-
+      ${{ !(github.event_name == 'pull_request' && (
+        contains(github.event.pull_request.labels.*.name, 'dependencies') ||
+        (github.event.pull_request.user.type == 'Bot' &&
+         !contains(github.event.pull_request.labels.*.name, 'carrier-api-auto-update'))
+      )) }}
     runs-on: ubuntu-latest
     permissions:
       pull-requests: write
