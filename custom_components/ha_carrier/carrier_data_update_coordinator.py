@@ -440,13 +440,7 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator[list[dict[str, Any]]]):
             TypeError: Raised when the Carrier model returns a non-mapping
                 payload unexpectedly.
         """
-        as_dict = getattr(system, "as_dict", None)
-        if callable(as_dict):
-            mapped_data = as_dict()
-        else:
-            # carrier_api < 2.12 exposed the mapping payload through a
-            # non-standard direct __repr__ call.
-            mapped_data = system.__repr__()
+        mapped_data = system.as_dict()
         if not isinstance(mapped_data, Mapping):
             raise TypeError("carrier_api System serializer returned a non-mapping payload")
         return dict(mapped_data)
