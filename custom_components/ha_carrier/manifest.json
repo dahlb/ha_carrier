@@ -14,7 +14,7 @@
     "carrier_api"
   ],
   "requirements": [
-    "carrier-api==2.11.3"
+    "carrier-api==3.0.0"
   ],
   "version": "2.22.0"
 }

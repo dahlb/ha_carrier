@@ -22,7 +22,7 @@ version = { attr = "custom_components.ha_carrier.const.VERSION" }
 
 [dependency-groups]
 ha = [
-    "carrier-api==2.11.3",
+    "carrier-api==3.0.0",
     "homeassistant",
 ]
 lint = [

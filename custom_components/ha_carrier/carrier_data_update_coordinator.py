@@ -434,19 +434,15 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator[list[dict[str, Any]]]):
             system: Carrier system object to map.
 
         Returns:
-            dict[str, Any]: System mapping emitted by the Carrier model helper.
+            dict[str, Any]: System mapping emitted by the Carrier model serializer.
 
         Raises:
             TypeError: Raised when the Carrier model returns a non-mapping
                 payload unexpectedly.
         """
-        # carrier_api.System.__repr__ intentionally returns a dict-like payload,
-        # while Python's built-in repr(system) expects __repr__ to return a str.
-        # Call the model helper directly so we keep a mapping for recursive
-        # redaction instead of flattening sensitive keys into an opaque string.
-        mapped_data = system.__repr__()
+        mapped_data = system.as_dict()
         if not isinstance(mapped_data, Mapping):
-            raise TypeError("carrier_api System.__repr__ returned a non-mapping payload")
+            raise TypeError("carrier_api System serializer returned a non-mapping payload")
         return dict(mapped_data)
 
     async def updated_callback(self, _message: str) -> None:
