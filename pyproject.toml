@@ -21,7 +21,7 @@ namespaces = true
 version = { attr = "custom_components.ha_carrier.const.VERSION" }
 
 [dependency-groups]
-dev = [
+ha = [
     "carrier-api==3.0.0",
     "homeassistant",
 ]
