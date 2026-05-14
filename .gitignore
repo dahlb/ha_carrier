@@ -13,6 +13,7 @@ __pycache__
 .vscode
 .idea
 coverage.xml
+htmlcov/
 uv.lock
 
 
