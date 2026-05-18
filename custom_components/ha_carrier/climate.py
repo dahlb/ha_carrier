@@ -218,11 +218,22 @@ class Thermostat(CarrierEntity, ClimateEntity):
         # Get actual setpoints from status (not from activity lookup)
         actual_heat = self._status_zone.heat_set_point
         actual_cool = self._status_zone.cool_set_point
-        # Find which activity matches these setpoints
-        for activity in self._config_zone.activities:
-            if (activity.heat_set_point == actual_heat and
-                activity.cool_set_point == actual_cool):
-                return activity.type.value
+
+        # Find which activity matches these setpoints. If multiple activities
+        # share setpoints, use the API's reported activity to break the tie.
+        matching_activities = [
+            activity
+            for activity in self._config_zone.activities
+            if (
+                activity.heat_set_point == actual_heat
+                and activity.cool_set_point == actual_cool
+            )
+        ]
+        if len(matching_activities) == 1:
+            return matching_activities[0].type.value
+        if len(matching_activities) > 1:
+            return self._current_activity().type.value
+
         # No match found - fall back to API's reported activity
         # This could happen during transitions or with custom setpoints
         _LOGGER.debug(
