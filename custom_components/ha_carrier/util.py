@@ -1,23 +1,175 @@
+"""Utility helpers shared across Carrier integration modules.
+
+`TransportServerError` is intentionally not a transient transport exception
+because 401 server responses must be classified by `is_unauthorized_error`
+before retry logic considers communication recovery. Call-site recoverable
+exception tuples include `TransportServerError` explicitly where server errors
+should still be reconciled or retried on a later interval.
+"""
+
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
-from typing import Any, TypeVar, cast
+import logging
+from typing import Any, overload
 
+from aiohttp import ClientError
+from carrier_api import ApiConnectionGraphql, AuthError, BaseError, System
+from gql.transport.exceptions import TransportError, TransportProtocolError, TransportServerError
 from homeassistant.core import callback
 
-_T = TypeVar("_T")
+from .exceptions import CarrierUnauthorizedError
 
+_LOGGER: logging.Logger = logging.getLogger(__name__)
 REDACTED = "**REDACTED**"
+
+HEAT_TYPES: list[str] = [
+    "electric_heat",
+    "gas",
+    "hp_heat",
+    "loop_pump",
+    "reheat",
+]
+
+COOL_TYPES: list[str] = [
+    "cooling",
+    "loop_pump",
+]
+
+FAN_TYPES: list[str] = [
+    "fan",
+    "fan_gas",
+]
+
+ENERGY_METRIC_MAP: dict[str, str] = {
+    "cooling": "coolingKwh",
+    "electric_heat": "eHeatKwh",
+    "fan_gas": "fanGasKwh",
+    "fan": "fanKwh",
+    "gas": "gasKwh",
+    "hp_heat": "hPHeatKwh",
+    "loop_pump": "loopPumpKwh",
+    "reheat": "reheatKwh",
+}
+
+TIMESTAMP_TYPES: tuple[str, ...] = ("all_data", "websocket", "energy")
+
+TRANSIENT_TRANSPORT_EXCEPTIONS: tuple[type[BaseException], ...] = (
+    ClientError,
+    TimeoutError,
+    OSError,
+    TransportProtocolError,
+)
+"""Transport-layer exceptions that should retry with backoff."""
+
+RECOVERABLE_REFRESH_EXCEPTIONS: tuple[type[BaseException], ...] = (
+    *TRANSIENT_TRANSPORT_EXCEPTIONS,
+    TransportError,
+    TransportServerError,
+    AuthError,
+    BaseError,
+)
+"""Exceptions a coordinator refresh may recover from on a later interval."""
+
+RECOVERABLE_WRITE_COMMUNICATION_EXCEPTIONS: tuple[type[BaseException], ...] = (
+    *TRANSIENT_TRANSPORT_EXCEPTIONS,
+    TransportError,
+    TransportServerError,
+)
+"""Transport exceptions a write should report as communication failures."""
+
+WEBSOCKET_RECOVERABLE_EXCEPTIONS: tuple[type[BaseException], ...] = (
+    CarrierUnauthorizedError,
+    *TRANSIENT_TRANSPORT_EXCEPTIONS,
+    TransportError,
+    TransportServerError,
+)
+"""Exceptions the websocket reconnect loop should treat as recoverable."""
+
+
+async def async_get_carrier_identity_id(api_connection: ApiConnectionGraphql) -> str | None:
+    """Return the Carrier identity ID for an authenticated API connection.
+
+    ``async_get_carrier_identity_id`` calls ``api_connection.load_data`` and
+    ``api_connection.get_user_info`` on the supplied client. ``None`` is only
+    returned when the response payload is missing or has an unexpected shape;
+    transport and authentication failures raised by those calls propagate to
+    the caller.
+
+    Args:
+        api_connection: Connected Carrier API client to query.
+
+    Returns:
+        str | None: Non-empty Carrier ``identityId`` when the response shape is
+            valid, otherwise ``None``.
+
+    Raises:
+        AuthError: Credentials were rejected by the Carrier API.
+        BaseError: The Carrier API client reported a non-auth error.
+        ClientError: The underlying HTTP client failed.
+        TransportError: The GraphQL transport layer reported an error.
+        OSError: A socket-level error occurred while talking to Carrier.
+        TimeoutError: The request timed out before a response arrived.
+    """
+    await api_connection.load_data()
+    user_info = await api_connection.get_user_info()
+    if not isinstance(user_info, dict) or not user_info:
+        return None
+
+    user_details = user_info.get("user")
+    if not isinstance(user_details, dict) or not user_details:
+        return None
+
+    identity_id = user_details.get("identityId")
+    if not isinstance(identity_id, str) or not identity_id:
+        return None
+
+    return identity_id
+
+
+def has_heat(carrier_system: System) -> bool:
+    """Return True if the Carrier system supports heat source selection."""
+    return any(getattr(carrier_system.energy, heat_type, False) is True for heat_type in HEAT_TYPES)
+
+
+def has_cool(carrier_system: System) -> bool:
+    """Return True if the Carrier system supports cool source selection."""
+    return any(getattr(carrier_system.energy, cool_type, False) is True for cool_type in COOL_TYPES)
+
+
+def has_fan(carrier_system: System) -> bool:
+    """Return True if the Carrier system supports fan mode selection."""
+    return any(getattr(carrier_system.energy, fan_type, False) is True for fan_type in FAN_TYPES)
+
+
+@overload
+def async_redact_data(data: list[Any], to_redact: Iterable[Any]) -> list[Any]: ...
+
+
+@overload
+def async_redact_data(data: Mapping[Any, Any], to_redact: Iterable[Any]) -> dict[Any, Any]: ...
+
+
+@overload
+def async_redact_data[T](data: T, to_redact: Iterable[Any]) -> T: ...
 
 
 @callback
-def async_redact_data(data: _T, to_redact: Iterable[Any]) -> _T:
-    """Redact sensitive data in a dict."""
+def async_redact_data(data: Any, to_redact: Iterable[Any]) -> Any:
+    """Recursively redact selected keys from mapping and list structures.
+
+    Args:
+        data: Original value that may contain nested mappings or lists.
+        to_redact: Iterable of keys that should be replaced with a redaction marker.
+
+    Returns:
+        Any: Copy of the original data with sensitive values redacted.
+    """
     if not isinstance(data, Mapping | list):
         return data
 
     if isinstance(data, list):
-        return cast(_T, [async_redact_data(val, to_redact) for val in data])
+        return [async_redact_data(val, to_redact) for val in data]
 
     redacted = {**data}
 
@@ -33,4 +185,61 @@ def async_redact_data(data: _T, to_redact: Iterable[Any]) -> _T:
         elif isinstance(value, list):
             redacted[key] = [async_redact_data(item, to_redact) for item in value]
 
-    return cast(_T, redacted)
+    return redacted
+
+
+def _iter_exception_chain(error: BaseException) -> Iterable[BaseException]:
+    """Yield the exception followed by its __cause__ and __context__ chains.
+
+    Args:
+        error: Exception to walk.
+
+    Yields:
+        BaseException: Each exception in the chain, deduplicated.
+    """
+    seen: set[int] = set()
+    stack: list[BaseException] = [error]
+    while stack:
+        current = stack.pop()
+        if id(current) in seen:
+            continue
+        seen.add(id(current))
+        yield current
+        if current.__context__ is not None:
+            stack.append(current.__context__)
+        if current.__cause__ is not None:
+            stack.append(current.__cause__)
+
+
+def is_unauthorized_error(error: BaseException) -> bool:
+    """Return True if any exception in the chain represents a 401-style failure.
+
+    Args:
+        error: Exception raised by the Carrier client or transport.
+
+    Returns:
+        bool: True when the error or one of its causes is a 401.
+    """
+    for current in _iter_exception_chain(error):
+        if isinstance(current, CarrierUnauthorizedError | AuthError):
+            return True
+        if isinstance(current, TransportServerError):
+            status_code = getattr(current, "code", None) or getattr(current, "status", None)
+            if status_code == 401:
+                return True
+    return False
+
+
+def is_transient_transport_error(error: BaseException) -> bool:
+    """Return True if any exception in the chain is a transient transport error.
+
+    Args:
+        error: Exception raised by the Carrier client or transport.
+
+    Returns:
+        bool: True when the error or one of its causes is transient.
+    """
+    return any(
+        isinstance(current, TRANSIENT_TRANSPORT_EXCEPTIONS)
+        for current in _iter_exception_chain(error)
+    )

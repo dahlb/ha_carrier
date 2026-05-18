@@ -1,118 +1,194 @@
-"""Create binary sensors."""
+"""Expose Carrier binary sensor entities for connectivity and runtime state."""
 
 from __future__ import annotations
-from logging import Logger, getLogger
 
-from homeassistant.components.binary_sensor import (
-    BinarySensorDeviceClass,
-    BinarySensorEntity,
-    BinarySensorEntityDescription,
-)
-from homeassistant.config_entries import ConfigEntry
+import logging
 
-from .const import DOMAIN, DATA_UPDATE_COORDINATOR
+from homeassistant.components.binary_sensor import BinarySensorDeviceClass, BinarySensorEntity
+from homeassistant.const import EntityCategory
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers.entity_platform import AddEntitiesCallback
+
+from . import ConfigEntryCarrier
 from .carrier_data_update_coordinator import CarrierDataUpdateCoordinator
-from .carrier_entity import CarrierEntity
+from .carrier_entity import CarrierEntity, CarrierZoneEntity
 
-_LOGGER: Logger = getLogger(__package__)
+_LOGGER: logging.Logger = logging.getLogger(__name__)
 
 
-async def async_setup_entry(hass, config_entry: ConfigEntry, async_add_entities):
-    """Create instances of binary sensors."""
-    updater: CarrierDataUpdateCoordinator = hass.data[DOMAIN][
-        config_entry.entry_id
-    ][DATA_UPDATE_COORDINATOR]
-    entities = []
-    for carrier_system in updater.systems:
-        entities.extend(
-            [
-                OnlineSensor(updater, carrier_system.profile.serial),
-                HumidifierSensor(updater, carrier_system.profile.serial),
-            ]
+async def async_setup_entry(
+    hass: HomeAssistant,
+    config_entry: ConfigEntryCarrier,
+    async_add_entities: AddEntitiesCallback,
+) -> None:
+    """Create and register Carrier binary sensor entities for one config entry.
+
+    Args:
+        hass: Home Assistant instance.
+        config_entry: Config entry that owns the Carrier account.
+        async_add_entities: Callback used by Home Assistant to register entities.
+    """
+    coordinator = config_entry.runtime_data
+    entities: list[BinarySensorEntity] = []
+    for carrier_system in coordinator.systems:
+        entities.append(
+            OnlineSensor(coordinator=coordinator, system_serial=carrier_system.profile.serial)
         )
-        for zone in carrier_system.config.zones:
-            if zone.occupancy_enabled:
-                entities.extend(
-                    [
-                        OccupancySensor(updater, carrier_system.profile.serial, zone_api_id=zone.api_id),
-                    ]
+        if carrier_system.config.humidifier_enabled:
+            entities.append(
+                HumidifierSensor(
+                    coordinator=coordinator, system_serial=carrier_system.profile.serial
                 )
+            )
+        entities.extend(
+            OccupancySensor(
+                coordinator=coordinator,
+                system_serial=carrier_system.profile.serial,
+                zone_api_id=zone.api_id,
+            )
+            for zone in carrier_system.config.zones
+            if zone.occupancy_enabled
+        )
     async_add_entities(entities)
 
 
-class OnlineSensor(CarrierEntity, BinarySensorEntity):
-    """Indicates if thermostat is online."""
-    def __init__(self, updater: CarrierDataUpdateCoordinator, system_serial: str):
-        """Declare device class and identifiers."""
-        super().__init__("Online", updater, system_serial)
-        self.entity_description = BinarySensorEntityDescription(
-            key=f"#{self.carrier_system.profile.serial}-online",
-            device_class=BinarySensorDeviceClass.CONNECTIVITY,
-            icon="mdi:wifi-check",
+class CarrierBinarySensor(CarrierEntity, BinarySensorEntity):
+    """Shared Carrier base class for system-level binary sensor entities."""
+
+    def __init__(
+        self,
+        entity_name: str,
+        coordinator: CarrierDataUpdateCoordinator,
+        system_serial: str | None = None,
+        unique_id_suffix: str | None = None,
+    ) -> None:
+        """Initialize a Carrier binary sensor entity.
+
+        Args:
+            entity_name: Friendly suffix used in entity name and unique ID.
+            coordinator: Coordinator that provides Carrier data.
+            system_serial: Carrier system serial for this entity.
+            unique_id_suffix: Optional stable suffix used for the entity unique ID.
+
+        Raises:
+            ValueError: Raised when no Carrier system serial is provided.
+        """
+        if system_serial is None:
+            raise ValueError("Carrier binary sensor system serial is required")
+        super().__init__(
+            entity_name=entity_name,
+            coordinator=coordinator,
+            system_serial=system_serial,
+            unique_id_suffix=unique_id_suffix,
+        )
+        self._sync_entity_attrs()
+
+    def _update_entity_attrs(self) -> None:
+        """Default to unavailable so concrete sensors must opt in to data.
+
+        Each concrete binary sensor subclass overrides this to set
+        ``_attr_is_on`` and to flip ``_attr_available`` to True once it has
+        successfully read its value from the coordinator.
+        """
+        self._attr_available = False
+
+
+class CarrierZoneBinarySensor(CarrierZoneEntity, CarrierBinarySensor):
+    """Shared Carrier base class for zone-backed binary sensor entities."""
+
+    def __init__(
+        self,
+        entity_name: str,
+        coordinator: CarrierDataUpdateCoordinator,
+        system_serial: str,
+        zone_api_id: str,
+        unique_id_suffix: str,
+    ) -> None:
+        """Initialize a zone-backed Carrier binary sensor entity.
+
+        Args:
+            entity_name: Friendly suffix appended to the zone name for display.
+            coordinator: Coordinator that provides Carrier data.
+            system_serial: Carrier system serial for this entity.
+            zone_api_id: Carrier API identifier for the represented zone.
+            unique_id_suffix: Stable suffix used in the zone entity unique ID.
+        """
+        super().__init__(
+            entity_name,
+            coordinator,
+            system_serial,
+            zone_api_id,
+            unique_id_suffix=unique_id_suffix,
         )
 
-    @property
-    def is_on(self) -> bool | None:
-        """Return true if the binary sensor is on."""
-        return not self.carrier_system.status.is_disconnected
 
-    @property
-    def icon(self) -> str | None:
-        """Picks icon."""
-        if self.is_on:
-            return self.entity_description.icon
-        else:
-            return "mdi:wifi-strength-outline"
+class OnlineSensor(CarrierBinarySensor):
+    """Binary sensor that reports whether the Carrier system is reachable."""
 
-    @property
-    def available(self) -> bool:
-        """Return true if sensor is ready for display."""
-        return self.is_on is not None
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_device_class = BinarySensorDeviceClass.CONNECTIVITY
 
+    def __init__(self, coordinator: CarrierDataUpdateCoordinator, system_serial: str) -> None:
+        """Initialize connectivity metadata for a Carrier system.
 
-class OccupancySensor(CarrierEntity, BinarySensorEntity):
-    """Displays occupancy state."""
-    _attr_device_class = BinarySensorDeviceClass.MOTION
+        Args:
+            coordinator: Coordinator that provides system state.
+            system_serial: Unique Carrier system serial number.
+        """
+        super().__init__("Online", coordinator, system_serial)
 
-    def __init__(self, updater: CarrierDataUpdateCoordinator, system_serial: str, zone_api_id: str):
-        """Create identifiers."""
-        self.zone_api_id: str = zone_api_id
-        self.coordinator = updater
-        self.coordinator_context = system_serial
-        super().__init__(f"{self._config_zone.name} Occupancy", updater, system_serial)
-
-    @property
-    def is_on(self) -> bool | None:
-        """Return true if occupied."""
-        return self._status_zone.occupancy
-
-    @property
-    def available(self) -> bool:
-        """Return true if sensor is ready for display."""
-        return self.is_on is not None
+    def _update_entity_attrs(self) -> None:
+        """Update connectivity attrs from coordinator data."""
+        self._attr_is_on = not self.carrier_system.status.is_disconnected
+        self._attr_available = True
+        self._attr_icon = "mdi:wifi-check" if self._attr_is_on else "mdi:wifi-strength-outline"
 
 
-class HumidifierSensor(CarrierEntity, BinarySensorEntity):
-    """Displays occupancy state."""
-    _attr_device_class = BinarySensorDeviceClass.MOISTURE
+class OccupancySensor(CarrierZoneBinarySensor):
+    """Binary sensor that mirrors occupancy detection for a Carrier zone."""
 
-    def __init__(self, updater: CarrierDataUpdateCoordinator, system_serial: str):
-        super().__init__("Humidifier Running", updater, system_serial)
+    _attr_device_class = BinarySensorDeviceClass.OCCUPANCY
 
-    @property
-    def is_on(self) -> bool | None:
-        if self.carrier_system.status.humidifier_on is not None:
-            return self.carrier_system.status.humidifier_on
+    def __init__(
+        self, coordinator: CarrierDataUpdateCoordinator, system_serial: str, zone_api_id: str
+    ) -> None:
+        """Initialize an occupancy entity tied to one zone.
 
-    @property
-    def icon(self) -> str | None:
-        """Picks icon."""
-        if self.is_on:
-            return "mdi:air-humidifier"
-        else:
-            return "mdi:air-humidifier-off"
+        Args:
+            coordinator: Coordinator that provides system and zone state.
+            system_serial: Unique Carrier system serial number.
+            zone_api_id: API identifier for the target zone.
+        """
+        super().__init__(
+            entity_name="Occupancy",
+            coordinator=coordinator,
+            system_serial=system_serial,
+            zone_api_id=zone_api_id,
+            unique_id_suffix="occupancy",
+        )
 
-    @property
-    def available(self) -> bool:
-        """Return true if sensor is ready for display."""
-        return self.is_on is not None
+    def _update_entity_attrs(self) -> None:
+        """Update occupancy attrs from coordinator data."""
+        self._attr_is_on = self._status_zone.occupancy
+        self._attr_available = self._attr_is_on is not None
+
+
+class HumidifierSensor(CarrierBinarySensor):
+    """Binary sensor that indicates whether humidification is active."""
+
+    _attr_device_class = BinarySensorDeviceClass.RUNNING
+
+    def __init__(self, coordinator: CarrierDataUpdateCoordinator, system_serial: str) -> None:
+        """Initialize a humidifier runtime sensor for one Carrier system.
+
+        Args:
+            coordinator: Coordinator that provides system state.
+            system_serial: Unique Carrier system serial number.
+        """
+        super().__init__("Humidifier Running", coordinator, system_serial)
+
+    def _update_entity_attrs(self) -> None:
+        """Update humidifier attrs from coordinator data."""
+        self._attr_is_on = self.carrier_system.status.humidifier_on
+        self._attr_available = self._attr_is_on is not None
+        self._attr_icon = "mdi:air-humidifier" if self._attr_is_on else "mdi:air-humidifier-off"

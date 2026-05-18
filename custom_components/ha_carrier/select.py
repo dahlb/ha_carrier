@@ -1,88 +1,172 @@
-"""Create select for heat source."""
+"""Expose Carrier heat source selection as Home Assistant select entities."""
 
 from __future__ import annotations
-from logging import Logger, getLogger
+
+from functools import partial
+import logging
 
 from carrier_api.const import HeatSourceTypes
-from homeassistant.components.select import (
-    SelectEntity,
-    SelectEntityDescription,
-)
-from homeassistant.config_entries import ConfigEntry
+from homeassistant.components.select import SelectEntity
+from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import (
-    DOMAIN,
-    DATA_UPDATE_COORDINATOR,
-    HEAT_SOURCE_ODU_ONLY_LABEL,
-    HEAT_SOURCE_SYSTEM_LABEL,
-    HEAT_SOURCE_IDU_ONLY_LABEL,
-)
+from . import ConfigEntryCarrier
 from .carrier_data_update_coordinator import CarrierDataUpdateCoordinator
 from .carrier_entity import CarrierEntity
+from .const import HEAT_SOURCE_IDU_ONLY_LABEL, HEAT_SOURCE_ODU_ONLY_LABEL, HEAT_SOURCE_SYSTEM_LABEL
+from .util import has_heat
 
-_LOGGER: Logger = getLogger(__package__)
+_LOGGER: logging.Logger = logging.getLogger(__name__)
 
 
-async def async_setup_entry(hass, config_entry: ConfigEntry, async_add_entities):
-    """Create instances of binary sensors."""
-    updater: CarrierDataUpdateCoordinator = hass.data[DOMAIN][
-        config_entry.entry_id
-    ][DATA_UPDATE_COORDINATOR]
-    entities = []
-    for system in updater.systems:
-        entities.extend(
-            [
-                HeatSourceSelect(updater, system.profile.serial),
-            ]
-        )
+async def async_setup_entry(
+    hass: HomeAssistant,
+    config_entry: ConfigEntryCarrier,
+    async_add_entities: AddEntitiesCallback,
+) -> None:
+    """Create and register heat source select entities for each system.
+
+    Args:
+        hass: Home Assistant instance.
+        config_entry: Carrier integration config entry.
+        async_add_entities: Callback used to register entity instances.
+    """
+    coordinator = config_entry.runtime_data
+    entities: list[SelectEntity] = [
+        HeatSourceSelect(coordinator=coordinator, system_serial=system.profile.serial)
+        for system in coordinator.systems
+        if has_heat(system)
+    ]
     async_add_entities(entities)
 
 
-class HeatSourceSelect(CarrierEntity, SelectEntity):
-    """select for heat source."""
+class CarrierSelect(CarrierEntity, SelectEntity):
+    """Shared Carrier base class for select entities."""
+
+    def __init__(
+        self,
+        entity_name: str,
+        coordinator: CarrierDataUpdateCoordinator,
+        system_serial: str | None = None,
+        unique_id_suffix: str | None = None,
+    ) -> None:
+        """Initialize a Carrier select entity.
+
+        Args:
+            entity_name: Friendly suffix used in entity name and unique ID.
+            coordinator: Coordinator that provides Carrier data.
+            system_serial: Carrier system serial for this entity.
+            unique_id_suffix: Optional stable suffix used for the entity unique ID.
+
+        Raises:
+            ValueError: Raised when no Carrier system serial is provided.
+        """
+        if system_serial is None:
+            raise ValueError("Carrier select system serial is required")
+        super().__init__(
+            entity_name=entity_name,
+            coordinator=coordinator,
+            system_serial=system_serial,
+            unique_id_suffix=unique_id_suffix,
+        )
+        self._sync_entity_attrs()
+
+    def _update_entity_attrs(self) -> None:
+        """Default to unavailable so concrete selects must opt in to data.
+
+        Each concrete select subclass overrides this to set
+        ``_attr_current_option`` from the latest Carrier configuration and to
+        flip ``_attr_available`` to True once that mapping resolved.
+        """
+        self._attr_available = False
+
+
+class HeatSourceSelect(CarrierSelect):
+    """Select entity that controls which unit provides primary heating."""
 
     _attr_icon = "mdi:heat-pump"
+    _attr_options: list[str]
 
-    def __init__(self, updater: CarrierDataUpdateCoordinator, system_serial: str):
-        """Declare device class and identifiers."""
-        super().__init__("Heat Source", updater, system_serial)
-        if self.carrier_system.profile.outdoor_unit_type in ["hp2stg", "varcaphp", "multistghp",  "GeoHP"]:
-            options = [self.idu_only_label(), HEAT_SOURCE_ODU_ONLY_LABEL, HEAT_SOURCE_SYSTEM_LABEL]
+    def __init__(self, coordinator: CarrierDataUpdateCoordinator, system_serial: str) -> None:
+        """Initialize selectable heat source options for one system.
+
+        Args:
+            coordinator: Coordinator that provides Carrier system state.
+            system_serial: Unique Carrier system serial number.
+        """
+        super().__init__("Heat Source", coordinator, system_serial)
+        if self.carrier_system.profile.outdoor_unit_type in [
+            "hp2stg",
+            "varcaphp",
+            "multistghp",
+            "GeoHP",
+        ]:
+            self._attr_options = [
+                self._idu_only_label(self.carrier_system.profile.indoor_unit_source),
+                HEAT_SOURCE_ODU_ONLY_LABEL,
+                HEAT_SOURCE_SYSTEM_LABEL,
+            ]
         else:
-            options = [self.idu_only_label(), HEAT_SOURCE_SYSTEM_LABEL]
-        self.entity_description = SelectEntityDescription(
-            key=f"#{self.carrier_system.profile.serial}-heat_source",
-            options=options
-        )
+            self._attr_options = [
+                self._idu_only_label(self.carrier_system.profile.indoor_unit_source),
+                HEAT_SOURCE_SYSTEM_LABEL,
+            ]
 
-    def idu_only_label(self) -> str | None:
-        if self.carrier_system.profile.indoor_unit_source is None:
+    @staticmethod
+    def _idu_only_label(indoor_unit_source: str | None) -> str:
+        """Return the label for indoor-unit-only heat source mode.
+
+        Args:
+            indoor_unit_source: Fuel source reported by the indoor unit.
+
+        Returns:
+            str: Human-readable option label.
+        """
+        if indoor_unit_source is None:
             return HEAT_SOURCE_IDU_ONLY_LABEL
-        return HEAT_SOURCE_IDU_ONLY_LABEL.replace("gas", self.carrier_system.profile.indoor_unit_source)
+        return HEAT_SOURCE_IDU_ONLY_LABEL.replace("gas", indoor_unit_source)
 
-    @property
-    def current_option(self) -> str| None:
-        """Return true if the binary sensor is on."""
-        return {
-            HeatSourceTypes.IDU_ONLY.value: self.idu_only_label(),
+    def _update_entity_attrs(self) -> None:
+        """Update heat source attrs from coordinator data."""
+        self._attr_current_option = {
+            HeatSourceTypes.IDU_ONLY.value: self._idu_only_label(
+                self.carrier_system.profile.indoor_unit_source
+            ),
             HeatSourceTypes.ODU_ONLY.value: HEAT_SOURCE_ODU_ONLY_LABEL,
             HeatSourceTypes.SYSTEM.value: HEAT_SOURCE_SYSTEM_LABEL,
-        }.get(self.carrier_system.config.heat_source, None)
+        }.get(self.carrier_system.config.heat_source)
+        self._attr_available = self._attr_current_option is not None
 
     async def async_select_option(self, option: str) -> None:
-        """Change the selected option."""
-        new_heat_source: HeatSourceTypes = {
-            self.idu_only_label(): HeatSourceTypes.IDU_ONLY,
+        """Apply a new heat source option to the Carrier system.
+
+        Args:
+            option: Selected Home Assistant option label.
+
+        Raises:
+            HomeAssistantError: Raised when the selected option is not a known heat source label.
+        """
+        heat_source_map: dict[str, HeatSourceTypes] = {
+            self._idu_only_label(
+                self.carrier_system.profile.indoor_unit_source
+            ): HeatSourceTypes.IDU_ONLY,
             HEAT_SOURCE_ODU_ONLY_LABEL: HeatSourceTypes.ODU_ONLY,
             HEAT_SOURCE_SYSTEM_LABEL: HeatSourceTypes.SYSTEM,
-        }.get(option, HeatSourceTypes.SYSTEM)
-        _LOGGER.debug(f"Selected heat source: {new_heat_source}")
-        await self.coordinator.api_connection.set_heat_source(
-            system_serial=self.carrier_system.profile.serial,
-            heat_source=new_heat_source
-        )
+        }
+        if option not in heat_source_map:
+            _LOGGER.error("Unsupported heat source option selected: %s", option)
+            raise HomeAssistantError(f"Unsupported heat source option: {option}")
 
-    @property
-    def available(self) -> bool:
-        """Return true if sensor is ready for display."""
-        return self.current_option is not None
+        new_heat_source = heat_source_map[option]
+        _LOGGER.debug("Selected heat source: %s", new_heat_source)
+        await self.coordinator.async_perform_api_call(
+            "set heat source",
+            partial(
+                self.coordinator.api_connection.set_heat_source,
+                system_serial=self.carrier_system.profile.serial,
+                heat_source=new_heat_source,
+            ),
+        )
+        self.carrier_system.config.heat_source = new_heat_source.value
+        self._write_local_state()

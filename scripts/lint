@@ -1,7 +1,15 @@
 #!/usr/bin/env bash
 
-set -e
-
 cd "$(dirname "$0")/.."
 
-ruff check . --fix
+if [ ! -x .venv/bin/prek ] || [ ! -x .venv/bin/mypy ]; then
+	echo "Missing .venv tooling. Run scripts/setup first." >&2
+	exit 1
+fi
+
+status=0
+
+.venv/bin/prek run -a || status=$?
+.venv/bin/mypy . || status=$?
+
+exit "$status"

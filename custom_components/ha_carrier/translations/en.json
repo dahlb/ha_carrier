@@ -8,10 +8,33 @@
           "username": "Username",
           "password": "Password"
         }
+      },
+      "reauth_confirm": {
+        "title": "Carrier Auth",
+        "description": "Update the Carrier username or password for {username}. Leave the password blank to keep the saved password.",
+        "data": {
+          "username": "Username",
+          "password": "Password"
+        }
+      },
+      "reconfigure": {
+        "title": "Carrier Auth",
+        "description": "Update the saved Carrier credentials for {username}. Leave the password blank to keep the saved password.",
+        "data": {
+          "username": "Username",
+          "password": "Password"
+        }
       }
     },
     "error": {
-      "auth": "Login failed. Please use official app to logout and log back in and try again."
+      "invalid_auth": "Login failed. Please use official app to logout and log back in and try again.",
+      "cannot_connect": "Unable to reach Carrier. Try again shortly.",
+      "unknown": "Unexpected error contacting Carrier."
+    },
+    "abort": {
+      "reauth_successful": "Re-authentication was successful.",
+      "reconfigure_successful": "Reconfiguration was successful.",
+      "already_configured": "This Carrier account is already configured."
     }
   },
   "options": {
