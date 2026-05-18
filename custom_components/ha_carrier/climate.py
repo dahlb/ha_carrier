@@ -132,9 +132,24 @@ class CarrierClimate(CarrierZoneEntity, ClimateEntity):
         """
         actual_heat = self._status_zone.heat_set_point
         actual_cool = self._status_zone.cool_set_point
-        for activity in self._config_zone.activities:
-            if activity.heat_set_point == actual_heat and activity.cool_set_point == actual_cool:
-                return activity.type.value
+
+        matching_activities = [
+            activity
+            for activity in self._config_zone.activities
+            if activity.heat_set_point == actual_heat and activity.cool_set_point == actual_cool
+        ]
+        if len(matching_activities) == 1:
+            return matching_activities[0].type.value
+        if len(matching_activities) > 1:
+            current_activity = self._current_activity()
+            if current_activity is None:
+                _LOGGER.debug(
+                    "Zone %s: Current activity %s was not found in the zone config",
+                    self._config_zone.name,
+                    self._status_zone.current_activity,
+                )
+                return self._status_zone.current_activity
+            return current_activity.type.value
 
         _LOGGER.debug(
             (
