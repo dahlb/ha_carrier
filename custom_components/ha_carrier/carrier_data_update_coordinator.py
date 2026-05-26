@@ -289,9 +289,9 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator[list[dict[str, Any]]]):
     async def _async_handle_failed_write(
         self,
         operation_name: str,
-        error: Exception,
+        error: CarrierUnauthorizedError,
     ) -> NoReturn:
-        """Recover from an exhausted retryable write and raise a HA error.
+        """Recover from an exhausted unauthorized write and raise a HA error.
 
         Forces a refresh so entity state is reconciled with the Carrier backend
         before surfacing the failure to the user. If reconciliation succeeds,
@@ -301,27 +301,19 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator[list[dict[str, Any]]]):
 
         Args:
             operation_name: Friendly name for the write operation that failed.
-            error: Exception raised by the Carrier API client. Either a
-                CarrierUnauthorizedError (already escalated by the helper) or
-                a TimeoutError that exhausted retries.
+            error: Unauthorized error raised after retry handling.
 
         Raises:
-            HomeAssistantError: Raised with a message tailored to the failure type.
+            HomeAssistantError: Raised with a retry-later message.
         """
-        is_unauthorized = isinstance(error, CarrierUnauthorizedError)
         await self._async_reconcile_failed_write(operation_name, error)
 
-        if is_unauthorized:
-            # The write crossed the auth threshold, but reconciliation may have
-            # already cleared stale counters. Reauth is left to a fresh failed
-            # refresh so one recovered write outage does not force credentials
-            # invalid.
-            raise HomeAssistantError(
-                "Carrier rejected repeated write attempts. Try again shortly."
-            ) from error
-
+        # The write crossed the auth threshold, but reconciliation may have
+        # already cleared stale counters. Reauth is left to a fresh failed
+        # refresh so one recovered write outage does not force credentials
+        # invalid.
         raise HomeAssistantError(
-            "Carrier timed out while applying the request. Try again shortly."
+            "Carrier rejected repeated write attempts. Try again shortly."
         ) from error
 
     async def _async_reconcile_failed_write(
@@ -398,9 +390,6 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator[list[dict[str, Any]]]):
             SystemExit,
         ):
             raise
-        except TimeoutError as error:
-            await self._async_handle_failed_write(operation_name, error)
-            raise AssertionError("unreachable after failed write handling") from error
         except RECOVERABLE_WRITE_COMMUNICATION_EXCEPTIONS as error:
             await self._async_reconcile_failed_write(operation_name, error)
             raise HomeAssistantError(

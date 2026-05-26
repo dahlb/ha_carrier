@@ -6,7 +6,7 @@ from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import patch
 
-from carrier_api import CarrierApiAuthError, CarrierApiGraphqlError
+from carrier_api import CarrierApiAuthError, CarrierApiConnectionError, CarrierApiGraphqlError
 from homeassistant.exceptions import ConfigEntryAuthFailed, HomeAssistantError
 from homeassistant.helpers.update_coordinator import UpdateFailed
 import pytest
@@ -146,8 +146,8 @@ async def test_recoverable_write_communication_error_reconciles_and_raises_ha_er
     reconciled = False
 
     async def request() -> None:
-        """Raise a retryable write timeout."""
-        raise TimeoutError("timeout")
+        """Raise a retryable write communication failure."""
+        raise CarrierApiConnectionError("timeout")
 
     async def fake_reconcile(
         self: CarrierDataUpdateCoordinator,
@@ -157,7 +157,7 @@ async def test_recoverable_write_communication_error_reconciles_and_raises_ha_er
         """Record reconciliation after the failed write."""
         nonlocal reconciled
         assert operation_name == "set mode"
-        assert isinstance(error, TimeoutError)
+        assert isinstance(error, CarrierApiConnectionError)
         reconciled = True
 
     with (
@@ -166,7 +166,7 @@ async def test_recoverable_write_communication_error_reconciles_and_raises_ha_er
             "_async_reconcile_failed_write",
             fake_reconcile,
         ),
-        pytest.raises(HomeAssistantError, match="timed out"),
+        pytest.raises(HomeAssistantError, match="Failed to communicate"),
     ):
         await coordinator.async_perform_api_call("set mode", request)
 

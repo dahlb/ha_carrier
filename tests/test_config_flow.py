@@ -28,6 +28,48 @@ from custom_components.ha_carrier.const import (
 from .conftest import IDENTITY_ID, PASSWORD, USERNAME, FakeCarrierApiConnection
 
 
+async def _async_validate_without_identity(
+    username: str,
+    password: str,
+) -> tuple[dict[str, str], str | None]:
+    """Return successful validation without a Carrier identity ID.
+
+    Args:
+        username: Submitted Carrier account username.
+        password: Submitted Carrier account password.
+
+    Returns:
+        tuple[dict[str, str], str | None]: No flow errors and no identity ID.
+    """
+    return {}, None
+
+
+def _mock_entry(
+    *,
+    entry_id: str = "entry-1",
+    unique_id: str = IDENTITY_ID,
+    username: str = USERNAME,
+    password: str = PASSWORD,
+) -> SimpleNamespace:
+    """Build a minimal config entry stand-in for direct flow tests.
+
+    Args:
+        entry_id: Config entry ID.
+        unique_id: Config entry unique ID.
+        username: Stored Carrier username.
+        password: Stored Carrier password.
+
+    Returns:
+        SimpleNamespace: Entry-like object exposing the flow attributes under test.
+    """
+    return SimpleNamespace(
+        entry_id=entry_id,
+        unique_id=unique_id,
+        data={CONF_USERNAME: username, CONF_PASSWORD: password},
+        title=username,
+    )
+
+
 @pytest.mark.asyncio
 async def test_user_flow_creates_entry_after_successful_validation(
     hass: HomeAssistant,
@@ -187,17 +229,11 @@ def test_user_flow_returns_unknown_when_validated_identity_is_missing(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Keep the user flow on the form when validation returns no identity."""
-
-    async def async_validate_credentials(
-        username: str,
-        password: str,
-    ) -> tuple[dict[str, str], str | None]:
-        """Return a validation response without a Carrier identity."""
-        return {}, None
-
     flow = config_flow.CarrierConfigFlow()
     flow.context = {"source": config_entries.SOURCE_USER}
-    monkeypatch.setattr(config_flow, "_async_validate_credentials", async_validate_credentials)
+    monkeypatch.setattr(
+        config_flow, "_async_validate_credentials", _async_validate_without_identity
+    )
 
     result = _run_async(flow.async_step_user({CONF_USERNAME: USERNAME, CONF_PASSWORD: PASSWORD}))
 
@@ -209,12 +245,7 @@ def test_reconfigure_updates_username_and_reuses_blank_password(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Reconfigure can update username while keeping the saved password."""
-    reconfigure_entry = SimpleNamespace(
-        entry_id="entry-1",
-        unique_id=IDENTITY_ID,
-        data={CONF_USERNAME: USERNAME, CONF_PASSWORD: PASSWORD},
-        title=USERNAME,
-    )
+    reconfigure_entry = _mock_entry()
     updates: list[dict[str, Any]] = []
 
     async def async_validate_credentials(
@@ -283,23 +314,12 @@ def test_reconfigure_returns_unknown_when_validated_identity_is_missing(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Keep reconfigure on the form when validation returns no identity."""
-    reconfigure_entry = SimpleNamespace(
-        entry_id="entry-1",
-        unique_id=IDENTITY_ID,
-        data={CONF_USERNAME: USERNAME, CONF_PASSWORD: PASSWORD},
-        title=USERNAME,
-    )
-
-    async def async_validate_credentials(
-        username: str,
-        password: str,
-    ) -> tuple[dict[str, str], str | None]:
-        """Return a validation response without a Carrier identity."""
-        return {}, None
-
+    reconfigure_entry = _mock_entry()
     flow = config_flow.CarrierConfigFlow()
     flow.context = {"source": "reconfigure", "entry_id": "entry-1"}
-    monkeypatch.setattr(config_flow, "_async_validate_credentials", async_validate_credentials)
+    monkeypatch.setattr(
+        config_flow, "_async_validate_credentials", _async_validate_without_identity
+    )
     monkeypatch.setattr(flow, "_get_reconfigure_entry", lambda: reconfigure_entry)
 
     result = _run_async(flow.async_step_reconfigure({CONF_USERNAME: USERNAME}))
@@ -333,24 +353,13 @@ def test_reauth_confirm_returns_unknown_when_validated_identity_is_missing(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Keep reauth on the form when validation returns no identity."""
-    reauth_entry = SimpleNamespace(
-        entry_id="entry-1",
-        unique_id=IDENTITY_ID,
-        data={CONF_USERNAME: USERNAME, CONF_PASSWORD: PASSWORD},
-        title=USERNAME,
-    )
-
-    async def async_validate_credentials(
-        username: str,
-        password: str,
-    ) -> tuple[dict[str, str], str | None]:
-        """Return a validation response without a Carrier identity."""
-        return {}, None
-
+    reauth_entry = _mock_entry()
     flow = config_flow.CarrierConfigFlow()
     flow.context = {"source": "reauth", "entry_id": "entry-1"}
     flow._reauth_entry_data = dict(reauth_entry.data)
-    monkeypatch.setattr(config_flow, "_async_validate_credentials", async_validate_credentials)
+    monkeypatch.setattr(
+        config_flow, "_async_validate_credentials", _async_validate_without_identity
+    )
     monkeypatch.setattr(flow, "_get_reauth_entry", lambda: reauth_entry)
 
     result = _run_async(flow.async_step_reauth_confirm({CONF_USERNAME: USERNAME}))
