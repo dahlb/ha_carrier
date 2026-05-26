@@ -118,7 +118,10 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntryCarrie
             while True:
                 try:
                     _LOGGER.debug("websocket task listening")
-                    await coordinator.api_connection.api_websocket.listener()
+                    api_websocket = coordinator.api_connection.api_websocket
+                    if api_websocket is None:
+                        raise RuntimeError("Carrier API websocket client is not initialized")
+                    await api_websocket.listener()
                     _LOGGER.debug("websocket task ending")
                     coordinator.data_flush = True
                     await coordinator.async_request_refresh()
