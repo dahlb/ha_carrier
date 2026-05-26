@@ -135,7 +135,7 @@ class HeatSourceSelect(CarrierSelect):
             ),
             HeatSourceTypes.ODU_ONLY.value: HEAT_SOURCE_ODU_ONLY_LABEL,
             HeatSourceTypes.SYSTEM.value: HEAT_SOURCE_SYSTEM_LABEL,
-        }.get(self.carrier_system.config.heat_source)
+        }.get(self.carrier_system.config.heat_source or "")
         self._attr_available = self._attr_current_option is not None
 
     async def async_select_option(self, option: str) -> None:

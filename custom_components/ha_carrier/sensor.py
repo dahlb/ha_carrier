@@ -113,15 +113,16 @@ async def async_setup_entry(
                     ]
                 )
         gas_measurement = getattr(carrier_system.energy, "gas", False)
-        if gas_measurement is True:
+        fuel_type = carrier_system.config.fuel_type
+        if gas_measurement is True and fuel_type is not None:
             entities.append(
                 GasMeasurementSensor(
                     coordinator=coordinator,
                     system_serial=carrier_system.profile.serial,
-                    fuel_type=carrier_system.config.fuel_type,
+                    fuel_type=fuel_type,
                 )
             )
-            if carrier_system.config.fuel_type == "propane":
+            if fuel_type == "propane":
                 entities.append(
                     PropaneMeasurementSensor(
                         coordinator=coordinator, system_serial=carrier_system.profile.serial

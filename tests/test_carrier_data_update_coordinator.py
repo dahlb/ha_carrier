@@ -34,7 +34,7 @@ async def test_initial_full_refresh_preserves_systems_list_identity(
     fresh_systems = [build_carrier_system()]
     carrier_api.systems = fresh_systems
     coordinator.systems = systems
-    coordinator.api_connection = carrier_api
+    coordinator.api_connection = cast("Any", carrier_api)
     coordinator.resiliency = ResiliencyState(
         unauthorized_threshold=UNAUTHORIZED_RETRY_THRESHOLD,
         transient_threshold=TRANSIENT_FAILURE_THRESHOLD,
@@ -54,7 +54,7 @@ async def test_energy_refresh_uses_cycle_scoped_success_reset(
     """Preserve resiliency state across per-system energy successes."""
     coordinator = CarrierDataUpdateCoordinator.__new__(CarrierDataUpdateCoordinator)
     coordinator.systems = [build_carrier_system()]
-    coordinator.api_connection = carrier_api
+    coordinator.api_connection = cast("Any", carrier_api)
     coordinator.resiliency = cast(
         "Any",
         SimpleNamespace(
@@ -226,7 +226,7 @@ async def test_full_refresh_merges_new_changed_and_stale_systems(
     fresh_new = build_carrier_system(serial="NEW123", name="New")
     carrier_api.systems = [fresh_existing, fresh_new]
     coordinator.systems = [existing, stale]
-    coordinator.api_connection = carrier_api
+    coordinator.api_connection = cast("Any", carrier_api)
     coordinator.resiliency = ResiliencyState(
         unauthorized_threshold=UNAUTHORIZED_RETRY_THRESHOLD,
         transient_threshold=TRANSIENT_FAILURE_THRESHOLD,
@@ -253,7 +253,7 @@ async def test_energy_refresh_records_one_unauthorized_per_cycle(
         build_carrier_system(serial="DEF456"),
     ]
     coordinator.systems = systems
-    coordinator.api_connection = carrier_api
+    coordinator.api_connection = cast("Any", carrier_api)
     coordinator.resiliency = ResiliencyState(unauthorized_threshold=2, transient_threshold=3)
     coordinator.update_interval = None
 
@@ -279,7 +279,7 @@ async def test_energy_refresh_escalates_after_threshold(
     """Raise CarrierUnauthorizedError once the energy-cycle auth threshold is crossed."""
     coordinator = CarrierDataUpdateCoordinator.__new__(CarrierDataUpdateCoordinator)
     coordinator.systems = [build_carrier_system()]
-    coordinator.api_connection = carrier_api
+    coordinator.api_connection = cast("Any", carrier_api)
     coordinator.resiliency = ResiliencyState(unauthorized_threshold=1, transient_threshold=3)
     coordinator.update_interval = None
 

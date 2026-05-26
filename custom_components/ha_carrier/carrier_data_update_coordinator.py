@@ -221,10 +221,11 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator[list[dict[str, Any]]]):
                 self.systems.remove(stale_system)
         if not self._websocket_initialized:
             self.websocket_data_updater = WebsocketDataUpdater(systems=self.systems)
-            self.api_connection.api_websocket.callback_add(
-                self.websocket_data_updater.message_handler
-            )
-            self.api_connection.api_websocket.callback_add(self.updated_callback)
+            api_websocket = self.api_connection.api_websocket
+            if api_websocket is None:
+                raise RuntimeError("Carrier API websocket client is not initialized")
+            api_websocket.callback_add(self.websocket_data_updater.message_handler)
+            api_websocket.callback_add(self.updated_callback)
             self._websocket_initialized = True
         if _LOGGER.isEnabledFor(logging.DEBUG):
             for system in self.systems:
