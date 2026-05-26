@@ -343,12 +343,13 @@ def _async_build_unique_id_migration_map(
             )
 
         fuel_type = carrier_system.config.fuel_type
-        _async_add_unique_id_migration(
-            migration_map,
-            system_serial,
-            f"{fuel_type.capitalize()} Yearly",
-            f"{fuel_type.capitalize()} Usage Year to Date",
-        )
+        if fuel_type is not None:
+            _async_add_unique_id_migration(
+                migration_map,
+                system_serial,
+                f"{fuel_type.capitalize()} Yearly",
+                f"{fuel_type.capitalize()} Usage Year to Date",
+            )
         _async_add_unique_id_migration(
             migration_map,
             system_serial,
@@ -430,14 +431,15 @@ def _async_build_created_unique_ids(systems: Iterable[System]) -> set[str]:
                     _async_new_unique_id(system_serial, f"{metric_title} Energy Last Month")
                 )
 
-        if getattr(carrier_system.energy, "gas", False) is True:
+        fuel_type = carrier_system.config.fuel_type
+        if getattr(carrier_system.energy, "gas", False) is True and fuel_type is not None:
             created_unique_ids.add(
                 _async_new_unique_id(
                     system_serial,
-                    f"{carrier_system.config.fuel_type.capitalize()} Usage Year to Date",
+                    f"{fuel_type.capitalize()} Usage Year to Date",
                 )
             )
-            if carrier_system.config.fuel_type == "propane":
+            if fuel_type == "propane":
                 created_unique_ids.add(
                     _async_new_unique_id(system_serial, "Propane Consumption Year to Date")
                 )
