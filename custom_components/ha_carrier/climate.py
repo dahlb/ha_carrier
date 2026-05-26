@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from datetime import datetime
 from functools import partial
 import logging
 from typing import Any
@@ -124,6 +123,20 @@ class CarrierClimate(CarrierZoneEntity, ClimateEntity):
         activity_type = self._config_zone.hold_activity or self._status_zone.current_activity
         return self._config_zone.find_activity(activity_type)
 
+    @property
+    def _required_zone_api_id(self) -> str:
+        """Return this climate entity's required Carrier zone API ID.
+
+        Returns:
+            str: Carrier zone API ID.
+
+        Raises:
+            ValueError: Raised when the zone API ID is unavailable.
+        """
+        if self.zone_api_id is None:
+            raise ValueError("No zone api id defined")
+        return self.zone_api_id
+
     def _preset_mode(self) -> str | None:
         """Return the preset that best matches current zone setpoints.
 
@@ -148,7 +161,7 @@ class CarrierClimate(CarrierZoneEntity, ClimateEntity):
                     self._config_zone.name,
                     self._status_zone.current_activity,
                 )
-                return self._status_zone.current_activity
+                return self._status_zone.current_activity.value
             return current_activity.type.value
 
         _LOGGER.debug(
@@ -168,7 +181,7 @@ class CarrierClimate(CarrierZoneEntity, ClimateEntity):
                 self._config_zone.name,
                 self._status_zone.current_activity,
             )
-            return self._status_zone.current_activity
+            return self._status_zone.current_activity.value
         return current_activity.type.value
 
     def _update_entity_attrs(self) -> None:
@@ -371,11 +384,11 @@ class Thermostat(CarrierClimate):
         self._write_local_state()
 
     @property
-    def _hold_until(self) -> datetime | None:
+    def _hold_until(self) -> str | None:
         """Return hold end time based on integration hold preference.
 
         Returns:
-            datetime | None: Next schedule transition or None for an indefinite hold.
+            str | None: Next schedule transition or None for an indefinite hold.
         """
         _LOGGER.debug(
             "infinite_hold: %s; holding until: %s",
@@ -399,7 +412,7 @@ class Thermostat(CarrierClimate):
                 partial(
                     self.coordinator.api_connection.resume_schedule,
                     system_serial=self.carrier_system.profile.serial,
-                    zone_id=self.zone_api_id,
+                    zone_id=self._required_zone_api_id,
                 ),
             )
             self.coordinator.data_flush = True
@@ -414,14 +427,14 @@ class Thermostat(CarrierClimate):
             partial(
                 self.coordinator.api_connection.set_config_hold,
                 system_serial=self.carrier_system.profile.serial,
-                zone_id=self.zone_api_id,
+                zone_id=self._required_zone_api_id,
                 activity_type=activity_type,
                 hold_until=hold_until_sent,
             ),
         )
         self._config_zone.hold = True
         self._config_zone.hold_activity = activity_type
-        self._config_zone.hold_until = hold_until_sent
+        self._config_zone.hold_until = hold_until_sent or ""
         if selected_activity is not None:
             self._status_zone.heat_set_point = selected_activity.heat_set_point
             self._status_zone.cool_set_point = selected_activity.cool_set_point
@@ -446,7 +459,7 @@ class Thermostat(CarrierClimate):
             partial(
                 self.coordinator.api_connection.update_fan,
                 system_serial=self.carrier_system.profile.serial,
-                zone_id=self.zone_api_id,
+                zone_id=self._required_zone_api_id,
                 activity_type=current_activity.type,
                 fan_mode=selected_fan_mode,
             ),
@@ -499,7 +512,7 @@ class Thermostat(CarrierClimate):
             partial(
                 self.coordinator.api_connection.set_config_manual_activity,
                 system_serial=self.carrier_system.profile.serial,
-                zone_id=self.zone_api_id,
+                zone_id=self._required_zone_api_id,
                 heat_set_point=str(heat_set_point),
                 cool_set_point=str(cool_set_point),
                 fan_mode=fan_mode,
@@ -510,7 +523,7 @@ class Thermostat(CarrierClimate):
             partial(
                 self.coordinator.api_connection.set_config_hold,
                 system_serial=self.carrier_system.profile.serial,
-                zone_id=self.zone_api_id,
+                zone_id=self._required_zone_api_id,
                 activity_type=ActivityTypes.MANUAL,
                 hold_until=hold_until_sent,
             ),
@@ -518,7 +531,7 @@ class Thermostat(CarrierClimate):
 
         self._config_zone.hold = True
         self._config_zone.hold_activity = ActivityTypes.MANUAL
-        self._config_zone.hold_until = hold_until_sent
+        self._config_zone.hold_until = hold_until_sent or ""
         manual_activity.cool_set_point = cool_set_point
         manual_activity.heat_set_point = heat_set_point
         self._status_zone.cool_set_point = cool_set_point
