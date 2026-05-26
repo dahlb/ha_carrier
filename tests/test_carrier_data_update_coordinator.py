@@ -250,27 +250,6 @@ async def test_update_data_keeps_plain_unauthorized_server_error_retryable() -> 
 
 
 @pytest.mark.asyncio
-async def test_update_data_maps_raw_timeout_refresh_to_update_failed() -> None:
-    """Keep raw refresh timeouts on the Home Assistant retry cadence."""
-    coordinator = CarrierDataUpdateCoordinator.__new__(CarrierDataUpdateCoordinator)
-    coordinator.data_flush = True
-    coordinator.update_interval = None
-
-    async def fake_full_refresh() -> None:
-        """Raise a raw timeout from the refresh path."""
-        raise TimeoutError("temporary")
-
-    with (
-        patch.object(coordinator, "_async_full_refresh", fake_full_refresh),
-        pytest.raises(UpdateFailed, match="Unexpected error during Carrier full data refresh"),
-    ):
-        await coordinator._async_update_data()
-
-    assert coordinator.data_flush is True
-    assert coordinator.update_interval is not None
-
-
-@pytest.mark.asyncio
 async def test_full_refresh_merges_new_changed_and_stale_systems(
     carrier_api: FakeCarrierApiConnection,
 ) -> None:

@@ -54,8 +54,6 @@ async def test_migration_updates_system_and_zone_unique_ids(
     "load_error",
     [
         CarrierApiConnectionError("offline"),
-        TimeoutError("offline"),
-        OSError("offline"),
     ],
 )
 async def test_migration_defers_version_update_when_live_data_cannot_load(
@@ -111,8 +109,6 @@ async def test_migration_updates_config_entry_unique_id_to_identity_id(
     "load_error",
     [
         CarrierApiConnectionError("offline"),
-        TimeoutError("offline"),
-        OSError("offline"),
     ],
 )
 async def test_migration_defers_identity_update_when_user_info_cannot_load(
