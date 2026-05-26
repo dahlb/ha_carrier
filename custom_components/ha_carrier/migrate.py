@@ -566,6 +566,7 @@ async def migrate_1_to_2(hass: HomeAssistant, config_entry: ConfigEntry) -> bool
         bool: True when entity registry migration and config entry version
             update succeed.
     """
+    api_connection: ApiConnectionGraphql | None = None
     systems_loaded = False
     try:
         api_connection = ApiConnectionGraphql(
@@ -581,6 +582,14 @@ async def migrate_1_to_2(hass: HomeAssistant, config_entry: ConfigEntry) -> bool
             exc_info=True,
         )
         systems = []
+    finally:
+        if api_connection is not None:
+            try:
+                await api_connection.cleanup()
+            except CarrierApiError:
+                _LOGGER.exception(
+                    "Failed to clean up Carrier API connection after config entry migration."
+                )
 
     if systems_loaded and not systems:
         _LOGGER.warning(

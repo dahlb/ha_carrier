@@ -47,6 +47,7 @@ async def test_migration_updates_system_and_zone_unique_ids(
     assert config_entry.version == 2
     assert ent_reg.async_get_entity_id("sensor", DOMAIN, "abc123_outdoor_temperature")
     assert ent_reg.async_get_entity_id("climate", DOMAIN, "abc123_zone_1_thermostat")
+    assert patch_carrier_api.cleanup_calls == 1
 
 
 @pytest.mark.asyncio
@@ -81,6 +82,7 @@ async def test_migration_defers_version_update_when_live_data_cannot_load(
 
     assert config_entry.version == 1
     assert ent_reg.async_get(entry.entity_id) is not None
+    assert patch_carrier_api.cleanup_calls == 1
 
 
 @pytest.mark.asyncio
