@@ -574,7 +574,11 @@ async def migrate_1_to_2(hass: HomeAssistant, config_entry: ConfigEntry) -> bool
         )
         systems = await api_connection.load_data()
         systems_loaded = True
-    except CarrierApiError:
+    except (
+        CarrierApiError,
+        TimeoutError,
+        OSError,
+    ):
         _LOGGER.warning(
             "Unable to load Carrier data for config entry migration; "
             "continuing without destructive entity registry cleanup",
@@ -642,7 +646,11 @@ async def migrate_2_to_3(hass: HomeAssistant, config_entry: ConfigEntry) -> bool
             password=config_entry.data[CONF_PASSWORD],
         )
         identity_id = await async_get_carrier_identity_id(api_connection)
-    except CarrierApiError as error:
+    except (
+        CarrierApiError,
+        TimeoutError,
+        OSError,
+    ) as error:
         _LOGGER.warning(
             "Unable to load Carrier user identity for config entry migration; "
             "will retry on next startup. %s: %s",
@@ -654,7 +662,11 @@ async def migrate_2_to_3(hass: HomeAssistant, config_entry: ConfigEntry) -> bool
         if api_connection is not None:
             try:
                 await api_connection.cleanup()
-            except CarrierApiError:
+            except (
+                CarrierApiError,
+                TimeoutError,
+                OSError,
+            ):
                 _LOGGER.exception(
                     "Failed to clean up Carrier API connection after config entry migration."
                 )

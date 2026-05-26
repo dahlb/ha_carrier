@@ -50,12 +50,21 @@ async def test_migration_updates_system_and_zone_unique_ids(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "load_error",
+    [
+        CarrierApiConnectionError("offline"),
+        TimeoutError("offline"),
+        OSError("offline"),
+    ],
+)
 async def test_migration_defers_version_update_when_live_data_cannot_load(
     hass: HomeAssistant,
     patch_carrier_api: FakeCarrierApiConnection,
+    load_error: BaseException,
 ) -> None:
     """Keep migration non-destructive when Carrier data cannot be loaded."""
-    patch_carrier_api.load_data_error = CarrierApiConnectionError("offline")
+    patch_carrier_api.load_data_error = load_error
     config_entry = MockConfigEntry(
         domain=DOMAIN,
         version=1,
@@ -98,12 +107,21 @@ async def test_migration_updates_config_entry_unique_id_to_identity_id(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "load_error",
+    [
+        CarrierApiConnectionError("offline"),
+        TimeoutError("offline"),
+        OSError("offline"),
+    ],
+)
 async def test_migration_defers_identity_update_when_user_info_cannot_load(
     hass: HomeAssistant,
     patch_carrier_api: FakeCarrierApiConnection,
+    load_error: BaseException,
 ) -> None:
     """Keep v2 entries unchanged when Carrier identity lookup fails."""
-    patch_carrier_api.load_data_error = CarrierApiConnectionError("offline")
+    patch_carrier_api.load_data_error = load_error
     config_entry = MockConfigEntry(
         domain=DOMAIN,
         version=2,

@@ -58,6 +58,8 @@ TRANSIENT_TRANSPORT_EXCEPTIONS: tuple[type[BaseException], ...] = (
     CarrierApiConnectionError,
     CarrierApiTokenRefreshError,
     CarrierApiWebsocketError,
+    TimeoutError,
+    OSError,
 )
 
 # Exceptions a coordinator refresh may recover from on a later interval.
@@ -105,6 +107,8 @@ async def async_get_carrier_identity_id(api_connection: ApiConnectionGraphql) ->
     Raises:
         CarrierApiAuthError: Credentials were rejected by the Carrier API.
         CarrierApiError: The Carrier API client reported a non-auth error.
+        OSError: A socket-level error occurred while talking to Carrier.
+        TimeoutError: The request timed out before a response arrived.
     """
     await api_connection.load_data()
     user_info = await api_connection.get_user_info()

@@ -49,6 +49,8 @@ def test_integration_imports_supported_carrier_api_exception_names(module_path: 
         (is_transient_transport_error, CarrierApiConnectionError("temporary")),
         (is_transient_transport_error, CarrierApiTokenRefreshError("temporary")),
         (is_transient_transport_error, CarrierApiWebsocketError("temporary")),
+        (is_transient_transport_error, TimeoutError("temporary")),
+        (is_transient_transport_error, OSError("temporary")),
     ],
 )
 def test_exception_classifiers_inspect_context_when_cause_exists(

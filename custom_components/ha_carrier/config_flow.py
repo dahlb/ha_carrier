@@ -44,7 +44,7 @@ async def _async_validate_credentials(
     try:
         api_connection = ApiConnectionGraphql(username=username, password=password)
         identity_id = await async_get_carrier_identity_id(api_connection)
-    except CarrierApiError as error:
+    except (CarrierApiError, TimeoutError, OSError) as error:
         if is_unauthorized_error(error):
             return {"base": ERROR_AUTH}, None
         if is_transient_transport_error(error):
@@ -58,7 +58,7 @@ async def _async_validate_credentials(
         if api_connection is not None:
             try:
                 await api_connection.cleanup()
-            except CarrierApiError:
+            except CarrierApiError, TimeoutError, OSError:
                 _LOGGER.exception(
                     "Failed to clean up Carrier API connection after credential validation"
                 )

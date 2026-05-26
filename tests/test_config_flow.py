@@ -72,6 +72,8 @@ async def test_user_flow_aborts_duplicate_account(
     [
         (CarrierApiAuthError("unauthorized"), ERROR_AUTH),
         (CarrierApiConnectionError("temporary"), ERROR_CANNOT_CONNECT),
+        (TimeoutError("temporary"), ERROR_CANNOT_CONNECT),
+        (OSError("temporary"), ERROR_CANNOT_CONNECT),
         (CarrierApiGraphqlError("unexpected"), ERROR_UNKNOWN),
     ],
 )
