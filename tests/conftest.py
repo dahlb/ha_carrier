@@ -31,6 +31,8 @@ class FakeCarrierWebsocket:
     def __init__(self) -> None:
         """Initialize websocket callback storage."""
         self.callbacks: list[Callable[[str], Any]] = []
+        self.listener_errors: list[BaseException] = []
+        self.listener_calls = 0
 
     def callback_add(self, callback: Callable[[str], Any]) -> None:
         """Store a websocket callback registered by the coordinator.
@@ -42,6 +44,9 @@ class FakeCarrierWebsocket:
 
     async def listener(self) -> None:
         """Block until Home Assistant cancels the websocket task."""
+        self.listener_calls += 1
+        if self.listener_errors:
+            raise self.listener_errors.pop(0)
         await asyncio.Event().wait()
 
 

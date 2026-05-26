@@ -39,6 +39,13 @@ WEBSOCKET_RETRY_POLICY = RetryPolicy(
 # `async_call_with_retry` with this `WEBSOCKET_RETRY_POLICY` and
 # `max_attempts=None` if websocket reconnections should enforce that flag.
 
+WEBSOCKET_DATA_UPDATE_EXCEPTIONS: tuple[type[BaseException], ...] = (
+    KeyError,
+    TypeError,
+    ValueError,
+)
+"""Carrier websocket payload/data-shape errors that should trigger reconciliation."""
+
 type ConfigEntryCarrier = ConfigEntry[CarrierDataUpdateCoordinator]
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
@@ -60,6 +67,8 @@ async def _async_await_websocket_task(websocket_task: asyncio.Task[None]) -> Non
         pass
     except WEBSOCKET_RECOVERABLE_EXCEPTIONS:
         _LOGGER.exception("websocket task raised during cancellation")
+    except WEBSOCKET_DATA_UPDATE_EXCEPTIONS:
+        _LOGGER.exception("websocket task data update failed before cancellation")
     except RuntimeError:
         _LOGGER.exception("websocket task raised RuntimeError during cancellation")
 
@@ -118,7 +127,10 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntryCarrie
             while True:
                 try:
                     _LOGGER.debug("websocket task listening")
-                    await coordinator.api_connection.api_websocket.listener()
+                    api_websocket = coordinator.api_connection.api_websocket
+                    if api_websocket is None:
+                        raise RuntimeError("Carrier API websocket client is not initialized")
+                    await api_websocket.listener()
                     _LOGGER.debug("websocket task ending")
                     coordinator.data_flush = True
                     await coordinator.async_request_refresh()
@@ -130,6 +142,19 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntryCarrie
                     _LOGGER.debug(
                         "websocket task hit %s; requesting refresh and retrying in %.1f "
                         "seconds (attempt %d)",
+                        type(error).__name__,
+                        delay,
+                        attempt + 1,
+                    )
+                    coordinator.data_flush = True
+                    await coordinator.async_request_refresh()
+                    await asyncio.sleep(delay)
+                    attempt += 1
+                except WEBSOCKET_DATA_UPDATE_EXCEPTIONS as error:
+                    delay = compute_backoff_delay(WEBSOCKET_RETRY_POLICY, attempt)
+                    _LOGGER.exception(
+                        "websocket data update failed with %s; requesting refresh and "
+                        "retrying in %.1f seconds (attempt %d)",
                         type(error).__name__,
                         delay,
                         attempt + 1,
