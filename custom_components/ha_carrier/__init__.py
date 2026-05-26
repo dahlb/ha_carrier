@@ -24,7 +24,12 @@ from .const import (
 from .exceptions import CarrierUnauthorizedError
 from .migrate import migrate_1_to_2, migrate_2_to_3
 from .resiliency import RetryPolicy, compute_backoff_delay
-from .util import WEBSOCKET_RECOVERABLE_EXCEPTIONS, async_redact_data, is_unauthorized_error
+from .util import (
+    WEBSOCKET_DATA_UPDATE_EXCEPTIONS,
+    WEBSOCKET_RECOVERABLE_EXCEPTIONS,
+    async_redact_data,
+    is_unauthorized_error,
+)
 
 WEBSOCKET_RETRY_POLICY = RetryPolicy(
     name="carrier-websocket",
@@ -60,6 +65,8 @@ async def _async_await_websocket_task(websocket_task: asyncio.Task[None]) -> Non
         pass
     except WEBSOCKET_RECOVERABLE_EXCEPTIONS:
         _LOGGER.exception("websocket task raised during cancellation")
+    except WEBSOCKET_DATA_UPDATE_EXCEPTIONS:
+        _LOGGER.exception("websocket task data update failed before cancellation")
     except RuntimeError:
         _LOGGER.exception("websocket task raised RuntimeError during cancellation")
 
@@ -133,6 +140,19 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntryCarrie
                     _LOGGER.debug(
                         "websocket task hit %s; requesting refresh and retrying in %.1f "
                         "seconds (attempt %d)",
+                        type(error).__name__,
+                        delay,
+                        attempt + 1,
+                    )
+                    coordinator.data_flush = True
+                    await coordinator.async_request_refresh()
+                    await asyncio.sleep(delay)
+                    attempt += 1
+                except WEBSOCKET_DATA_UPDATE_EXCEPTIONS as error:
+                    delay = compute_backoff_delay(WEBSOCKET_RETRY_POLICY, attempt)
+                    _LOGGER.exception(
+                        "websocket data update failed with %s; requesting refresh and "
+                        "retrying in %.1f seconds (attempt %d)",
                         type(error).__name__,
                         delay,
                         attempt + 1,
