@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from aiohttp import ClientError
+from carrier_api import CarrierApiConnectionError
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
@@ -55,7 +55,7 @@ async def test_migration_defers_version_update_when_live_data_cannot_load(
     patch_carrier_api: FakeCarrierApiConnection,
 ) -> None:
     """Keep migration non-destructive when Carrier data cannot be loaded."""
-    patch_carrier_api.load_data_error = ClientError("offline")
+    patch_carrier_api.load_data_error = CarrierApiConnectionError("offline")
     config_entry = MockConfigEntry(
         domain=DOMAIN,
         version=1,
@@ -103,7 +103,7 @@ async def test_migration_defers_identity_update_when_user_info_cannot_load(
     patch_carrier_api: FakeCarrierApiConnection,
 ) -> None:
     """Keep v2 entries unchanged when Carrier identity lookup fails."""
-    patch_carrier_api.load_data_error = ClientError("offline")
+    patch_carrier_api.load_data_error = CarrierApiConnectionError("offline")
     config_entry = MockConfigEntry(
         domain=DOMAIN,
         version=2,

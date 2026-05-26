@@ -7,9 +7,8 @@ import functools
 import logging
 from typing import Any, NoReturn
 
-from carrier_api import ApiConnectionGraphql, AuthError, BaseError, Energy, System
+from carrier_api import ApiConnectionGraphql, CarrierApiError, Energy, System
 from carrier_api.api_websocket_data_updater import WebsocketDataUpdater
-from gql.transport.exceptions import TransportServerError
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed, HomeAssistantError
 from homeassistant.helpers.debounce import Debouncer
@@ -158,7 +157,7 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator[list[dict[str, Any]]]):
         except RECOVERABLE_REFRESH_EXCEPTIONS as error:
             self.data_flush = True
             self.update_interval = timedelta(minutes=1)
-            if isinstance(error, TransportServerError) and is_unauthorized_error(error):
+            if is_unauthorized_error(error):
                 _LOGGER.info(
                     "Carrier %s returned unauthorized without crossing the reauth threshold.",
                     refresh_context,
@@ -407,7 +406,7 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator[list[dict[str, Any]]]):
             raise HomeAssistantError(
                 "Failed to communicate with Carrier service — operation could not be completed."
             ) from error
-        except (AuthError, BaseError) as error:
+        except CarrierApiError as error:
             await self._async_reconcile_failed_write(operation_name, error)
             raise HomeAssistantError(
                 "Carrier rejected the request. Check the requested setting and try again."

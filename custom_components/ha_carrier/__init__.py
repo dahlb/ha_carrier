@@ -3,8 +3,7 @@
 import asyncio
 import logging
 
-from carrier_api import ApiConnectionGraphql
-from gql.transport.exceptions import TransportServerError
+from carrier_api import ApiConnectionGraphql, CarrierApiConnectionError
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 from homeassistant.core import HomeAssistant
@@ -188,8 +187,8 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntryCarrie
     except CarrierUnauthorizedError as error:
         _LOGGER.exception("Carrier unauthorized during setup")
         raise ConfigEntryAuthFailed("Carrier API rejected credentials during setup.") from error
-    except TransportServerError as error:
-        _LOGGER.exception("Carrier transport error during setup")
+    except CarrierApiConnectionError as error:
+        _LOGGER.exception("Carrier connection error during setup")
         raise ConfigEntryNotReady(error) from error
     except (
         asyncio.CancelledError,
