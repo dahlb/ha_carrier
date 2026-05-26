@@ -78,15 +78,23 @@ async def test_websocket_task_recovers_from_bad_update_data(
 
 
 @pytest.mark.asyncio
-async def test_websocket_task_recovers_from_carrier_connection_error(
+@pytest.mark.parametrize(
+    "websocket_error",
+    [
+        CarrierApiAuthError("unauthorized"),
+        CarrierApiConnectionError("offline"),
+    ],
+)
+async def test_websocket_task_recovers_from_carrier_api_error(
     hass: HomeAssistant,
     carrier_api: FakeCarrierApiConnection,
     monkeypatch: pytest.MonkeyPatch,
     setup_integration: Callable[..., Any],
+    websocket_error: Exception,
 ) -> None:
-    """Keep websocket listening after the Carrier API reports a connection failure."""
+    """Keep websocket listening after the Carrier API reports a recoverable failure."""
     monkeypatch.setattr("custom_components.ha_carrier.compute_backoff_delay", lambda *_: 0)
-    carrier_api.api_websocket.listener_errors.append(CarrierApiConnectionError("offline"))
+    carrier_api.api_websocket.listener_errors.append(websocket_error)
 
     config_entry = await setup_integration()
     websocket_task = config_entry.runtime_data.websocket_task
@@ -135,6 +143,7 @@ async def test_unload_ignores_websocket_task_data_update_failure(
     "task_error",
     [
         CarrierApiConnectionError("offline"),
+        CarrierApiAuthError("unauthorized"),
         RuntimeError("websocket missing"),
     ],
 )

@@ -77,6 +77,7 @@ RECOVERABLE_WRITE_COMMUNICATION_EXCEPTIONS: tuple[type[BaseException], ...] = (
 # Exceptions the websocket reconnect loop should treat as recoverable.
 WEBSOCKET_RECOVERABLE_EXCEPTIONS: tuple[type[BaseException], ...] = (
     CarrierUnauthorizedError,
+    CarrierApiAuthError,
     *TRANSIENT_TRANSPORT_EXCEPTIONS,
 )
 
