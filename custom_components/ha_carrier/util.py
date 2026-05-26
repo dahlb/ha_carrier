@@ -54,14 +54,15 @@ ENERGY_METRIC_MAP: dict[str, str] = {
 
 TIMESTAMP_TYPES: tuple[str, ...] = ("all_data", "websocket", "energy")
 
+# Transport-layer exceptions that should retry with backoff.
 TRANSIENT_TRANSPORT_EXCEPTIONS: tuple[type[BaseException], ...] = (
     ClientError,
     TimeoutError,
     OSError,
     TransportProtocolError,
 )
-"""Transport-layer exceptions that should retry with backoff."""
 
+# Exceptions a coordinator refresh may recover from on a later interval.
 RECOVERABLE_REFRESH_EXCEPTIONS: tuple[type[BaseException], ...] = (
     *TRANSIENT_TRANSPORT_EXCEPTIONS,
     TransportError,
@@ -69,22 +70,28 @@ RECOVERABLE_REFRESH_EXCEPTIONS: tuple[type[BaseException], ...] = (
     AuthError,
     BaseError,
 )
-"""Exceptions a coordinator refresh may recover from on a later interval."""
 
+# Transport exceptions a write should report as communication failures.
 RECOVERABLE_WRITE_COMMUNICATION_EXCEPTIONS: tuple[type[BaseException], ...] = (
     *TRANSIENT_TRANSPORT_EXCEPTIONS,
     TransportError,
     TransportServerError,
 )
-"""Transport exceptions a write should report as communication failures."""
 
+# Exceptions the websocket reconnect loop should treat as recoverable.
 WEBSOCKET_RECOVERABLE_EXCEPTIONS: tuple[type[BaseException], ...] = (
     CarrierUnauthorizedError,
     *TRANSIENT_TRANSPORT_EXCEPTIONS,
     TransportError,
     TransportServerError,
 )
-"""Exceptions the websocket reconnect loop should treat as recoverable."""
+
+# Carrier websocket payload/data-shape errors that should trigger reconciliation.
+WEBSOCKET_DATA_UPDATE_EXCEPTIONS: tuple[type[BaseException], ...] = (
+    KeyError,
+    TypeError,
+    ValueError,
+)
 
 
 async def async_get_carrier_identity_id(api_connection: ApiConnectionGraphql) -> str | None:

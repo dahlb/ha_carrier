@@ -24,7 +24,12 @@ from .const import (
 from .exceptions import CarrierUnauthorizedError
 from .migrate import migrate_1_to_2, migrate_2_to_3
 from .resiliency import RetryPolicy, compute_backoff_delay
-from .util import WEBSOCKET_RECOVERABLE_EXCEPTIONS, async_redact_data, is_unauthorized_error
+from .util import (
+    WEBSOCKET_DATA_UPDATE_EXCEPTIONS,
+    WEBSOCKET_RECOVERABLE_EXCEPTIONS,
+    async_redact_data,
+    is_unauthorized_error,
+)
 
 WEBSOCKET_RETRY_POLICY = RetryPolicy(
     name="carrier-websocket",
@@ -38,13 +43,6 @@ WEBSOCKET_RETRY_POLICY = RetryPolicy(
 # `retry_on_unauthorized` is not enforced by `async_call_with_retry` here. Use
 # `async_call_with_retry` with this `WEBSOCKET_RETRY_POLICY` and
 # `max_attempts=None` if websocket reconnections should enforce that flag.
-
-WEBSOCKET_DATA_UPDATE_EXCEPTIONS: tuple[type[BaseException], ...] = (
-    KeyError,
-    TypeError,
-    ValueError,
-)
-"""Carrier websocket payload/data-shape errors that should trigger reconciliation."""
 
 type ConfigEntryCarrier = ConfigEntry[CarrierDataUpdateCoordinator]
 
