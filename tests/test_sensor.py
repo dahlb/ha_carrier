@@ -207,6 +207,33 @@ async def test_unit_status_sensors_keep_raw_fallbacks_when_mapped_units_are_miss
 
 
 @pytest.mark.asyncio
+async def test_airflow_and_static_pressure_fall_back_when_mapped_fields_are_missing(
+    hass: HomeAssistant,
+    carrier_api: FakeCarrierApiConnection,
+    setup_integration: Callable[..., Any],
+) -> None:
+    """Use top-level status values when mapped indoor unit fields are partial."""
+    carrier_api.systems = [build_carrier_system()]
+    indoor_unit = carrier_api.systems[0].status.indoor_unit
+    assert indoor_unit is not None
+    cast("Any", indoor_unit).airflow_cfm = None
+    cast("Any", indoor_unit).static_pressure = None
+
+    await setup_integration()
+
+    expected_states = {
+        "abc123_airflow": "1200",
+        "abc123_static_pressure": "0.049817781666667",
+    }
+    for unique_id, expected_state in expected_states.items():
+        entity_id = entity_id_for_unique_id(hass, "sensor", unique_id)
+        state = hass.states.get(entity_id)
+
+        assert state is not None
+        assert state.state == expected_state
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("outdoor_status", "expected_state"),
     [
