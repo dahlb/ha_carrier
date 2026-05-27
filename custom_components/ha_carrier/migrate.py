@@ -5,7 +5,13 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping
 import logging
 
-from carrier_api import ENERGY_USAGE_METRICS, ApiConnectionGraphql, CarrierApiError, System
+from carrier_api import (
+    ENERGY_USAGE_METRICS,
+    ApiConnectionGraphql,
+    CarrierApiError,
+    EnergyUsageMetric,
+    System,
+)
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 from homeassistant.core import HomeAssistant
@@ -430,7 +436,10 @@ def _async_build_created_unique_ids(systems: Iterable[System]) -> set[str]:
             )
 
         fuel_type = carrier_system.config.fuel_type
-        if carrier_system.energy.is_usage_metric_enabled("gas") and fuel_type is not None:
+        if (
+            carrier_system.energy.is_usage_metric_enabled(EnergyUsageMetric.GAS)
+            and fuel_type is not None
+        ):
             created_unique_ids.add(
                 _async_new_unique_id(
                     system_serial,

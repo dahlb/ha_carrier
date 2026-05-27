@@ -21,9 +21,9 @@ from .conftest import FakeCarrierApiConnection, build_carrier_system, entity_id_
         ("abc123_static_pressure", "0.049817781666667"),
         ("abc123_zone_1_temperature", "21.1111111111111"),
         ("abc123_zone_1_humidity", "45"),
-        ("abc123_cooling_energy_year_to_date", "100"),
-        ("abc123_cooling_energy_yesterday", "1"),
-        ("abc123_cooling_energy_last_month", "10"),
+        ("abc123_cooling_energy_year_to_date", "100.0"),
+        ("abc123_cooling_energy_yesterday", "1.0"),
+        ("abc123_cooling_energy_last_month", "10.0"),
     ],
 )
 async def test_sensor_platform_registers_representative_state_sensors(
@@ -55,9 +55,9 @@ async def test_energy_sensors_use_carrier_api_energy_helpers(
     await setup_integration()
 
     expected_states = {
-        "abc123_cooling_energy_year_to_date": "100",
-        "abc123_cooling_energy_yesterday": "1",
-        "abc123_cooling_energy_last_month": "10",
+        "abc123_cooling_energy_year_to_date": "100.0",
+        "abc123_cooling_energy_yesterday": "1.0",
+        "abc123_cooling_energy_last_month": "10.0",
     }
     for unique_id, expected_state in expected_states.items():
         entity_id = entity_id_for_unique_id(hass, "sensor", unique_id)

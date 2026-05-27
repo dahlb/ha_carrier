@@ -51,6 +51,50 @@ async def test_migration_updates_system_and_zone_unique_ids(
 
 
 @pytest.mark.asyncio
+async def test_migration_preserves_energy_and_propane_unique_ids(
+    hass: HomeAssistant,
+    patch_carrier_api: FakeCarrierApiConnection,
+) -> None:
+    """Migrate enabled energy and propane sensor unique IDs to current suffixes."""
+    system = patch_carrier_api.systems[0]
+    system.config.fuel_type = "propane"
+    system.config.gas_unit = "gallon"
+    config_entry = MockConfigEntry(
+        domain=DOMAIN,
+        version=1,
+        data={CONF_USERNAME: USERNAME, CONF_PASSWORD: PASSWORD},
+    )
+    config_entry.add_to_hass(hass)
+    ent_reg = er.async_get(hass)
+    for old_unique_id in (
+        "ABC123_hp_heat Energy Yearly",
+        "ABC123_hp_heat Energy Yesterday",
+        "ABC123_hp_heat Energy Last Month",
+        "ABC123_Propane Yearly",
+        "ABC123_Propane Yearly Gallons",
+    ):
+        ent_reg.async_get_or_create(
+            "sensor",
+            DOMAIN,
+            old_unique_id,
+            config_entry=config_entry,
+        )
+
+    assert await migrate_1_to_2(hass, config_entry)
+
+    assert config_entry.version == 2
+    for new_unique_id in (
+        "abc123_hp_heat_energy_year_to_date",
+        "abc123_hp_heat_energy_yesterday",
+        "abc123_hp_heat_energy_last_month",
+        "abc123_propane_usage_year_to_date",
+        "abc123_propane_consumption_year_to_date",
+    ):
+        assert ent_reg.async_get_entity_id("sensor", DOMAIN, new_unique_id)
+    assert patch_carrier_api.cleanup_calls == 1
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "load_error",
     [
