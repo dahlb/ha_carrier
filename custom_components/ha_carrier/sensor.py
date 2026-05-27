@@ -56,6 +56,20 @@ def _energy_metric_label(metric: EnergyUsageMetric | str) -> str:
         return metric.replace("_", " ").title()
 
 
+def _energy_native_value(value: float | None) -> float | None:
+    """Return an energy value without changing whole-number state strings.
+
+    Args:
+        value: Energy value returned by carrier_api.
+
+    Returns:
+        The original value, except integral floats are normalized to integers.
+    """
+    if isinstance(value, float) and value.is_integer():
+        return int(value)
+    return value
+
+
 def _unit_status_attributes(
     unit: StatusUnit | None,
     raw_attributes: object = None,
@@ -458,7 +472,7 @@ class YearlyEnergyMeasurementSensor(CarrierSensor):
     def _update_entity_attrs(self) -> None:
         """Update yearly energy attrs from coordinator data."""
         value = self.carrier_system.energy.value_for_period_metric(EnergyPeriod.YEAR_1, self.metric)
-        self._attr_native_value = value
+        self._attr_native_value = _energy_native_value(value)
         self._attr_available = value is not None
 
 
@@ -496,7 +510,7 @@ class DailyEnergyMeasurementSensor(CarrierSensor):
     def _update_entity_attrs(self) -> None:
         """Update daily energy attrs from coordinator data."""
         value = self.carrier_system.energy.value_for_period_metric(EnergyPeriod.DAY_1, self.metric)
-        self._attr_native_value = value
+        self._attr_native_value = _energy_native_value(value)
         self._attr_available = value is not None
 
 
@@ -536,7 +550,7 @@ class MonthlyEnergyMeasurementSensor(CarrierSensor):
         value = self.carrier_system.energy.value_for_period_metric(
             EnergyPeriod.MONTH_1, self.metric
         )
-        self._attr_native_value = value
+        self._attr_native_value = _energy_native_value(value)
         self._attr_available = value is not None
 
 
