@@ -134,16 +134,12 @@ async def test_unit_status_sensors_use_carrier_api_status_unit_helpers(
     await setup_integration()
 
     expected_attributes: dict[str, dict[str, object]] = {
-        "abc123_odu_status": {"operational_status": "idle", "opstat": "idle"},
+        "abc123_odu_status": {"operational_status": "idle"},
         "abc123_idu_status": {
             "airflow_cfm": 1200,
-            "cfm": 1200,
             "blower_rpm": 500,
-            "blwrpm": 500,
             "operational_status": "idle",
-            "opstat": "idle",
             "static_pressure": 0.2,
-            "statpress": 0.2,
         },
     }
     for unique_id, attributes in expected_attributes.items():
@@ -167,12 +163,12 @@ async def test_unit_status_sensors_use_carrier_api_status_unit_helpers(
 
 
 @pytest.mark.asyncio
-async def test_unit_status_sensors_keep_raw_fallbacks_when_mapped_units_are_missing(
+async def test_unit_status_sensors_do_not_expose_raw_attributes_when_mapped_units_are_missing(
     hass: HomeAssistant,
     carrier_api: FakeCarrierApiConnection,
     setup_integration: Callable[..., Any],
 ) -> None:
-    """Preserve legacy unit status fallbacks when mapped unit helpers are missing."""
+    """Avoid exposing raw status attributes when mapped unit helpers are missing."""
     carrier_api.systems = [build_carrier_system()]
     status = carrier_api.systems[0].status
     cast("Any", status).outdoor_unit = None
@@ -191,21 +187,25 @@ async def test_unit_status_sensors_keep_raw_fallbacks_when_mapped_units_are_miss
         assert state is not None
         assert state.state == expected_state
 
-    expected_attributes: dict[str, dict[str, object]] = {
-        "abc123_odu_status": {"opstat": "idle"},
-        "abc123_idu_status": {
-            "cfm": 1200,
-            "blwrpm": 500,
-            "opstat": "idle",
-            "statpress": 0.2,
-        },
-    }
-    for unique_id, attributes in expected_attributes.items():
+    for unique_id in ("abc123_odu_status", "abc123_idu_status"):
         entity_id = entity_id_for_unique_id(hass, "sensor", unique_id)
         state = hass.states.get(entity_id)
 
         assert state is not None
-        assert {key: state.attributes[key] for key in attributes} == attributes
+        assert not (
+            {
+                "airflow_cfm",
+                "blwrpm",
+                "blower_rpm",
+                "cfm",
+                "operational_status",
+                "opstat",
+                "static_pressure",
+                "statpress",
+                "type",
+            }
+            & set(state.attributes)
+        )
 
 
 @pytest.mark.asyncio

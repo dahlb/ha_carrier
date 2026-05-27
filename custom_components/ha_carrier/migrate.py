@@ -324,6 +324,8 @@ def _async_build_unique_id_migration_map(
     Returns:
         dict[str, str]: Mapping from version 1 unique IDs to version 2 unique IDs.
     """
+    from .sensor import _energy_metric_label  # noqa: PLC0415
+
     migration_map: dict[str, str] = {}
 
     for carrier_system in systems:
@@ -363,25 +365,30 @@ def _async_build_unique_id_migration_map(
 
         for metric in ENERGY_USAGE_METRICS:
             metric_name = metric.value
-            metric_title = metric_name.replace("_", " ").title()
-            _async_add_unique_id_migration(
-                migration_map,
-                system_serial,
-                f"{metric_name} Energy Yearly",
-                f"{metric_title} Energy Year to Date",
-            )
-            _async_add_unique_id_migration(
-                migration_map,
-                system_serial,
-                f"{metric_name} Energy Yesterday",
-                f"{metric_title} Energy Yesterday",
-            )
-            _async_add_unique_id_migration(
-                migration_map,
-                system_serial,
-                f"{metric_name} Energy Last Month",
-                f"{metric_title} Energy Last Month",
-            )
+            metric_labels = {
+                metric_name,
+                metric_name.replace("_", " ").title(),
+                _energy_metric_label(metric),
+            }
+            for metric_label in metric_labels:
+                _async_add_unique_id_migration(
+                    migration_map,
+                    system_serial,
+                    f"{metric_label} Energy Yearly",
+                    f"{metric_name} Energy Year to Date",
+                )
+                _async_add_unique_id_migration(
+                    migration_map,
+                    system_serial,
+                    f"{metric_label} Energy Yesterday",
+                    f"{metric_name} Energy Yesterday",
+                )
+                _async_add_unique_id_migration(
+                    migration_map,
+                    system_serial,
+                    f"{metric_label} Energy Last Month",
+                    f"{metric_name} Energy Last Month",
+                )
 
     # Zone entities need registry context because their v1 unique IDs were based
     # on names and v2 unique IDs are based on stable Carrier zone API IDs.

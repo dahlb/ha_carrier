@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
 import logging
 
 from carrier_api import EnergyPeriod, EnergyUsageMetric, StatusUnit, TemperatureUnits
@@ -27,21 +26,16 @@ from .util import TIMESTAMP_TYPES, energy_metric_value
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 
 
-def _energy_metric_label(metric: EnergyUsageMetric | str) -> str:
+def _energy_metric_label(metric: EnergyUsageMetric) -> str:
     """Return the display label for a Carrier energy metric.
 
     Args:
-        metric: Carrier API energy metric enum or string value.
+        metric: Carrier API energy metric enum.
 
     Returns:
-        Carrier API metric label, or a title-cased fallback for unknown strings.
+        Carrier API metric label.
     """
-    if isinstance(metric, EnergyUsageMetric):
-        return metric.label
-    try:
-        return EnergyUsageMetric(metric).label
-    except ValueError:
-        return metric.replace("_", " ").title()
+    return metric.label
 
 
 def _energy_native_value(value: float | None) -> int | float | None:
@@ -58,37 +52,19 @@ def _energy_native_value(value: float | None) -> int | float | None:
     return value
 
 
-def _unit_status_attributes(
-    unit: StatusUnit | None,
-    raw_attributes: object = None,
-) -> dict[str, object]:
+def _unit_status_attributes(unit: StatusUnit | None) -> dict[str, object]:
     """Return Home Assistant attributes for mapped Carrier unit status details.
 
     Args:
         unit: Mapped Carrier API indoor or outdoor unit status.
-        raw_attributes: Raw Carrier unit status attributes to preserve.
 
     Returns:
         Dictionary of available unit attributes, or an empty dictionary when no
         mapped unit status exists.
     """
-    attributes: dict[str, object] = (
-        dict(raw_attributes) if isinstance(raw_attributes, Mapping) else {}
-    )
     if unit is None:
-        return attributes
-    attributes.update(unit.as_dict())
-    legacy_attributes = {
-        "type": unit.type,
-        "opstat": unit.operational_status,
-        "cfm": unit.airflow_cfm,
-        "statpress": unit.static_pressure,
-        "blwrpm": unit.blower_rpm,
-    }
-    for key, value in legacy_attributes.items():
-        if value is not None:
-            attributes.setdefault(key, value)
-    return attributes
+        return {}
+    return unit.as_dict()
 
 
 async def async_setup_entry(
@@ -438,14 +414,14 @@ class YearlyEnergyMeasurementSensor(CarrierSensor):
         self,
         coordinator: CarrierDataUpdateCoordinator,
         system_serial: str,
-        metric: EnergyUsageMetric | str,
+        metric: EnergyUsageMetric,
     ) -> None:
         """Initialize a yearly energy measurement sensor.
 
         Args:
             coordinator: Coordinator that provides energy payloads.
             system_serial: Carrier system serial for this entity.
-            metric: Name of the Carrier energy metric to expose.
+            metric: Carrier API energy metric to expose.
         """
         self.metric = metric
         metric_label = _energy_metric_label(metric)
@@ -476,14 +452,14 @@ class DailyEnergyMeasurementSensor(CarrierSensor):
         self,
         coordinator: CarrierDataUpdateCoordinator,
         system_serial: str,
-        metric: EnergyUsageMetric | str,
+        metric: EnergyUsageMetric,
     ) -> None:
         """Initialize a daily energy sensor for a specific metric.
 
         Args:
             coordinator: Coordinator that provides energy payloads.
             system_serial: Carrier system serial for this entity.
-            metric: Internal Carrier metric name to expose.
+            metric: Carrier API energy metric to expose.
         """
         self.metric = metric
         metric_label = _energy_metric_label(metric)
@@ -514,14 +490,14 @@ class MonthlyEnergyMeasurementSensor(CarrierSensor):
         self,
         coordinator: CarrierDataUpdateCoordinator,
         system_serial: str,
-        metric: EnergyUsageMetric | str,
+        metric: EnergyUsageMetric,
     ) -> None:
         """Initialize a monthly energy sensor for a specific metric.
 
         Args:
             coordinator: Coordinator that provides energy payloads.
             system_serial: Carrier system serial for this entity.
-            metric: Internal Carrier metric name to expose.
+            metric: Carrier API energy metric to expose.
         """
         self.metric = metric
         metric_label = _energy_metric_label(metric)
@@ -786,7 +762,7 @@ class StaticPressureSensor(CarrierSensor):
 
 
 class OutdoorUnitOperationalStatusSensor(CarrierSensor):
-    """Sensor for outdoor unit operational status and related raw details."""
+    """Sensor for outdoor unit operational status and mapped unit details."""
 
     _attr_icon = "mdi:hvac"
 
@@ -815,13 +791,11 @@ class OutdoorUnitOperationalStatusSensor(CarrierSensor):
         else:
             self._attr_native_value = value
             self._attr_available = True
-        status_raw = self.carrier_system.status.raw
-        raw_attributes = status_raw.get("odu") if status_raw is not None else None
-        self._attr_extra_state_attributes = _unit_status_attributes(outdoor_unit, raw_attributes)
+        self._attr_extra_state_attributes = _unit_status_attributes(outdoor_unit)
 
 
 class IndoorUnitOperationalStatusSensor(CarrierSensor):
-    """Sensor for indoor unit operational status and related raw details."""
+    """Sensor for indoor unit operational status and mapped unit details."""
 
     _attr_icon = "mdi:hvac"
 
@@ -843,9 +817,7 @@ class IndoorUnitOperationalStatusSensor(CarrierSensor):
         indoor_unit = self.carrier_system.status.indoor_unit
         self._attr_native_value = self.carrier_system.status.indoor_unit_operational_status
         self._attr_available = self._attr_native_value is not None
-        status_raw = self.carrier_system.status.raw
-        raw_attributes = status_raw.get("idu") if status_raw is not None else None
-        self._attr_extra_state_attributes = _unit_status_attributes(indoor_unit, raw_attributes)
+        self._attr_extra_state_attributes = _unit_status_attributes(indoor_unit)
 
 
 class OutdoorUnitVarSensor(CarrierSensor):

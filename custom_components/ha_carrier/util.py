@@ -58,16 +58,16 @@ WEBSOCKET_DATA_UPDATE_EXCEPTIONS: tuple[type[BaseException], ...] = (
 )
 
 
-def energy_metric_value(metric: EnergyUsageMetric | str) -> str:
+def energy_metric_value(metric: EnergyUsageMetric) -> str:
     """Return the normalized value for a Carrier energy metric.
 
     Args:
-        metric: Carrier API energy metric enum or string value.
+        metric: Carrier API energy metric enum.
 
     Returns:
         str: Normalized metric value used in unique IDs and helper lookups.
     """
-    return metric.value if isinstance(metric, EnergyUsageMetric) else metric
+    return metric.value
 
 
 async def async_get_carrier_identity_id(api_connection: ApiConnectionGraphql) -> str | None:
