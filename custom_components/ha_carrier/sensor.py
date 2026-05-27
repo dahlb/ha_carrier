@@ -26,16 +26,33 @@ from .util import TIMESTAMP_TYPES
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 
 
-def _energy_metric_name(metric: EnergyUsageMetric | str) -> str:
-    """Return the normalized name for a Carrier energy metric.
+def _energy_metric_value(metric: EnergyUsageMetric | str) -> str:
+    """Return the normalized value for a Carrier energy metric.
 
     Args:
         metric: Carrier API energy metric enum or string value.
 
     Returns:
-        Normalized metric name used in entity names and helper lookups.
+        Normalized metric value used in unique IDs and helper lookups.
     """
     return metric.value if isinstance(metric, EnergyUsageMetric) else metric
+
+
+def _energy_metric_label(metric: EnergyUsageMetric | str) -> str:
+    """Return the display label for a Carrier energy metric.
+
+    Args:
+        metric: Carrier API energy metric enum or string value.
+
+    Returns:
+        Carrier API metric label, or a title-cased fallback for unknown strings.
+    """
+    if isinstance(metric, EnergyUsageMetric):
+        return metric.label
+    try:
+        return EnergyUsageMetric(metric).label
+    except ValueError:
+        return metric.replace("_", " ").title()
 
 
 def _unit_status_attributes(unit: StatusUnit | None) -> dict[str, object]:
@@ -410,11 +427,13 @@ class YearlyEnergyMeasurementSensor(CarrierSensor):
             metric: Name of the Carrier energy metric to expose.
         """
         self.metric = metric
-        metric_name = _energy_metric_name(metric)
+        metric_label = _energy_metric_label(metric)
+        metric_value = _energy_metric_value(metric)
         super().__init__(
-            entity_name=f"{metric_name.replace('_', ' ').title()} Energy Year to Date",
+            entity_name=f"{metric_label} Energy Year to Date",
             coordinator=coordinator,
             system_serial=system_serial,
+            unique_id_suffix=f"{metric_value} Energy Year to Date",
         )
 
     def _update_entity_attrs(self) -> None:
@@ -446,11 +465,13 @@ class DailyEnergyMeasurementSensor(CarrierSensor):
             metric: Internal Carrier metric name to expose.
         """
         self.metric = metric
-        metric_name = _energy_metric_name(metric)
+        metric_label = _energy_metric_label(metric)
+        metric_value = _energy_metric_value(metric)
         super().__init__(
-            entity_name=f"{metric_name.replace('_', ' ').title()} Energy Yesterday",
+            entity_name=f"{metric_label} Energy Yesterday",
             coordinator=coordinator,
             system_serial=system_serial,
+            unique_id_suffix=f"{metric_value} Energy Yesterday",
         )
 
     def _update_entity_attrs(self) -> None:
@@ -482,11 +503,13 @@ class MonthlyEnergyMeasurementSensor(CarrierSensor):
             metric: Internal Carrier metric name to expose.
         """
         self.metric = metric
-        metric_name = _energy_metric_name(metric)
+        metric_label = _energy_metric_label(metric)
+        metric_value = _energy_metric_value(metric)
         super().__init__(
-            entity_name=f"{metric_name.replace('_', ' ').title()} Energy Last Month",
+            entity_name=f"{metric_label} Energy Last Month",
             coordinator=coordinator,
             system_serial=system_serial,
+            unique_id_suffix=f"{metric_value} Energy Last Month",
         )
 
     def _update_entity_attrs(self) -> None:

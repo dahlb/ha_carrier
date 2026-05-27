@@ -68,6 +68,27 @@ async def test_energy_sensors_use_carrier_api_energy_helpers(
 
 
 @pytest.mark.asyncio
+async def test_energy_sensor_names_use_carrier_api_metric_labels_with_stable_unique_ids(
+    hass: HomeAssistant,
+    setup_integration: Callable[..., Any],
+) -> None:
+    """Use Carrier API metric labels without changing entity unique IDs."""
+    await setup_integration()
+
+    expected_names = {
+        "abc123_hp_heat_energy_year_to_date": "Home Heat Pump Heat Energy Year to Date",
+        "abc123_hp_heat_energy_yesterday": "Home Heat Pump Heat Energy Yesterday",
+        "abc123_hp_heat_energy_last_month": "Home Heat Pump Heat Energy Last Month",
+    }
+    for unique_id, expected_name in expected_names.items():
+        entity_id = entity_id_for_unique_id(hass, "sensor", unique_id)
+        state = hass.states.get(entity_id)
+
+        assert state is not None
+        assert state.attributes["friendly_name"] == expected_name
+
+
+@pytest.mark.asyncio
 async def test_sensor_platform_registers_propane_and_lifecycle_sensors(
     hass: HomeAssistant,
     carrier_api: FakeCarrierApiConnection,
