@@ -1,11 +1,4 @@
-"""Utility helpers shared across Carrier integration modules.
-
-`TransportServerError` is intentionally not a transient transport exception
-because 401 server responses must be classified by `is_unauthorized_error`
-before retry logic considers communication recovery. Call-site recoverable
-exception tuples include `TransportServerError` explicitly where server errors
-should still be reconciled or retried on a later interval.
-"""
+"""Utility helpers shared across Carrier integration modules."""
 
 from __future__ import annotations
 
@@ -13,9 +6,15 @@ from collections.abc import Iterable, Mapping
 import logging
 from typing import Any, overload
 
-from aiohttp import ClientError
-from carrier_api import ApiConnectionGraphql, AuthError, BaseError, System
-from gql.transport.exceptions import TransportError, TransportProtocolError, TransportServerError
+from carrier_api import (
+    ApiConnectionGraphql,
+    CarrierApiAuthError,
+    CarrierApiConnectionError,
+    CarrierApiError,
+    CarrierApiTokenRefreshError,
+    CarrierApiWebsocketError,
+    System,
+)
 from homeassistant.core import callback
 
 from .exceptions import CarrierUnauthorizedError
@@ -56,34 +55,28 @@ TIMESTAMP_TYPES: tuple[str, ...] = ("all_data", "websocket", "energy")
 
 # Transport-layer exceptions that should retry with backoff.
 TRANSIENT_TRANSPORT_EXCEPTIONS: tuple[type[BaseException], ...] = (
-    ClientError,
-    TimeoutError,
-    OSError,
-    TransportProtocolError,
+    CarrierApiConnectionError,
+    CarrierApiTokenRefreshError,
+    CarrierApiWebsocketError,
 )
 
 # Exceptions a coordinator refresh may recover from on a later interval.
 RECOVERABLE_REFRESH_EXCEPTIONS: tuple[type[BaseException], ...] = (
     *TRANSIENT_TRANSPORT_EXCEPTIONS,
-    TransportError,
-    TransportServerError,
-    AuthError,
-    BaseError,
+    CarrierApiAuthError,
+    CarrierApiError,
 )
 
 # Transport exceptions a write should report as communication failures.
 RECOVERABLE_WRITE_COMMUNICATION_EXCEPTIONS: tuple[type[BaseException], ...] = (
     *TRANSIENT_TRANSPORT_EXCEPTIONS,
-    TransportError,
-    TransportServerError,
 )
 
 # Exceptions the websocket reconnect loop should treat as recoverable.
 WEBSOCKET_RECOVERABLE_EXCEPTIONS: tuple[type[BaseException], ...] = (
     CarrierUnauthorizedError,
+    CarrierApiAuthError,
     *TRANSIENT_TRANSPORT_EXCEPTIONS,
-    TransportError,
-    TransportServerError,
 )
 
 # Carrier websocket payload/data-shape errors that should trigger reconciliation.
@@ -111,12 +104,8 @@ async def async_get_carrier_identity_id(api_connection: ApiConnectionGraphql) ->
             valid, otherwise ``None``.
 
     Raises:
-        AuthError: Credentials were rejected by the Carrier API.
-        BaseError: The Carrier API client reported a non-auth error.
-        ClientError: The underlying HTTP client failed.
-        TransportError: The GraphQL transport layer reported an error.
-        OSError: A socket-level error occurred while talking to Carrier.
-        TimeoutError: The request timed out before a response arrived.
+        CarrierApiAuthError: Credentials were rejected by the Carrier API.
+        CarrierApiError: The Carrier API client reported a non-auth error.
     """
     await api_connection.load_data()
     user_info = await api_connection.get_user_info()
@@ -228,12 +217,8 @@ def is_unauthorized_error(error: BaseException) -> bool:
         bool: True when the error or one of its causes is a 401.
     """
     for current in _iter_exception_chain(error):
-        if isinstance(current, CarrierUnauthorizedError | AuthError):
+        if isinstance(current, CarrierUnauthorizedError | CarrierApiAuthError):
             return True
-        if isinstance(current, TransportServerError):
-            status_code = getattr(current, "code", None) or getattr(current, "status", None)
-            if status_code == 401:
-                return True
     return False
 
 

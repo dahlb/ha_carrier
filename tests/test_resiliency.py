@@ -4,8 +4,7 @@ from __future__ import annotations
 
 import logging
 
-from aiohttp import ClientError
-from gql.transport.exceptions import TransportServerError
+from carrier_api import CarrierApiAuthError, CarrierApiConnectionError
 import pytest
 
 from custom_components.ha_carrier.exceptions import CarrierUnauthorizedError
@@ -43,7 +42,7 @@ async def test_retry_helper_retries_transient_failure_then_resets_state(
         nonlocal attempts
         attempts += 1
         if attempts == 1:
-            raise ClientError("temporary")
+            raise CarrierApiConnectionError("temporary")
         return "ok"
 
     result = await async_call_with_retry(
@@ -68,7 +67,7 @@ async def test_retry_helper_escalates_repeated_unauthorized_failures(
 
     async def operation() -> None:
         """Always raise an unauthorized Carrier transport error."""
-        raise TransportServerError("unauthorized", code=401)
+        raise CarrierApiAuthError("unauthorized")
 
     with pytest.raises(CarrierUnauthorizedError):
         await async_call_with_retry(

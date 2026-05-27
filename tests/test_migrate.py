@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from aiohttp import ClientError
+from carrier_api import CarrierApiConnectionError
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
@@ -47,15 +47,23 @@ async def test_migration_updates_system_and_zone_unique_ids(
     assert config_entry.version == 2
     assert ent_reg.async_get_entity_id("sensor", DOMAIN, "abc123_outdoor_temperature")
     assert ent_reg.async_get_entity_id("climate", DOMAIN, "abc123_zone_1_thermostat")
+    assert patch_carrier_api.cleanup_calls == 1
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "load_error",
+    [
+        CarrierApiConnectionError("offline"),
+    ],
+)
 async def test_migration_defers_version_update_when_live_data_cannot_load(
     hass: HomeAssistant,
     patch_carrier_api: FakeCarrierApiConnection,
+    load_error: BaseException,
 ) -> None:
     """Keep migration non-destructive when Carrier data cannot be loaded."""
-    patch_carrier_api.load_data_error = ClientError("offline")
+    patch_carrier_api.load_data_error = load_error
     config_entry = MockConfigEntry(
         domain=DOMAIN,
         version=1,
@@ -74,6 +82,7 @@ async def test_migration_defers_version_update_when_live_data_cannot_load(
 
     assert config_entry.version == 1
     assert ent_reg.async_get(entry.entity_id) is not None
+    assert patch_carrier_api.cleanup_calls == 1
 
 
 @pytest.mark.asyncio
@@ -98,12 +107,19 @@ async def test_migration_updates_config_entry_unique_id_to_identity_id(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "load_error",
+    [
+        CarrierApiConnectionError("offline"),
+    ],
+)
 async def test_migration_defers_identity_update_when_user_info_cannot_load(
     hass: HomeAssistant,
     patch_carrier_api: FakeCarrierApiConnection,
+    load_error: BaseException,
 ) -> None:
     """Keep v2 entries unchanged when Carrier identity lookup fails."""
-    patch_carrier_api.load_data_error = ClientError("offline")
+    patch_carrier_api.load_data_error = load_error
     config_entry = MockConfigEntry(
         domain=DOMAIN,
         version=2,

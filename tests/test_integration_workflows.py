@@ -6,7 +6,7 @@ from collections.abc import Awaitable, Callable
 from datetime import timedelta
 from inspect import isawaitable
 
-from aiohttp import ClientError
+from carrier_api import CarrierApiConnectionError
 from homeassistant import config_entries
 from homeassistant.components.climate import (
     ATTR_HVAC_MODE,
@@ -151,7 +151,7 @@ async def test_refresh_failure_and_recovery_update_poll_interval_in_ha_workflow(
     config_entry = await setup_integration()
     coordinator = config_entry.runtime_data
     coordinator.data_flush = True
-    carrier_api.load_data_error = ClientError("temporary")
+    carrier_api.load_data_error = CarrierApiConnectionError("temporary")
 
     await coordinator.async_refresh()
 

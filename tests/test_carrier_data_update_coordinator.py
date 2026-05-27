@@ -6,7 +6,7 @@ from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import patch
 
-from gql.transport.exceptions import TransportServerError
+from carrier_api import CarrierApiAuthError, CarrierApiConnectionError, CarrierApiGraphqlError
 from homeassistant.exceptions import ConfigEntryAuthFailed, HomeAssistantError
 from homeassistant.helpers.update_coordinator import UpdateFailed
 import pytest
@@ -146,8 +146,8 @@ async def test_recoverable_write_communication_error_reconciles_and_raises_ha_er
     reconciled = False
 
     async def request() -> None:
-        """Raise a retryable write timeout."""
-        raise TimeoutError("timeout")
+        """Raise a retryable write communication failure."""
+        raise CarrierApiConnectionError("timeout")
 
     async def fake_reconcile(
         self: CarrierDataUpdateCoordinator,
@@ -157,7 +157,7 @@ async def test_recoverable_write_communication_error_reconciles_and_raises_ha_er
         """Record reconciliation after the failed write."""
         nonlocal reconciled
         assert operation_name == "set mode"
-        assert isinstance(error, TimeoutError)
+        assert isinstance(error, CarrierApiConnectionError)
         reconciled = True
 
     with (
@@ -166,7 +166,42 @@ async def test_recoverable_write_communication_error_reconciles_and_raises_ha_er
             "_async_reconcile_failed_write",
             fake_reconcile,
         ),
-        pytest.raises(HomeAssistantError, match="timed out"),
+        pytest.raises(HomeAssistantError, match="Failed to communicate"),
+    ):
+        await coordinator.async_perform_api_call("set mode", request)
+
+    assert reconciled is True
+
+
+@pytest.mark.asyncio
+async def test_carrier_api_write_rejection_reconciles_and_raises_ha_error() -> None:
+    """Surface Carrier API business rejections as Home Assistant errors."""
+    coordinator = CarrierDataUpdateCoordinator.__new__(CarrierDataUpdateCoordinator)
+    coordinator.resiliency = ResiliencyState(unauthorized_threshold=3, transient_threshold=3)
+    reconciled = False
+
+    async def request() -> None:
+        """Raise a Carrier API GraphQL rejection."""
+        raise CarrierApiGraphqlError("rejected")
+
+    async def fake_reconcile(
+        self: CarrierDataUpdateCoordinator,
+        operation_name: str,
+        error: BaseException | None = None,
+    ) -> None:
+        """Record reconciliation after the failed write."""
+        nonlocal reconciled
+        assert operation_name == "set mode"
+        assert isinstance(error, CarrierApiGraphqlError)
+        reconciled = True
+
+    with (
+        patch.object(
+            CarrierDataUpdateCoordinator,
+            "_async_reconcile_failed_write",
+            fake_reconcile,
+        ),
+        pytest.raises(HomeAssistantError, match="Carrier rejected the request"),
     ):
         await coordinator.async_perform_api_call("set mode", request)
 
@@ -202,7 +237,7 @@ async def test_update_data_keeps_plain_unauthorized_server_error_retryable() -> 
 
     async def fake_full_refresh() -> None:
         """Raise a 401 transport response before resiliency escalation."""
-        raise TransportServerError("unauthorized", code=401)
+        raise CarrierApiAuthError("unauthorized")
 
     with (
         patch.object(coordinator, "_async_full_refresh", fake_full_refresh),
@@ -259,7 +294,7 @@ async def test_energy_refresh_records_one_unauthorized_per_cycle(
 
     async def fake_retry(*_args: Any, **_kwargs: Any) -> dict[str, Any]:
         """Raise unauthorized for every per-system energy request."""
-        raise TransportServerError("unauthorized", code=401)
+        raise CarrierApiAuthError("unauthorized")
 
     with patch(
         "custom_components.ha_carrier.carrier_data_update_coordinator.async_call_with_retry",
@@ -285,7 +320,7 @@ async def test_energy_refresh_escalates_after_threshold(
 
     async def fake_retry(*_args: Any, **_kwargs: Any) -> dict[str, Any]:
         """Raise unauthorized for the energy request."""
-        raise TransportServerError("unauthorized", code=401)
+        raise CarrierApiAuthError("unauthorized")
 
     with (
         patch(
