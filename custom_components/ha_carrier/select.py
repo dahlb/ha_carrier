@@ -15,7 +15,6 @@ from . import ConfigEntryCarrier
 from .carrier_data_update_coordinator import CarrierDataUpdateCoordinator
 from .carrier_entity import CarrierEntity
 from .const import HEAT_SOURCE_IDU_ONLY_LABEL, HEAT_SOURCE_ODU_ONLY_LABEL, HEAT_SOURCE_SYSTEM_LABEL
-from .util import has_heat
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 
@@ -36,7 +35,7 @@ async def async_setup_entry(
     entities: list[SelectEntity] = [
         HeatSourceSelect(coordinator=coordinator, system_serial=system.profile.serial)
         for system in coordinator.systems
-        if has_heat(system)
+        if system.supports_heat()
     ]
     async_add_entities(entities)
 

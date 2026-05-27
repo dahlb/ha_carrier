@@ -13,7 +13,6 @@ from carrier_api import (
     CarrierApiError,
     CarrierApiTokenRefreshError,
     CarrierApiWebsocketError,
-    System,
 )
 from homeassistant.core import callback
 
@@ -21,24 +20,6 @@ from .exceptions import CarrierUnauthorizedError
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 REDACTED = "**REDACTED**"
-
-HEAT_TYPES: list[str] = [
-    "electric_heat",
-    "gas",
-    "hp_heat",
-    "loop_pump",
-    "reheat",
-]
-
-COOL_TYPES: list[str] = [
-    "cooling",
-    "loop_pump",
-]
-
-FAN_TYPES: list[str] = [
-    "fan",
-    "fan_gas",
-]
 
 ENERGY_METRIC_MAP: dict[str, str] = {
     "cooling": "coolingKwh",
@@ -121,21 +102,6 @@ async def async_get_carrier_identity_id(api_connection: ApiConnectionGraphql) ->
         return None
 
     return identity_id
-
-
-def has_heat(carrier_system: System) -> bool:
-    """Return True if the Carrier system supports heat source selection."""
-    return any(getattr(carrier_system.energy, heat_type, False) is True for heat_type in HEAT_TYPES)
-
-
-def has_cool(carrier_system: System) -> bool:
-    """Return True if the Carrier system supports cool source selection."""
-    return any(getattr(carrier_system.energy, cool_type, False) is True for cool_type in COOL_TYPES)
-
-
-def has_fan(carrier_system: System) -> bool:
-    """Return True if the Carrier system supports fan mode selection."""
-    return any(getattr(carrier_system.energy, fan_type, False) is True for fan_type in FAN_TYPES)
 
 
 @overload

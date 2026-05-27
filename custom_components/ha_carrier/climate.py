@@ -28,7 +28,6 @@ from . import ConfigEntryCarrier
 from .carrier_data_update_coordinator import CarrierDataUpdateCoordinator
 from .carrier_entity import CarrierZoneEntity
 from .const import CONF_INFINITE_HOLDS, DEFAULT_INFINITE_HOLDS, FAN_AUTO
-from .util import has_cool, has_fan, has_heat
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 
@@ -61,14 +60,14 @@ async def async_setup_entry(
         hvac_modes: list[HVACMode] = [
             HVACMode.OFF,
         ]
-        if has_fan(carrier_system):
+        if carrier_system.supports_fan():
             support_flags |= ClimateEntityFeature.FAN_MODE
             hvac_modes.append(HVACMode.FAN_ONLY)
-        if has_cool(carrier_system):
+        if carrier_system.supports_cool():
             hvac_modes.append(HVACMode.COOL)
-        if has_heat(carrier_system):
+        if carrier_system.supports_heat():
             hvac_modes.append(HVACMode.HEAT)
-        if has_cool(carrier_system) and has_heat(carrier_system):
+        if carrier_system.supports_cool() and carrier_system.supports_heat():
             support_flags |= ClimateEntityFeature.TARGET_TEMPERATURE_RANGE
             hvac_modes.append(HVACMode.HEAT_COOL)
         entities.extend(
@@ -120,8 +119,7 @@ class CarrierClimate(CarrierZoneEntity, ClimateEntity):
         Returns:
             ConfigZoneActivity | None: Activity associated with current zone state.
         """
-        activity_type = self._config_zone.hold_activity or self._status_zone.current_activity
-        return self._config_zone.find_activity(activity_type)
+        return self._config_zone.current_status_activity(self._status_zone)
 
     @property
     def _required_zone_api_id(self) -> str:
@@ -159,9 +157,9 @@ class CarrierClimate(CarrierZoneEntity, ClimateEntity):
                 _LOGGER.debug(
                     "Zone %s: Current activity %s was not found in the zone config",
                     self._config_zone.name,
-                    self._status_zone.current_activity,
+                    self._status_zone.current_status_activity_type,
                 )
-                return self._status_zone.current_activity.value
+                return self._status_zone.current_status_activity_type.value
             return current_activity.type.value
 
         _LOGGER.debug(
@@ -172,16 +170,16 @@ class CarrierClimate(CarrierZoneEntity, ClimateEntity):
             self._config_zone.name,
             actual_heat,
             actual_cool,
-            self._status_zone.current_activity,
+            self._status_zone.current_status_activity_type,
         )
         current_activity = self._current_activity()
         if current_activity is None:
             _LOGGER.debug(
                 "Zone %s: Current activity %s was not found in the zone config",
                 self._config_zone.name,
-                self._status_zone.current_activity,
+                self._status_zone.current_status_activity_type,
             )
-            return self._status_zone.current_activity.value
+            return self._status_zone.current_status_activity_type.value
         return current_activity.type.value
 
     def _update_entity_attrs(self) -> None:
@@ -254,7 +252,7 @@ class CarrierClimate(CarrierZoneEntity, ClimateEntity):
             _LOGGER.debug(
                 "Zone %s: Current activity %s unavailable while reading fan mode",
                 self._config_zone.name,
-                self._status_zone.current_activity,
+                self._status_zone.current_status_activity_type,
             )
             self._attr_fan_mode = None
         elif current_activity.fan == FanModes.OFF:
@@ -435,6 +433,7 @@ class Thermostat(CarrierClimate):
         self._config_zone.hold = True
         self._config_zone.hold_activity = activity_type
         self._config_zone.hold_until = hold_until_sent or ""
+        self._status_zone.current_status_activity_type = activity_type
         if selected_activity is not None:
             self._status_zone.heat_set_point = selected_activity.heat_set_point
             self._status_zone.cool_set_point = selected_activity.cool_set_point
@@ -532,6 +531,7 @@ class Thermostat(CarrierClimate):
         self._config_zone.hold = True
         self._config_zone.hold_activity = ActivityTypes.MANUAL
         self._config_zone.hold_until = hold_until_sent or ""
+        self._status_zone.current_status_activity_type = ActivityTypes.MANUAL
         manual_activity.cool_set_point = cool_set_point
         manual_activity.heat_set_point = heat_set_point
         self._status_zone.cool_set_point = cool_set_point
