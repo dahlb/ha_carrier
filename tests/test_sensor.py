@@ -99,6 +99,7 @@ async def test_sensor_platform_registers_propane_and_lifecycle_sensors(
     system = carrier_api.systems[0]
     system.config.fuel_type = "propane"
     system.config.gas_unit = "gallon"
+    cast("Any", system.energy).raw = None
 
     await setup_integration()
 
@@ -146,6 +147,17 @@ async def test_unit_status_sensors_use_carrier_api_status_unit_helpers(
         assert state is not None
         assert state.state == "idle"
         assert {key: state.attributes[key] for key in attributes} == attributes
+
+    expected_states = {
+        "abc123_airflow": "1200",
+        "abc123_static_pressure": "0.049817781666667",
+    }
+    for unique_id, expected_state in expected_states.items():
+        entity_id = entity_id_for_unique_id(hass, "sensor", unique_id)
+        state = hass.states.get(entity_id)
+
+        assert state is not None
+        assert state.state == expected_state
 
 
 @pytest.mark.asyncio
