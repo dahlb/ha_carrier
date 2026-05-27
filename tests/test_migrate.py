@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any, cast
+
 from carrier_api import CarrierApiConnectionError
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 from homeassistant.core import HomeAssistant
@@ -59,6 +61,7 @@ async def test_migration_preserves_energy_and_propane_unique_ids(
     system = patch_carrier_api.systems[0]
     system.config.fuel_type = "propane"
     system.config.gas_unit = "gallon"
+    cast("Any", system.energy).enabled_usage_metrics = lambda: ("hp_heat",)
     config_entry = MockConfigEntry(
         domain=DOMAIN,
         version=1,

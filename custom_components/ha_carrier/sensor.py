@@ -333,7 +333,7 @@ class GasMeasurementSensor(CarrierSensor):
         Raises:
             ValueError: Raised when the system serial cannot be resolved.
         """
-        self.metric = "gas"
+        self.metric = EnergyUsageMetric.GAS
         self.fuel_type = fuel_type
         super().__init__(
             entity_name=f"{self.fuel_type.capitalize()} Usage Year to Date",
@@ -400,7 +400,7 @@ class PropaneMeasurementSensor(CarrierSensor):
             coordinator: Coordinator that provides energy payloads.
             system_serial: Carrier system serial for this entity.
         """
-        self.metric = "gas"
+        self.metric = EnergyUsageMetric.GAS
         super().__init__(
             entity_name="Propane Consumption Year to Date",
             coordinator=coordinator,
