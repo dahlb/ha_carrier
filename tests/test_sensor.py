@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Any, cast
+from typing import Any
 
 from homeassistant.core import HomeAssistant
 import pytest
@@ -50,8 +50,6 @@ async def test_energy_sensors_use_carrier_api_energy_helpers(
 ) -> None:
     """Register energy sensors from mapped Carrier API energy helpers."""
     carrier_api.systems = [build_carrier_system()]
-    # Force helper-backed values by removing the raw energy payload.
-    cast("Any", carrier_api.systems[0].energy).raw = None
 
     await setup_integration()
 
@@ -100,7 +98,6 @@ async def test_sensor_platform_registers_propane_and_lifecycle_sensors(
     system = carrier_api.systems[0]
     system.config.fuel_type = "propane"
     system.config.gas_unit = "gallon"
-    cast("Any", system.energy).raw = None
 
     await setup_integration()
 
@@ -128,8 +125,6 @@ async def test_unit_status_sensors_use_carrier_api_status_unit_helpers(
 ) -> None:
     """Populate unit status attributes from mapped Carrier API status unit data."""
     carrier_api.systems = [build_carrier_system()]
-    # Force helper-backed values by removing the raw status payload.
-    cast("Any", carrier_api.systems[0].status).raw = None
 
     await setup_integration()
 
@@ -171,8 +166,8 @@ async def test_unit_status_sensors_do_not_expose_raw_attributes_when_mapped_unit
     """Avoid exposing raw status attributes when mapped unit helpers are missing."""
     carrier_api.systems = [build_carrier_system()]
     status = carrier_api.systems[0].status
-    cast("Any", status).outdoor_unit = None
-    cast("Any", status).indoor_unit = None
+    status.outdoor_unit = None
+    status.indoor_unit = None
 
     await setup_integration()
 
@@ -216,10 +211,10 @@ async def test_airflow_and_static_pressure_fall_back_when_mapped_fields_are_miss
 ) -> None:
     """Use top-level status values when mapped indoor unit fields are partial."""
     carrier_api.systems = [build_carrier_system()]
-    indoor_unit = carrier_api.systems[0].status.indoor_unit
+    status = carrier_api.systems[0].status
+    indoor_unit = status.indoor_unit
     assert indoor_unit is not None
-    cast("Any", indoor_unit).airflow_cfm = None
-    cast("Any", indoor_unit).static_pressure = None
+    status.indoor_unit = type(indoor_unit)({"opstat": "idle", "blwrpm": 500})
 
     await setup_integration()
 
