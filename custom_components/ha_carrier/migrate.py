@@ -19,7 +19,7 @@ from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity_registry import EntityRegistry, RegistryEntry
 from homeassistant.util import slugify
 
-from .util import TIMESTAMP_TYPES, async_get_carrier_identity_id
+from .util import TIMESTAMP_TYPES, async_get_carrier_identity_id, energy_metric_value
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 
@@ -49,18 +49,6 @@ SYSTEM_ENTITY_SUFFIXES: set[str] = {
     *ALWAYS_CREATED_SYSTEM_ENTITY_SUFFIXES,
     *CONDITIONALLY_CREATED_SYSTEM_ENTITY_SUFFIXES,
 }
-
-
-def _energy_metric_value(metric: EnergyUsageMetric | str) -> str:
-    """Return the normalized value for a Carrier energy usage metric.
-
-    Args:
-        metric: Carrier API energy metric enum or string value.
-
-    Returns:
-        str: Normalized metric value used in unique IDs.
-    """
-    return metric.value if isinstance(metric, EnergyUsageMetric) else metric
 
 
 def _async_new_unique_id(system_serial: str, new_suffix: str) -> str:
@@ -436,7 +424,7 @@ def _async_build_created_unique_ids(systems: Iterable[System]) -> set[str]:
             created_unique_ids.add(_async_new_unique_id(system_serial, "Heat Source"))
 
         for metric in carrier_system.energy.enabled_usage_metrics():
-            metric_value = _energy_metric_value(metric)
+            metric_value = energy_metric_value(metric)
             metric_title = metric_value.replace("_", " ").title()
             created_unique_ids.add(
                 _async_new_unique_id(system_serial, f"{metric_title} Energy Year to Date")

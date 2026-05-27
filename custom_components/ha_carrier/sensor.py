@@ -22,21 +22,9 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from . import ConfigEntryCarrier
 from .carrier_data_update_coordinator import CarrierDataUpdateCoordinator
 from .carrier_entity import CarrierEntity, CarrierZoneEntity
-from .util import TIMESTAMP_TYPES
+from .util import TIMESTAMP_TYPES, energy_metric_value
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
-
-
-def _energy_metric_value(metric: EnergyUsageMetric | str) -> str:
-    """Return the normalized value for a Carrier energy metric.
-
-    Args:
-        metric: Carrier API energy metric enum or string value.
-
-    Returns:
-        Normalized metric value used in unique IDs and helper lookups.
-    """
-    return metric.value if isinstance(metric, EnergyUsageMetric) else metric
 
 
 def _energy_metric_label(metric: EnergyUsageMetric | str) -> str:
@@ -56,14 +44,14 @@ def _energy_metric_label(metric: EnergyUsageMetric | str) -> str:
         return metric.replace("_", " ").title()
 
 
-def _energy_native_value(value: float | None) -> float | None:
+def _energy_native_value(value: float | None) -> int | float | None:
     """Return an energy value without changing whole-number state strings.
 
     Args:
         value: Energy value returned by carrier_api.
 
     Returns:
-        The original value, except integral floats are normalized to integers.
+        The original value as int when integral, otherwise unchanged.
     """
     if isinstance(value, float) and value.is_integer():
         return int(value)
@@ -461,7 +449,7 @@ class YearlyEnergyMeasurementSensor(CarrierSensor):
         """
         self.metric = metric
         metric_label = _energy_metric_label(metric)
-        metric_value = _energy_metric_value(metric)
+        metric_value = energy_metric_value(metric)
         super().__init__(
             entity_name=f"{metric_label} Energy Year to Date",
             coordinator=coordinator,
@@ -499,7 +487,7 @@ class DailyEnergyMeasurementSensor(CarrierSensor):
         """
         self.metric = metric
         metric_label = _energy_metric_label(metric)
-        metric_value = _energy_metric_value(metric)
+        metric_value = energy_metric_value(metric)
         super().__init__(
             entity_name=f"{metric_label} Energy Yesterday",
             coordinator=coordinator,
@@ -537,7 +525,7 @@ class MonthlyEnergyMeasurementSensor(CarrierSensor):
         """
         self.metric = metric
         metric_label = _energy_metric_label(metric)
-        metric_value = _energy_metric_value(metric)
+        metric_value = energy_metric_value(metric)
         super().__init__(
             entity_name=f"{metric_label} Energy Last Month",
             coordinator=coordinator,

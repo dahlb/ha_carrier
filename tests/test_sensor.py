@@ -50,6 +50,7 @@ async def test_energy_sensors_use_carrier_api_energy_helpers(
 ) -> None:
     """Register energy sensors from mapped Carrier API energy helpers."""
     carrier_api.systems = [build_carrier_system()]
+    # Force helper-backed values by removing the raw energy payload.
     cast("Any", carrier_api.systems[0].energy).raw = None
 
     await setup_integration()
@@ -127,6 +128,7 @@ async def test_unit_status_sensors_use_carrier_api_status_unit_helpers(
 ) -> None:
     """Populate unit status attributes from mapped Carrier API status unit data."""
     carrier_api.systems = [build_carrier_system()]
+    # Force helper-backed values by removing the raw status payload.
     cast("Any", carrier_api.systems[0].status).raw = None
 
     await setup_integration()
