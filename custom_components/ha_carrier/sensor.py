@@ -67,7 +67,18 @@ def _unit_status_attributes(unit: StatusUnit | None) -> dict[str, object]:
     """
     if unit is None:
         return {}
-    return unit.as_dict()
+    attributes = unit.as_dict()
+    legacy_attributes = {
+        "type": unit.type,
+        "opstat": unit.operational_status,
+        "cfm": unit.airflow_cfm,
+        "statpress": unit.static_pressure,
+        "blwrpm": unit.blower_rpm,
+    }
+    for key, value in legacy_attributes.items():
+        if value is not None:
+            attributes.setdefault(key, value)
+    return attributes
 
 
 async def async_setup_entry(

@@ -132,12 +132,16 @@ async def test_unit_status_sensors_use_carrier_api_status_unit_helpers(
     await setup_integration()
 
     expected_attributes: dict[str, dict[str, object]] = {
-        "abc123_odu_status": {"operational_status": "idle"},
+        "abc123_odu_status": {"operational_status": "idle", "opstat": "idle"},
         "abc123_idu_status": {
             "airflow_cfm": 1200,
+            "cfm": 1200,
             "blower_rpm": 500,
+            "blwrpm": 500,
             "operational_status": "idle",
+            "opstat": "idle",
             "static_pressure": 0.2,
+            "statpress": 0.2,
         },
     }
     for unique_id, attributes in expected_attributes.items():
