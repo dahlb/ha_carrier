@@ -56,18 +56,19 @@ async def async_setup_entry(
     coordinator = config_entry.runtime_data
     entities: list[Thermostat] = []
     for carrier_system in coordinator.systems:
+        supported_hvac_capabilities = carrier_system.supported_hvac_capabilities()
         support_flags = BASE_SUPPORT_FLAGS
         hvac_modes: list[HVACMode] = [
             HVACMode.OFF,
         ]
-        if carrier_system.supports_fan():
+        if supported_hvac_capabilities["fan"]:
             support_flags |= ClimateEntityFeature.FAN_MODE
             hvac_modes.append(HVACMode.FAN_ONLY)
-        if carrier_system.supports_cool():
+        if supported_hvac_capabilities["cool"]:
             hvac_modes.append(HVACMode.COOL)
-        if carrier_system.supports_heat():
+        if supported_hvac_capabilities["heat"]:
             hvac_modes.append(HVACMode.HEAT)
-        if carrier_system.supports_cool() and carrier_system.supports_heat():
+        if supported_hvac_capabilities["cool"] and supported_hvac_capabilities["heat"]:
             support_flags |= ClimateEntityFeature.TARGET_TEMPERATURE_RANGE
             hvac_modes.append(HVACMode.HEAT_COOL)
         entities.extend(
@@ -136,43 +137,12 @@ class CarrierClimate(CarrierZoneEntity, ClimateEntity):
         return self.zone_api_id
 
     def _preset_mode(self) -> str | None:
-        """Return the preset that best matches current zone setpoints.
+        """Return the Carrier-reported current activity preset.
 
         Returns:
-            str | None: Matching activity type or API-reported fallback.
+            str | None: Status-derived activity type, or API-reported fallback.
         """
-        actual_heat = self._status_zone.heat_set_point
-        actual_cool = self._status_zone.cool_set_point
-
-        matching_activities = [
-            activity
-            for activity in self._config_zone.activities
-            if activity.heat_set_point == actual_heat and activity.cool_set_point == actual_cool
-        ]
-        if len(matching_activities) == 1:
-            return matching_activities[0].type.value
-        if len(matching_activities) > 1:
-            current_activity = self._current_activity()
-            if current_activity is None:
-                _LOGGER.debug(
-                    "Zone %s: Current activity %s was not found in the zone config",
-                    self._config_zone.name,
-                    self._status_zone.current_status_activity_type,
-                )
-                return self._status_zone.current_status_activity_type.value
-            return current_activity.type.value
-
-        _LOGGER.debug(
-            (
-                "Zone %s: No activity matched setpoints (heat=%s, cool=%s). "
-                "Falling back to API activity: %s"
-            ),
-            self._config_zone.name,
-            actual_heat,
-            actual_cool,
-            self._status_zone.current_status_activity_type,
-        )
-        current_activity = self._current_activity()
+        current_activity = self._config_zone.current_status_activity(self._status_zone)
         if current_activity is None:
             _LOGGER.debug(
                 "Zone %s: Current activity %s was not found in the zone config",

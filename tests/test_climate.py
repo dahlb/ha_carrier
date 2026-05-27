@@ -70,6 +70,27 @@ async def test_climate_platform_uses_config_fan_capability(
 
 
 @pytest.mark.asyncio
+async def test_climate_preset_mode_uses_status_activity(
+    hass: HomeAssistant,
+    carrier_api: FakeCarrierApiConnection,
+    setup_integration: Callable[..., Any],
+) -> None:
+    """Prefer Carrier's status activity over matching configured setpoints."""
+    carrier_api.systems = [build_carrier_system()]
+    system = carrier_api.systems[0]
+    system.status.zones[0].current_status_activity_type = ActivityTypes.AWAY
+    system.status.zones[0].heat_set_point = 68
+    system.status.zones[0].cool_set_point = 74
+
+    await setup_integration()
+    entity_id = entity_id_for_unique_id(hass, CLIMATE_DOMAIN, "abc123_zone_1_thermostat")
+    state = hass.states.get(entity_id)
+
+    assert state is not None
+    assert state.attributes["preset_mode"] == "away"
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("service", "data", "expected_calls"),
     [
