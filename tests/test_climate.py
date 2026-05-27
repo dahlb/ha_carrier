@@ -76,7 +76,7 @@ async def test_climate_preset_mode_uses_status_activity(
     setup_integration: Callable[..., Any],
 ) -> None:
     """Prefer Carrier's status activity over matching configured setpoints."""
-    carrier_api.systems = [build_carrier_system()]
+    carrier_api.systems = [build_carrier_system(fan_enabled=True)]
     system = carrier_api.systems[0]
     system.status.zones[0].current_status_activity_type = ActivityTypes.AWAY
     system.status.zones[0].heat_set_point = 68
@@ -231,7 +231,7 @@ async def test_climate_fan_mode_service_uses_status_activity(
     setup_integration: Callable[..., Any],
 ) -> None:
     """Write fan settings against Carrier's live status activity."""
-    carrier_api.systems = [build_carrier_system()]
+    carrier_api.systems = [build_carrier_system(fan_enabled=True)]
     system = carrier_api.systems[0]
     system.config.zones[0].hold = True
     system.config.zones[0].hold_activity = ActivityTypes.AWAY

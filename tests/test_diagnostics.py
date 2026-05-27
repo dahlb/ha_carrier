@@ -17,7 +17,7 @@ async def test_diagnostics_redacts_config_entry_and_includes_device_entities(
     hass: HomeAssistant,
     setup_integration: Callable[..., Any],
 ) -> None:
-    """Build diagnostics from a loaded entry with redacted sensitive data."""
+    """Build diagnostics with redaction, HVAC capabilities, and activity data."""
     config_entry = await setup_integration()
 
     diagnostics = await async_get_config_entry_diagnostics(hass, config_entry)
