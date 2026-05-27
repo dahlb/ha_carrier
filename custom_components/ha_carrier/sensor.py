@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 import logging
 
 from carrier_api import EnergyPeriod, EnergyUsageMetric, StatusUnit, TemperatureUnits
@@ -55,19 +56,26 @@ def _energy_metric_label(metric: EnergyUsageMetric | str) -> str:
         return metric.replace("_", " ").title()
 
 
-def _unit_status_attributes(unit: StatusUnit | None) -> dict[str, object]:
+def _unit_status_attributes(
+    unit: StatusUnit | None,
+    raw_attributes: object = None,
+) -> dict[str, object]:
     """Return Home Assistant attributes for mapped Carrier unit status details.
 
     Args:
         unit: Mapped Carrier API indoor or outdoor unit status.
+        raw_attributes: Raw Carrier unit status attributes to preserve.
 
     Returns:
         Dictionary of available unit attributes, or an empty dictionary when no
         mapped unit status exists.
     """
+    attributes: dict[str, object] = (
+        dict(raw_attributes) if isinstance(raw_attributes, Mapping) else {}
+    )
     if unit is None:
-        return {}
-    attributes = unit.as_dict()
+        return attributes
+    attributes.update(unit.as_dict())
     legacy_attributes = {
         "type": unit.type,
         "opstat": unit.operational_status,
@@ -736,6 +744,8 @@ class AirflowSensor(CarrierSensor):
         indoor_unit = self.carrier_system.status.indoor_unit
         value = indoor_unit.airflow_cfm if indoor_unit is not None else None
         if value is None:
+            value = self.carrier_system.status.airflow_cfm
+        if value is None:
             self._attr_available = False
             return
         self._attr_native_value = int(value)
@@ -766,7 +776,10 @@ class StaticPressureSensor(CarrierSensor):
     def _update_entity_attrs(self) -> None:
         """Update static pressure attrs from coordinator data."""
         indoor_unit = self.carrier_system.status.indoor_unit
-        self._attr_native_value = indoor_unit.static_pressure if indoor_unit is not None else None
+        value = indoor_unit.static_pressure if indoor_unit is not None else None
+        if value is None:
+            value = self.carrier_system.status.static_pressure
+        self._attr_native_value = value
         self._attr_available = self._attr_native_value is not None
 
 
@@ -800,7 +813,9 @@ class OutdoorUnitOperationalStatusSensor(CarrierSensor):
         else:
             self._attr_native_value = value
             self._attr_available = True
-        self._attr_extra_state_attributes = _unit_status_attributes(outdoor_unit)
+        status_raw = self.carrier_system.status.raw
+        raw_attributes = status_raw.get("odu") if status_raw is not None else None
+        self._attr_extra_state_attributes = _unit_status_attributes(outdoor_unit, raw_attributes)
 
 
 class IndoorUnitOperationalStatusSensor(CarrierSensor):
@@ -826,7 +841,9 @@ class IndoorUnitOperationalStatusSensor(CarrierSensor):
         indoor_unit = self.carrier_system.status.indoor_unit
         self._attr_native_value = self.carrier_system.status.indoor_unit_operational_status
         self._attr_available = self._attr_native_value is not None
-        self._attr_extra_state_attributes = _unit_status_attributes(indoor_unit)
+        status_raw = self.carrier_system.status.raw
+        raw_attributes = status_raw.get("idu") if status_raw is not None else None
+        self._attr_extra_state_attributes = _unit_status_attributes(indoor_unit, raw_attributes)
 
 
 class OutdoorUnitVarSensor(CarrierSensor):
