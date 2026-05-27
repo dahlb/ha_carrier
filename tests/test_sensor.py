@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Any
+from typing import Any, cast
 
 from homeassistant.core import HomeAssistant
 import pytest
@@ -43,6 +43,31 @@ async def test_sensor_platform_registers_representative_state_sensors(
 
 
 @pytest.mark.asyncio
+async def test_energy_sensors_use_carrier_api_energy_helpers(
+    hass: HomeAssistant,
+    carrier_api: FakeCarrierApiConnection,
+    setup_integration: Callable[..., Any],
+) -> None:
+    """Register energy sensors from mapped Carrier API energy helpers."""
+    carrier_api.systems = [build_carrier_system()]
+    cast("Any", carrier_api.systems[0].energy).raw = None
+
+    await setup_integration()
+
+    expected_states = {
+        "abc123_cooling_energy_year_to_date": "100",
+        "abc123_cooling_energy_yesterday": "1",
+        "abc123_cooling_energy_last_month": "10",
+    }
+    for unique_id, expected_state in expected_states.items():
+        entity_id = entity_id_for_unique_id(hass, "sensor", unique_id)
+        state = hass.states.get(entity_id)
+
+        assert state is not None
+        assert state.state == expected_state
+
+
+@pytest.mark.asyncio
 async def test_sensor_platform_registers_propane_and_lifecycle_sensors(
     hass: HomeAssistant,
     carrier_api: FakeCarrierApiConnection,
@@ -70,6 +95,36 @@ async def test_sensor_platform_registers_propane_and_lifecycle_sensors(
 
         assert state is not None
         assert state.state == expected_state
+
+
+@pytest.mark.asyncio
+async def test_unit_status_sensors_use_carrier_api_status_unit_helpers(
+    hass: HomeAssistant,
+    carrier_api: FakeCarrierApiConnection,
+    setup_integration: Callable[..., Any],
+) -> None:
+    """Populate unit status attributes from mapped Carrier API status unit data."""
+    carrier_api.systems = [build_carrier_system()]
+    cast("Any", carrier_api.systems[0].status).raw = None
+
+    await setup_integration()
+
+    expected_attributes: dict[str, dict[str, object]] = {
+        "abc123_odu_status": {"operational_status": "idle"},
+        "abc123_idu_status": {
+            "airflow_cfm": 1200,
+            "blower_rpm": 500,
+            "operational_status": "idle",
+            "static_pressure": 0.2,
+        },
+    }
+    for unique_id, attributes in expected_attributes.items():
+        entity_id = entity_id_for_unique_id(hass, "sensor", unique_id)
+        state = hass.states.get(entity_id)
+
+        assert state is not None
+        assert state.state == "idle"
+        assert {key: state.attributes[key] for key in attributes} == attributes
 
 
 @pytest.mark.asyncio

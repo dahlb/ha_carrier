@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
 import logging
 
-from carrier_api import TemperatureUnits
+from carrier_api import EnergyPeriod, EnergyUsageMetric, StatusUnit, TemperatureUnits
 from homeassistant.components.sensor import SensorDeviceClass, SensorEntity, SensorStateClass
 from homeassistant.const import (
     PERCENTAGE,
@@ -22,9 +21,36 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from . import ConfigEntryCarrier
 from .carrier_data_update_coordinator import CarrierDataUpdateCoordinator
 from .carrier_entity import CarrierEntity, CarrierZoneEntity
-from .util import ENERGY_METRIC_MAP, TIMESTAMP_TYPES
+from .util import TIMESTAMP_TYPES
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
+
+
+def _energy_metric_name(metric: EnergyUsageMetric | str) -> str:
+    """Return the normalized name for a Carrier energy metric.
+
+    Args:
+        metric: Carrier API energy metric enum or string value.
+
+    Returns:
+        Normalized metric name used in entity names and helper lookups.
+    """
+    return metric.value if isinstance(metric, EnergyUsageMetric) else metric
+
+
+def _unit_status_attributes(unit: StatusUnit | None) -> dict[str, object]:
+    """Return Home Assistant attributes for mapped Carrier unit status details.
+
+    Args:
+        unit: Mapped Carrier API indoor or outdoor unit status.
+
+    Returns:
+        Dictionary of available unit attributes, or an empty dictionary when no
+        mapped unit status exists.
+    """
+    if unit is None:
+        return {}
+    return unit.as_dict()
 
 
 async def async_setup_entry(
@@ -91,30 +117,31 @@ async def async_setup_entry(
                     coordinator=coordinator, system_serial=carrier_system.profile.serial
                 )
             )
-        for electric_metric in ENERGY_METRIC_MAP:
-            if getattr(carrier_system.energy, electric_metric, False) is True:
-                entities.extend(
-                    [
-                        YearlyEnergyMeasurementSensor(
-                            coordinator=coordinator,
-                            system_serial=carrier_system.profile.serial,
-                            metric=electric_metric,
-                        ),
-                        DailyEnergyMeasurementSensor(
-                            coordinator=coordinator,
-                            system_serial=carrier_system.profile.serial,
-                            metric=electric_metric,
-                        ),
-                        MonthlyEnergyMeasurementSensor(
-                            coordinator=coordinator,
-                            system_serial=carrier_system.profile.serial,
-                            metric=electric_metric,
-                        ),
-                    ]
-                )
-        gas_measurement = getattr(carrier_system.energy, "gas", False)
+        for electric_metric in carrier_system.energy.enabled_usage_metrics():
+            entities.extend(
+                [
+                    YearlyEnergyMeasurementSensor(
+                        coordinator=coordinator,
+                        system_serial=carrier_system.profile.serial,
+                        metric=electric_metric,
+                    ),
+                    DailyEnergyMeasurementSensor(
+                        coordinator=coordinator,
+                        system_serial=carrier_system.profile.serial,
+                        metric=electric_metric,
+                    ),
+                    MonthlyEnergyMeasurementSensor(
+                        coordinator=coordinator,
+                        system_serial=carrier_system.profile.serial,
+                        metric=electric_metric,
+                    ),
+                ]
+            )
         fuel_type = carrier_system.config.fuel_type
-        if gas_measurement is True and fuel_type is not None:
+        if (
+            carrier_system.energy.is_usage_metric_enabled(EnergyUsageMetric.GAS)
+            and fuel_type is not None
+        ):
             entities.append(
                 GasMeasurementSensor(
                     coordinator=coordinator,
@@ -291,26 +318,13 @@ class GasMeasurementSensor(CarrierSensor):
 
     def _update_entity_attrs(self) -> None:
         """Update gas usage attrs from coordinator data."""
-        if self.carrier_system.energy.raw is None:
-            self._attr_available = False
-            return
-
-        api_field = ENERGY_METRIC_MAP.get(self.metric)
-        if api_field is None:
-            _LOGGER.debug("Unknown gas usage metric requested: %s", self.metric)
-            self._attr_available = False
-            return
-
-        energy_periods = self.carrier_system.energy.raw.get("energyPeriods", [])
-        value: float | None = None
-        for period in energy_periods:
-            if period.get("energyPeriodType") == "year1":
-                value = period.get(api_field)
-                break
+        value: float | int | None = self.carrier_system.energy.value_for_period_metric(
+            EnergyPeriod.YEAR_1, self.metric
+        )
         if value is None:
             _LOGGER.debug(
-                "%s missing in year1 energyPeriod for system %s; marking unavailable",
-                api_field,
+                "%s missing in year1 energy period for system %s; marking unavailable",
+                self.metric,
                 self._system_serial,
             )
             self._attr_available = False
@@ -359,26 +373,11 @@ class PropaneMeasurementSensor(CarrierSensor):
 
     def _update_entity_attrs(self) -> None:
         """Update propane usage attrs from coordinator data."""
-        if self.carrier_system.energy.raw is None:
-            self._attr_available = False
-            return
-
-        api_field = ENERGY_METRIC_MAP.get(self.metric)
-        if api_field is None:
-            _LOGGER.debug("Unknown propane usage metric requested: %s", self.metric)
-            self._attr_available = False
-            return
-
-        energy_periods = self.carrier_system.energy.raw.get("energyPeriods", [])
-        value: float | None = None
-        for period in energy_periods:
-            if period.get("energyPeriodType") == "year1":
-                value = period.get(api_field)
-                break
+        value = self.carrier_system.energy.value_for_period_metric(EnergyPeriod.YEAR_1, self.metric)
         if value is None:
             _LOGGER.debug(
-                "%s missing in year1 energyPeriod for system %s; marking unavailable",
-                api_field,
+                "%s missing in year1 energy period for system %s; marking unavailable",
+                self.metric,
                 self._system_serial,
             )
             self._attr_available = False
@@ -398,7 +397,10 @@ class YearlyEnergyMeasurementSensor(CarrierSensor):
     _attr_suggested_display_precision = 0
 
     def __init__(
-        self, coordinator: CarrierDataUpdateCoordinator, system_serial: str, metric: str
+        self,
+        coordinator: CarrierDataUpdateCoordinator,
+        system_serial: str,
+        metric: EnergyUsageMetric | str,
     ) -> None:
         """Initialize a yearly energy measurement sensor.
 
@@ -408,33 +410,18 @@ class YearlyEnergyMeasurementSensor(CarrierSensor):
             metric: Name of the Carrier energy metric to expose.
         """
         self.metric = metric
+        metric_name = _energy_metric_name(metric)
         super().__init__(
-            entity_name=f"{metric.replace('_', ' ').title()} Energy Year to Date",
+            entity_name=f"{metric_name.replace('_', ' ').title()} Energy Year to Date",
             coordinator=coordinator,
             system_serial=system_serial,
         )
 
     def _update_entity_attrs(self) -> None:
         """Update yearly energy attrs from coordinator data."""
-        if self.carrier_system.energy.raw is None:
-            self._attr_available = False
-            return
-
-        api_field = ENERGY_METRIC_MAP.get(self.metric)
-        if api_field is None:
-            _LOGGER.debug("Unknown yearly energy metric requested: %s", self.metric)
-            self._attr_available = False
-            return
-
-        energy_periods = self.carrier_system.energy.raw.get("energyPeriods", [])
-        for period in energy_periods:
-            if period.get("energyPeriodType") == "year1":
-                value = period.get(api_field)
-                if value is not None:
-                    self._attr_native_value = value
-                    self._attr_available = True
-                    return
-        self._attr_available = False
+        value = self.carrier_system.energy.value_for_period_metric(EnergyPeriod.YEAR_1, self.metric)
+        self._attr_native_value = value
+        self._attr_available = value is not None
 
 
 class DailyEnergyMeasurementSensor(CarrierSensor):
@@ -446,7 +433,10 @@ class DailyEnergyMeasurementSensor(CarrierSensor):
     _attr_suggested_display_precision = 1
 
     def __init__(
-        self, coordinator: CarrierDataUpdateCoordinator, system_serial: str, metric: str
+        self,
+        coordinator: CarrierDataUpdateCoordinator,
+        system_serial: str,
+        metric: EnergyUsageMetric | str,
     ) -> None:
         """Initialize a daily energy sensor for a specific metric.
 
@@ -456,33 +446,18 @@ class DailyEnergyMeasurementSensor(CarrierSensor):
             metric: Internal Carrier metric name to expose.
         """
         self.metric = metric
+        metric_name = _energy_metric_name(metric)
         super().__init__(
-            entity_name=f"{metric.replace('_', ' ').title()} Energy Yesterday",
+            entity_name=f"{metric_name.replace('_', ' ').title()} Energy Yesterday",
             coordinator=coordinator,
             system_serial=system_serial,
         )
 
     def _update_entity_attrs(self) -> None:
         """Update daily energy attrs from coordinator data."""
-        if self.carrier_system.energy.raw is None:
-            self._attr_available = False
-            return
-
-        api_field = ENERGY_METRIC_MAP.get(self.metric)
-        if api_field is None:
-            _LOGGER.debug("Unknown daily energy metric requested: %s", self.metric)
-            self._attr_available = False
-            return
-
-        energy_periods = self.carrier_system.energy.raw.get("energyPeriods", [])
-        for period in energy_periods:
-            if period.get("energyPeriodType") == "day1":
-                value = period.get(api_field)
-                if value is not None:
-                    self._attr_native_value = value
-                    self._attr_available = True
-                    return
-        self._attr_available = False
+        value = self.carrier_system.energy.value_for_period_metric(EnergyPeriod.DAY_1, self.metric)
+        self._attr_native_value = value
+        self._attr_available = value is not None
 
 
 class MonthlyEnergyMeasurementSensor(CarrierSensor):
@@ -494,7 +469,10 @@ class MonthlyEnergyMeasurementSensor(CarrierSensor):
     _attr_suggested_display_precision = 0
 
     def __init__(
-        self, coordinator: CarrierDataUpdateCoordinator, system_serial: str, metric: str
+        self,
+        coordinator: CarrierDataUpdateCoordinator,
+        system_serial: str,
+        metric: EnergyUsageMetric | str,
     ) -> None:
         """Initialize a monthly energy sensor for a specific metric.
 
@@ -504,33 +482,20 @@ class MonthlyEnergyMeasurementSensor(CarrierSensor):
             metric: Internal Carrier metric name to expose.
         """
         self.metric = metric
+        metric_name = _energy_metric_name(metric)
         super().__init__(
-            entity_name=f"{metric.replace('_', ' ').title()} Energy Last Month",
+            entity_name=f"{metric_name.replace('_', ' ').title()} Energy Last Month",
             coordinator=coordinator,
             system_serial=system_serial,
         )
 
     def _update_entity_attrs(self) -> None:
         """Update monthly energy attrs from coordinator data."""
-        if self.carrier_system.energy.raw is None:
-            self._attr_available = False
-            return
-
-        api_field = ENERGY_METRIC_MAP.get(self.metric)
-        if api_field is None:
-            _LOGGER.debug("Unknown monthly energy metric requested: %s", self.metric)
-            self._attr_available = False
-            return
-
-        energy_periods = self.carrier_system.energy.raw.get("energyPeriods", [])
-        for period in energy_periods:
-            if period.get("energyPeriodType") == "month1":
-                value = period.get(api_field)
-                if value is not None:
-                    self._attr_native_value = value
-                    self._attr_available = True
-                    return
-        self._attr_available = False
+        value = self.carrier_system.energy.value_for_period_metric(
+            EnergyPeriod.MONTH_1, self.metric
+        )
+        self._attr_native_value = value
+        self._attr_available = value is not None
 
 
 class ZoneTemperatureSensor(CarrierZoneSensor):
@@ -734,10 +699,12 @@ class AirflowSensor(CarrierSensor):
 
     def _update_entity_attrs(self) -> None:
         """Update airflow attrs from coordinator data."""
-        if self.carrier_system.status.airflow_cfm is None:
+        indoor_unit = self.carrier_system.status.indoor_unit
+        value = indoor_unit.airflow_cfm if indoor_unit is not None else None
+        if value is None:
             self._attr_available = False
             return
-        self._attr_native_value = int(self.carrier_system.status.airflow_cfm)
+        self._attr_native_value = int(value)
         self._attr_available = True
 
 
@@ -764,7 +731,8 @@ class StaticPressureSensor(CarrierSensor):
 
     def _update_entity_attrs(self) -> None:
         """Update static pressure attrs from coordinator data."""
-        self._attr_native_value = self.carrier_system.status.static_pressure
+        indoor_unit = self.carrier_system.status.indoor_unit
+        self._attr_native_value = indoor_unit.static_pressure if indoor_unit is not None else None
         self._attr_available = self._attr_native_value is not None
 
 
@@ -788,6 +756,7 @@ class OutdoorUnitOperationalStatusSensor(CarrierSensor):
 
     def _update_entity_attrs(self) -> None:
         """Update outdoor operational status attrs from coordinator data."""
+        outdoor_unit = self.carrier_system.status.outdoor_unit
         value = self.carrier_system.status.outdoor_unit_operational_status
         if value is None:
             self._attr_available = False
@@ -797,12 +766,7 @@ class OutdoorUnitOperationalStatusSensor(CarrierSensor):
         else:
             self._attr_native_value = value
             self._attr_available = True
-        status_raw = self.carrier_system.status.raw
-        if status_raw is None:
-            return
-        outdoor_unit_attributes = status_raw.get("odu")
-        if isinstance(outdoor_unit_attributes, Mapping):
-            self._attr_extra_state_attributes = dict(outdoor_unit_attributes)
+        self._attr_extra_state_attributes = _unit_status_attributes(outdoor_unit)
 
 
 class IndoorUnitOperationalStatusSensor(CarrierSensor):
@@ -825,17 +789,10 @@ class IndoorUnitOperationalStatusSensor(CarrierSensor):
 
     def _update_entity_attrs(self) -> None:
         """Update indoor operational status attrs from coordinator data."""
+        indoor_unit = self.carrier_system.status.indoor_unit
         self._attr_native_value = self.carrier_system.status.indoor_unit_operational_status
         self._attr_available = self._attr_native_value is not None
-        status_raw = self.carrier_system.status.raw
-        if status_raw is None:
-            self._attr_extra_state_attributes = {}
-            return
-        indoor_unit_attributes = status_raw.get("idu")
-        if isinstance(indoor_unit_attributes, Mapping):
-            self._attr_extra_state_attributes = dict(indoor_unit_attributes)
-        else:
-            self._attr_extra_state_attributes = {}
+        self._attr_extra_state_attributes = _unit_status_attributes(indoor_unit)
 
 
 class OutdoorUnitVarSensor(CarrierSensor):

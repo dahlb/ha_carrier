@@ -21,17 +21,6 @@ from .exceptions import CarrierUnauthorizedError
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 REDACTED = "**REDACTED**"
 
-ENERGY_METRIC_MAP: dict[str, str] = {
-    "cooling": "coolingKwh",
-    "electric_heat": "eHeatKwh",
-    "fan_gas": "fanGasKwh",
-    "fan": "fanKwh",
-    "gas": "gasKwh",
-    "hp_heat": "hPHeatKwh",
-    "loop_pump": "loopPumpKwh",
-    "reheat": "reheatKwh",
-}
-
 TIMESTAMP_TYPES: tuple[str, ...] = ("all_data", "websocket", "energy")
 
 # Transport-layer exceptions that should retry with backoff.
