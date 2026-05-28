@@ -67,7 +67,7 @@
             <a id="nextFileLink" class="nav" href="z_e7e81008807db811_resiliency_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.14.1">coverage.py v7.14.1</a>,
-            created at 2026-05-27 22:32 +0000
+            created at 2026-05-28 10:58 +0000
         </p>
         <aside class="hidden">
             <button type="button" class="button_next_chunk" data-shortcut="j"></button>
@@ -97,7 +97,7 @@
     <p class="run"><span class="n"><a id="t13" href="#t13">13</a></span><span class="t"><span class="key">from</span> <span class="nam">homeassistant</span><span class="op">.</span><span class="nam">helpers</span><span class="op">.</span><span class="nam">entity_registry</span> <span class="key">import</span> <span class="nam">EntityRegistry</span><span class="op">,</span> <span class="nam">RegistryEntry</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t14" href="#t14">14</a></span><span class="t"><span class="key">from</span> <span class="nam">homeassistant</span><span class="op">.</span><span class="nam">util</span> <span class="key">import</span> <span class="nam">slugify</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t15" href="#t15">15</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t16" href="#t16">16</a></span><span class="t"><span class="key">from</span> <span class="op">.</span><span class="nam">util</span> <span class="key">import</span> <span class="nam">ENERGY_METRIC_MAP</span><span class="op">,</span> <span class="nam">TIMESTAMP_TYPES</span><span class="op">,</span> <span class="nam">async_get_carrier_identity_id</span><span class="op">,</span> <span class="nam">has_heat</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t16" href="#t16">16</a></span><span class="t"><span class="key">from</span> <span class="op">.</span><span class="nam">util</span> <span class="key">import</span> <span class="nam">ENERGY_METRIC_MAP</span><span class="op">,</span> <span class="nam">TIMESTAMP_TYPES</span><span class="op">,</span> <span class="nam">async_get_carrier_identity_id</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t17" href="#t17">17</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t18" href="#t18">18</a></span><span class="t"><span class="nam">_LOGGER</span><span class="op">:</span> <span class="nam">logging</span><span class="op">.</span><span class="nam">Logger</span> <span class="op">=</span> <span class="nam">logging</span><span class="op">.</span><span class="nam">getLogger</span><span class="op">(</span><span class="nam">__name__</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t19" href="#t19">19</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
@@ -497,7 +497,7 @@
     <p class="run"><span class="n"><a id="t413" href="#t413">413</a></span><span class="t">            <span class="nam">created_unique_ids</span><span class="op">.</span><span class="nam">add</span><span class="op">(</span><span class="nam">_async_new_unique_id</span><span class="op">(</span><span class="nam">system_serial</span><span class="op">,</span> <span class="str">"UV Lamp Remaining"</span><span class="op">)</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="par run show_par"><span class="n"><a id="t414" href="#t414">414</a></span><span class="t">        <span class="key">if</span> <span class="nam">carrier_system</span><span class="op">.</span><span class="nam">profile</span><span class="op">.</span><span class="nam">outdoor_unit_type</span> <span class="key">in</span> <span class="op">[</span><span class="str">"varcaphp"</span><span class="op">,</span> <span class="str">"varcapac"</span><span class="op">]</span><span class="op">:</span>&nbsp;</span><span class="r"><span class="annotate short">414&#x202F;&#x219B;&#x202F;416</span><span class="annotate long">line 414 didn't jump to line 416 because the condition on line 414 was always true</span></span></p>
     <p class="run"><span class="n"><a id="t415" href="#t415">415</a></span><span class="t">            <span class="nam">created_unique_ids</span><span class="op">.</span><span class="nam">add</span><span class="op">(</span><span class="nam">_async_new_unique_id</span><span class="op">(</span><span class="nam">system_serial</span><span class="op">,</span> <span class="str">"ODU Var"</span><span class="op">)</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
-    <p class="par run show_par"><span class="n"><a id="t416" href="#t416">416</a></span><span class="t">        <span class="key">if</span> <span class="nam">has_heat</span><span class="op">(</span><span class="nam">carrier_system</span><span class="op">)</span><span class="op">:</span>&nbsp;</span><span class="r"><span class="annotate short">416&#x202F;&#x219B;&#x202F;419</span><span class="annotate long">line 416 didn't jump to line 419 because the condition on line 416 was always true</span></span></p>
+    <p class="par run show_par"><span class="n"><a id="t416" href="#t416">416</a></span><span class="t">        <span class="key">if</span> <span class="nam">carrier_system</span><span class="op">.</span><span class="nam">supports_heat</span><span class="op">(</span><span class="op">)</span><span class="op">:</span>&nbsp;</span><span class="r"><span class="annotate short">416&#x202F;&#x219B;&#x202F;419</span><span class="annotate long">line 416 didn't jump to line 419 because the condition on line 416 was always true</span></span></p>
     <p class="run"><span class="n"><a id="t417" href="#t417">417</a></span><span class="t">            <span class="nam">created_unique_ids</span><span class="op">.</span><span class="nam">add</span><span class="op">(</span><span class="nam">_async_new_unique_id</span><span class="op">(</span><span class="nam">system_serial</span><span class="op">,</span> <span class="str">"Heat Source"</span><span class="op">)</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t418" href="#t418">418</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t419" href="#t419">419</a></span><span class="t">        <span class="key">for</span> <span class="nam">metric</span> <span class="key">in</span> <span class="nam">ENERGY_METRIC_MAP</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
@@ -794,7 +794,7 @@
             <a class="nav" href="z_e7e81008807db811_resiliency_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.14.1">coverage.py v7.14.1</a>,
-            created at 2026-05-27 22:32 +0000
+            created at 2026-05-28 10:58 +0000
         </p>
     </div>
 </footer>
