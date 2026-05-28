@@ -725,6 +725,8 @@ class StaticPressureSensor(CarrierSensor):
         value = indoor_unit.static_pressure if indoor_unit is not None else None
         if value is None:
             value = self.carrier_system.status.static_pressure
+        # Carrier reports this as a native inH2O value; Home Assistant handles
+        # display conversion for users based on UnitOfPressure.INH2O.
         self._attr_native_value = value
         self._attr_available = self._attr_native_value is not None
 
