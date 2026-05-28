@@ -13,7 +13,7 @@ from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity_registry import EntityRegistry, RegistryEntry
 from homeassistant.util import slugify
 
-from .util import TIMESTAMP_TYPES, async_get_carrier_identity_id, energy_metric_value
+from .util import TIMESTAMP_TYPES, async_get_carrier_identity_id
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 
@@ -318,8 +318,6 @@ def _async_build_unique_id_migration_map(
     Returns:
         dict[str, str]: Mapping from version 1 unique IDs to version 2 unique IDs.
     """
-    from .sensor import _energy_metric_label  # noqa: PLC0415
-
     migration_map: dict[str, str] = {}
 
     for carrier_system in systems:
@@ -362,7 +360,7 @@ def _async_build_unique_id_migration_map(
             metric_labels = {
                 metric_name,
                 metric_name.replace("_", " ").title(),
-                _energy_metric_label(metric),
+                metric.label,
             }
             for metric_label in metric_labels:
                 _async_add_unique_id_migration(
@@ -425,8 +423,7 @@ def _async_build_created_unique_ids(systems: Iterable[System]) -> set[str]:
             created_unique_ids.add(_async_new_unique_id(system_serial, "Heat Source"))
 
         for metric in carrier_system.energy.enabled_usage_metrics():
-            metric_value = energy_metric_value(metric)
-            metric_title = metric_value.replace("_", " ").title()
+            metric_title = metric.value.replace("_", " ").title()
             created_unique_ids.add(
                 _async_new_unique_id(system_serial, f"{metric_title} Energy Year to Date")
             )

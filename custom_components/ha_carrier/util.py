@@ -13,7 +13,6 @@ from carrier_api import (
     CarrierApiError,
     CarrierApiTokenRefreshError,
     CarrierApiWebsocketError,
-    EnergyUsageMetric,
 )
 from homeassistant.core import callback
 
@@ -56,18 +55,6 @@ WEBSOCKET_DATA_UPDATE_EXCEPTIONS: tuple[type[BaseException], ...] = (
     TypeError,
     ValueError,
 )
-
-
-def energy_metric_value(metric: EnergyUsageMetric) -> str:
-    """Return the normalized value for a Carrier energy metric.
-
-    Args:
-        metric: Carrier API energy metric enum.
-
-    Returns:
-        str: Normalized metric value used in unique IDs and helper lookups.
-    """
-    return metric.value
 
 
 async def async_get_carrier_identity_id(api_connection: ApiConnectionGraphql) -> str | None:

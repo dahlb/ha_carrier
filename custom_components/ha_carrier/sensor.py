@@ -21,35 +21,9 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from . import ConfigEntryCarrier
 from .carrier_data_update_coordinator import CarrierDataUpdateCoordinator
 from .carrier_entity import CarrierEntity, CarrierZoneEntity
-from .util import TIMESTAMP_TYPES, energy_metric_value
+from .util import TIMESTAMP_TYPES
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
-
-
-def _energy_metric_label(metric: EnergyUsageMetric) -> str:
-    """Return the display label for a Carrier energy metric.
-
-    Args:
-        metric: Carrier API energy metric enum.
-
-    Returns:
-        Carrier API metric label.
-    """
-    return metric.label
-
-
-def _energy_native_value(value: float | None) -> int | float | None:
-    """Return an energy value without changing whole-number state strings.
-
-    Args:
-        value: Energy value returned by carrier_api.
-
-    Returns:
-        The original value as int when integral, otherwise unchanged.
-    """
-    if isinstance(value, float) and value.is_integer():
-        return int(value)
-    return value
 
 
 def _unit_status_attributes(unit: StatusUnit | None) -> dict[str, object]:
@@ -424,19 +398,17 @@ class YearlyEnergyMeasurementSensor(CarrierSensor):
             metric: Carrier API energy metric to expose.
         """
         self.metric = metric
-        metric_label = _energy_metric_label(metric)
-        metric_value = energy_metric_value(metric)
         super().__init__(
-            entity_name=f"{metric_label} Energy Year to Date",
+            entity_name=f"{metric.label} Energy Year to Date",
             coordinator=coordinator,
             system_serial=system_serial,
-            unique_id_suffix=f"{metric_value} Energy Year to Date",
+            unique_id_suffix=f"{metric.value} Energy Year to Date",
         )
 
     def _update_entity_attrs(self) -> None:
         """Update yearly energy attrs from coordinator data."""
         value = self.carrier_system.energy.value_for_period_metric(EnergyPeriod.YEAR_1, self.metric)
-        self._attr_native_value = _energy_native_value(value)
+        self._attr_native_value = value
         self._attr_available = value is not None
 
 
@@ -462,19 +434,17 @@ class DailyEnergyMeasurementSensor(CarrierSensor):
             metric: Carrier API energy metric to expose.
         """
         self.metric = metric
-        metric_label = _energy_metric_label(metric)
-        metric_value = energy_metric_value(metric)
         super().__init__(
-            entity_name=f"{metric_label} Energy Yesterday",
+            entity_name=f"{metric.label} Energy Yesterday",
             coordinator=coordinator,
             system_serial=system_serial,
-            unique_id_suffix=f"{metric_value} Energy Yesterday",
+            unique_id_suffix=f"{metric.value} Energy Yesterday",
         )
 
     def _update_entity_attrs(self) -> None:
         """Update daily energy attrs from coordinator data."""
         value = self.carrier_system.energy.value_for_period_metric(EnergyPeriod.DAY_1, self.metric)
-        self._attr_native_value = _energy_native_value(value)
+        self._attr_native_value = value
         self._attr_available = value is not None
 
 
@@ -500,13 +470,11 @@ class MonthlyEnergyMeasurementSensor(CarrierSensor):
             metric: Carrier API energy metric to expose.
         """
         self.metric = metric
-        metric_label = _energy_metric_label(metric)
-        metric_value = energy_metric_value(metric)
         super().__init__(
-            entity_name=f"{metric_label} Energy Last Month",
+            entity_name=f"{metric.label} Energy Last Month",
             coordinator=coordinator,
             system_serial=system_serial,
-            unique_id_suffix=f"{metric_value} Energy Last Month",
+            unique_id_suffix=f"{metric.value} Energy Last Month",
         )
 
     def _update_entity_attrs(self) -> None:
@@ -514,7 +482,7 @@ class MonthlyEnergyMeasurementSensor(CarrierSensor):
         value = self.carrier_system.energy.value_for_period_metric(
             EnergyPeriod.MONTH_1, self.metric
         )
-        self._attr_native_value = _energy_native_value(value)
+        self._attr_native_value = value
         self._attr_available = value is not None
 
 
