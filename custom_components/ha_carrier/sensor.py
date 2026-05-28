@@ -106,6 +106,8 @@ async def async_setup_entry(
                 )
             )
         for electric_metric in carrier_system.energy.enabled_usage_metrics():
+            if electric_metric == EnergyUsageMetric.GAS:
+                continue
             entities.extend(
                 [
                     YearlyEnergyMeasurementSensor(

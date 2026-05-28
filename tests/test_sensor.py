@@ -6,6 +6,7 @@ from collections.abc import Callable
 from typing import Any
 
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import entity_registry as er
 import pytest
 
 from .conftest import FakeCarrierApiConnection, build_carrier_system, entity_id_for_unique_id
@@ -64,6 +65,12 @@ async def test_energy_sensors_use_carrier_api_energy_helpers(
 
         assert state is not None
         assert state.state == expected_state
+    assert (
+        er.async_get(hass).async_get_entity_id(
+            "sensor", "ha_carrier", "abc123_gas_energy_year_to_date"
+        )
+        is None
+    )
 
 
 @pytest.mark.asyncio
