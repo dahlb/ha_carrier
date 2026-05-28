@@ -89,13 +89,12 @@ async def test_migration_preserves_energy_and_propane_unique_ids(
         "abc123_hp_heat_energy_year_to_date",
         "abc123_hp_heat_energy_yesterday",
         "abc123_hp_heat_energy_last_month",
+        "abc123_gas_energy_year_to_date",
         "abc123_propane_usage_year_to_date",
         "abc123_propane_consumption_year_to_date",
         "abc123_heat_source",
     ):
         assert ent_reg.async_get_entity_id("sensor", DOMAIN, new_unique_id)
-    assert ent_reg.async_get_entity_id("sensor", DOMAIN, "ABC123_gas Energy Yearly") is None
-    assert ent_reg.async_get_entity_id("sensor", DOMAIN, "abc123_gas_energy_year_to_date") is None
     assert patch_carrier_api.cleanup_calls == 1
 
 

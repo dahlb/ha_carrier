@@ -423,8 +423,6 @@ def _async_build_created_unique_ids(systems: Iterable[System]) -> set[str]:
             created_unique_ids.add(_async_new_unique_id(system_serial, "Heat Source"))
 
         for metric in carrier_system.energy.enabled_usage_metrics():
-            if metric == EnergyUsageMetric.GAS:
-                continue
             created_unique_ids.add(
                 _async_new_unique_id(system_serial, f"{metric.value} Energy Year to Date")
             )

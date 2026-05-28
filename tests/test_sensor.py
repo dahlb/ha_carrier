@@ -67,9 +67,8 @@ async def test_energy_sensors_use_carrier_api_energy_helpers(
 
         assert state is not None
         assert state.state == expected_state
-    assert (
-        er.async_get(hass).async_get_entity_id("sensor", DOMAIN, "abc123_gas_energy_year_to_date")
-        is None
+    assert er.async_get(hass).async_get_entity_id(
+        "sensor", DOMAIN, "abc123_gas_energy_year_to_date"
     )
 
 
