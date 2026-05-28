@@ -5,13 +5,7 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping
 import logging
 
-from carrier_api import (
-    ENERGY_USAGE_METRICS,
-    ApiConnectionGraphql,
-    CarrierApiError,
-    EnergyUsageMetric,
-    System,
-)
+from carrier_api import ApiConnectionGraphql, CarrierApiError, EnergyUsageMetric, System
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 from homeassistant.core import HomeAssistant
@@ -363,7 +357,7 @@ def _async_build_unique_id_migration_map(
             "Propane Consumption Year to Date",
         )
 
-        for metric in ENERGY_USAGE_METRICS:
+        for metric in EnergyUsageMetric:
             metric_name = metric.value
             metric_labels = {
                 metric_name,
