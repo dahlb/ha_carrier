@@ -423,15 +423,14 @@ def _async_build_created_unique_ids(systems: Iterable[System]) -> set[str]:
             created_unique_ids.add(_async_new_unique_id(system_serial, "Heat Source"))
 
         for metric in carrier_system.energy.enabled_usage_metrics():
-            metric_title = metric.value.replace("_", " ").title()
             created_unique_ids.add(
-                _async_new_unique_id(system_serial, f"{metric_title} Energy Year to Date")
+                _async_new_unique_id(system_serial, f"{metric.value} Energy Year to Date")
             )
             created_unique_ids.add(
-                _async_new_unique_id(system_serial, f"{metric_title} Energy Yesterday")
+                _async_new_unique_id(system_serial, f"{metric.value} Energy Yesterday")
             )
             created_unique_ids.add(
-                _async_new_unique_id(system_serial, f"{metric_title} Energy Last Month")
+                _async_new_unique_id(system_serial, f"{metric.value} Energy Last Month")
             )
 
         fuel_type = carrier_system.config.fuel_type
