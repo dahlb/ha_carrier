@@ -869,7 +869,7 @@ class OutdoorUnitVarSensor(CarrierSensor):
         if value is None or not isinstance(value, str):
             self._attr_available = False
             return
-        if isinstance(value, str) and value == "off":
+        if isinstance(value, str) and value in {"off", "dehumidify"}:
             self._attr_native_value = 0.0
             self._attr_available = True
             return

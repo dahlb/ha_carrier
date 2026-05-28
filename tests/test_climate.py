@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any
 
-from carrier_api import FanModes
+from carrier_api import ActivityTypes, FanModes
 from homeassistant.components.climate import (
     ATTR_HVAC_MODE,
     ATTR_PRESET_MODE,
@@ -48,6 +48,46 @@ async def test_climate_platform_registers_zone_thermostat(
     assert state.state == HVACMode.HEAT_COOL
     assert state.attributes["current_temperature"] == 21.1
     assert FAN_AUTO in state.attributes["fan_modes"]
+
+
+@pytest.mark.asyncio
+async def test_climate_platform_uses_config_fan_capability(
+    hass: HomeAssistant,
+    carrier_api: FakeCarrierApiConnection,
+    setup_integration: Callable[..., Any],
+) -> None:
+    """Omit fan controls when Carrier config reports fan support is disabled."""
+    carrier_api.systems = [build_carrier_system(fan_enabled=False)]
+
+    await setup_integration()
+    entity_id = entity_id_for_unique_id(hass, CLIMATE_DOMAIN, "abc123_zone_1_thermostat")
+    state = hass.states.get(entity_id)
+
+    assert state is not None
+    assert "fan_mode" not in state.attributes
+    assert "fan_modes" not in state.attributes
+    assert HVACMode.FAN_ONLY not in state.attributes["hvac_modes"]
+
+
+@pytest.mark.asyncio
+async def test_climate_preset_mode_uses_status_activity(
+    hass: HomeAssistant,
+    carrier_api: FakeCarrierApiConnection,
+    setup_integration: Callable[..., Any],
+) -> None:
+    """Prefer Carrier's status activity over matching configured setpoints."""
+    carrier_api.systems = [build_carrier_system(fan_enabled=True)]
+    system = carrier_api.systems[0]
+    system.status.zones[0].current_status_activity_type = ActivityTypes.AWAY
+    system.status.zones[0].heat_set_point = 68
+    system.status.zones[0].cool_set_point = 74
+
+    await setup_integration()
+    entity_id = entity_id_for_unique_id(hass, CLIMATE_DOMAIN, "abc123_zone_1_thermostat")
+    state = hass.states.get(entity_id)
+
+    assert state is not None
+    assert state.attributes["preset_mode"] == "away"
 
 
 @pytest.mark.asyncio
@@ -182,6 +222,40 @@ async def test_climate_fan_mode_service_updates_current_activity(
     state = hass.states.get(entity_id)
     assert state is not None
     assert state.attributes["fan_mode"] == "high"
+
+
+@pytest.mark.asyncio
+async def test_climate_fan_mode_service_uses_status_activity(
+    hass: HomeAssistant,
+    carrier_api: FakeCarrierApiConnection,
+    setup_integration: Callable[..., Any],
+) -> None:
+    """Write fan settings against Carrier's live status activity."""
+    carrier_api.systems = [build_carrier_system(fan_enabled=True)]
+    system = carrier_api.systems[0]
+    system.config.zones[0].hold = True
+    system.config.zones[0].hold_activity = ActivityTypes.AWAY
+    system.status.zones[0].current_status_activity_type = ActivityTypes.HOME
+    await setup_integration()
+    entity_id = entity_id_for_unique_id(hass, CLIMATE_DOMAIN, "abc123_zone_1_thermostat")
+
+    await hass.services.async_call(
+        CLIMATE_DOMAIN,
+        SERVICE_SET_FAN_MODE,
+        {ATTR_ENTITY_ID: entity_id, ATTR_FAN_MODE: "high"},
+        blocking=True,
+    )
+    await hass.async_block_till_done()
+
+    assert carrier_api.calls[-1] == (
+        "update_fan",
+        {
+            "system_serial": "ABC123",
+            "zone_id": "1",
+            "activity_type": ActivityTypes.HOME,
+            "fan_mode": FanModes.HIGH,
+        },
+    )
 
 
 @pytest.mark.asyncio

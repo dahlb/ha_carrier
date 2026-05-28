@@ -13,7 +13,7 @@ from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity_registry import EntityRegistry, RegistryEntry
 from homeassistant.util import slugify
 
-from .util import ENERGY_METRIC_MAP, TIMESTAMP_TYPES, async_get_carrier_identity_id, has_heat
+from .util import ENERGY_METRIC_MAP, TIMESTAMP_TYPES, async_get_carrier_identity_id
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 
@@ -413,7 +413,7 @@ def _async_build_created_unique_ids(systems: Iterable[System]) -> set[str]:
             created_unique_ids.add(_async_new_unique_id(system_serial, "UV Lamp Remaining"))
         if carrier_system.profile.outdoor_unit_type in ["varcaphp", "varcapac"]:
             created_unique_ids.add(_async_new_unique_id(system_serial, "ODU Var"))
-        if has_heat(carrier_system):
+        if carrier_system.supports_heat():
             created_unique_ids.add(_async_new_unique_id(system_serial, "Heat Source"))
 
         for metric in ENERGY_METRIC_MAP:

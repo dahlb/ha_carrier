@@ -270,6 +270,7 @@ def build_carrier_system(
     zone_name: str = "Living Room",
     zone_id: str = "1",
     has_heat_pump: bool = True,
+    fan_enabled: bool | None = None,
     disconnected: bool = False,
 ) -> System:
     """Build a realistic Carrier system from ``carrier_api`` model classes.
@@ -281,6 +282,8 @@ def build_carrier_system(
         zone_id: Identifier assigned to the zone. Defaults to ``"1"``.
         has_heat_pump: When ``True``, configure the outdoor unit as a variable-capacity
             heat pump; otherwise configure it as an air conditioner. Defaults to ``True``.
+        fan_enabled: Optional Carrier ``cfgfan`` value. Defaults to ``None`` to omit the
+            field and exercise energy-based fan capability fallback.
         disconnected: When ``True``, mark the status payload as disconnected so tests can
             exercise offline behavior. Defaults to ``False``.
 
@@ -304,23 +307,24 @@ def build_carrier_system(
             "odutype": "varcaphp" if has_heat_pump else "ac",
         }
     )
-    config = Config(
-        {
-            "cfgem": "F",
-            "mode": "auto",
-            "heatsource": "system",
-            "etag": "etag",
-            "fueltype": "gas",
-            "gasunit": "therm",
-            "cfguv": "on",
-            "cfghumid": "on",
-            "humidityHome": {"rhtg": 7},
-            "vacmaxt": 82,
-            "vacmint": 60,
-            "vacfan": "off",
-            "zones": [_zone_raw(zone_id=zone_id, name=zone_name)],
-        }
-    )
+    config_raw = {
+        "cfgem": "F",
+        "mode": "auto",
+        "heatsource": "system",
+        "etag": "etag",
+        "fueltype": "gas",
+        "gasunit": "therm",
+        "cfguv": "on",
+        "cfghumid": "on",
+        "humidityHome": {"rhtg": 7},
+        "vacmaxt": 82,
+        "vacmint": 60,
+        "vacfan": "off",
+        "zones": [_zone_raw(zone_id=zone_id, name=zone_name)],
+    }
+    if fan_enabled is not None:
+        config_raw["cfgfan"] = "on" if fan_enabled else "off"
+    config = Config(config_raw)
     status = Status(
         {
             "oat": 40,
