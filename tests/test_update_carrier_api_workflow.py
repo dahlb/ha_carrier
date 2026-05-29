@@ -312,6 +312,55 @@ ha = [
         )
 
 
+def test_updater_script_logs_fetch_errors(
+    updater_script: ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Updater script should log PyPI fetch failures before re-raising."""
+
+    def raise_url_error(*_: object, **__: object) -> object:
+        """Raise a urlopen-style network failure."""
+        raise updater_script.URLError("DNS failure")
+
+    monkeypatch.setattr(updater_script, "urlopen", raise_url_error)
+    caplog.set_level("ERROR", logger=updater_script.__name__)
+
+    with pytest.raises(updater_script.URLError, match="DNS failure"):
+        updater_script.fetch_latest_version()
+
+    assert "Failed to fetch carrier-api PyPI metadata" in caplog.text
+
+
+def test_updater_script_main_handles_fetch_errors(
+    tmp_path: Path,
+    updater_script: ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Updater script should return a failing status for fetch errors."""
+    manifest_path, pyproject_path = _write_pin_files(tmp_path, manifest_version="3.3.0")
+
+    def raise_url_error() -> str:
+        """Raise a PyPI fetch failure."""
+        raise updater_script.URLError("DNS failure")
+
+    monkeypatch.setattr(updater_script, "fetch_latest_version", raise_url_error)
+    caplog.set_level("ERROR", logger=updater_script.__name__)
+
+    result = updater_script.main(
+        [
+            "--manifest-path",
+            str(manifest_path),
+            "--pyproject-path",
+            str(pyproject_path),
+        ],
+    )
+
+    assert result == 1
+    assert "Failed to update carrier-api dependency pins" in caplog.text
+
+
 def test_release_note_script_builds_sanitized_pr_body(
     tmp_path: Path,
     release_notes_script: ModuleType,

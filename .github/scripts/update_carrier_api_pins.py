@@ -6,13 +6,16 @@ import argparse
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 import json
+import logging
 from pathlib import Path
 import re
 import sys
 import tomllib
+from urllib.error import HTTPError, URLError
 from urllib.request import urlopen
 
 PYPI_URL = "https://pypi.org/pypi/carrier-api/json"
+LOGGER = logging.getLogger(__name__)
 PIN_PREFIX = "carrier-api=="
 PYPROJECT_PIN_RE = re.compile(r'(?m)^(\s*)"carrier-api==[^"]+"(,?)\s*$')
 PRERELEASE_RE = re.compile(r"(?i)(?:[.\-_]?(?:a|alpha|b|beta|c|pre|preview|rc|dev)\d*)")
@@ -100,10 +103,19 @@ def fetch_latest_version() -> str:
     Raises:
         ValueError: If PyPI does not return a usable version.
     """
-    with urlopen(PYPI_URL, timeout=30) as response:  # noqa: S310
-        payload = json.load(response)
-
-    return _select_latest_stable_version(payload)
+    try:
+        with urlopen(PYPI_URL, timeout=30) as response:  # noqa: S310
+            payload = json.load(response)
+        return _select_latest_stable_version(payload)
+    except (HTTPError, URLError) as err:
+        LOGGER.error("Failed to fetch carrier-api PyPI metadata: %s", err)
+        raise
+    except json.JSONDecodeError as err:
+        LOGGER.error("Failed to decode carrier-api PyPI metadata: %s", err)
+        raise
+    except (TypeError, ValueError) as err:
+        LOGGER.error("Failed to select latest carrier-api version from PyPI metadata: %s", err)
+        raise
 
 
 def _select_latest_stable_version(payload: Mapping[str, object]) -> str:
@@ -348,16 +360,29 @@ def main(argv: Sequence[str] | None = None) -> int:
     Returns:
         Process exit code.
     """
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
     args = _parse_args(sys.argv[1:] if argv is None else argv)
-    latest_version = args.latest_version or fetch_latest_version()
-    result = update_pins(
-        manifest_path=args.manifest_path,
-        pyproject_path=args.pyproject_path,
-        latest_version=latest_version,
-        write=args.write,
-    )
-    if args.github_output is not None:
-        _write_github_outputs(result, args.github_output)
+    try:
+        latest_version = args.latest_version or fetch_latest_version()
+        result = update_pins(
+            manifest_path=args.manifest_path,
+            pyproject_path=args.pyproject_path,
+            latest_version=latest_version,
+            write=args.write,
+        )
+        if args.github_output is not None:
+            _write_github_outputs(result, args.github_output)
+    except (
+        HTTPError,
+        URLError,
+        json.JSONDecodeError,
+        tomllib.TOMLDecodeError,
+        OSError,
+        TypeError,
+        ValueError,
+    ) as err:
+        LOGGER.error("Failed to update carrier-api dependency pins: %s", err)
+        return 1
     return 0
 
 
