@@ -141,29 +141,27 @@ def _load_script(module_name: str, script_path: Path) -> ModuleType:
 
 
 @pytest.mark.parametrize(
-    ("needle", "reason"),
+    "needle",
     [
-        ("actions/setup-python@v6", "pins a Python runtime"),
-        ("python-version: '3.14'", "uses a tomllib-capable Python"),
-        ("Automated update of carrier-api dependency pins.", "describes generated PRs"),
-        ("custom_components/ha_carrier/manifest.json", "updates the integration manifest"),
-        ("pyproject.toml", "updates the local dependency pin"),
-        ("pyproject_current", "reports pyproject drift in PR metadata"),
-        (str(SCRIPT_PATH), "runs the checked-in updater helper"),
-        (str(RELEASE_NOTES_SCRIPT_PATH), "runs the checked-in release-note helper"),
-        (str(CLEANUP_SCRIPT_PATH), "runs the checked-in cleanup helper"),
-        ("--body-path carrier-api-update-pr-body.md", "uses a PR body file"),
-        ("--delete-merged-branches", "cleans merged workflow-owned branches"),
-        ("LATEST_VERSION: ${{ steps.versions.outputs.latest }}", "exports latest pin"),
-        ('--latest-version "$LATEST_VERSION"', "avoids shell template injection"),
-        ("REPOSITORY: ${{ github.repository }}", "exports repository before shell use"),
-        ('--repository "$REPOSITORY"', "avoids inline repository template expansion"),
+        "actions/setup-python@v6",
+        "python-version: '3.14'",
+        "Automated update of carrier-api dependency pins.",
+        "custom_components/ha_carrier/manifest.json",
+        "pyproject.toml",
+        "pyproject_current",
+        str(SCRIPT_PATH),
+        str(RELEASE_NOTES_SCRIPT_PATH),
+        str(CLEANUP_SCRIPT_PATH),
+        "--body-path carrier-api-update-pr-body.md",
+        "--delete-merged-branches",
+        "LATEST_VERSION: ${{ steps.versions.outputs.latest }}",
+        '--latest-version "$LATEST_VERSION"',
+        "REPOSITORY: ${{ github.repository }}",
+        '--repository "$REPOSITORY"',
     ],
 )
-def test_workflow_contains_expected_update_logic(needle: str, reason: str) -> None:
+def test_workflow_contains_expected_update_logic(needle: str) -> None:
     """Workflow should include the expected carrier-api updater logic."""
-    del reason
-
     assert needle in _read_update_workflow_surface()
 
 
