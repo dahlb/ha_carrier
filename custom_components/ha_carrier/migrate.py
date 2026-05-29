@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping
 import logging
 
-from carrier_api import ApiConnectionGraphql, CarrierApiError, System
+from carrier_api import ApiConnectionGraphql, CarrierApiError, EnergyUsageMetric, System
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 from homeassistant.core import HomeAssistant
@@ -13,7 +13,7 @@ from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity_registry import EntityRegistry, RegistryEntry
 from homeassistant.util import slugify
 
-from .util import ENERGY_METRIC_MAP, TIMESTAMP_TYPES, async_get_carrier_identity_id
+from .util import TIMESTAMP_TYPES, async_get_carrier_identity_id
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 
@@ -355,26 +355,32 @@ def _async_build_unique_id_migration_map(
             "Propane Consumption Year to Date",
         )
 
-        for metric in ENERGY_METRIC_MAP:
-            metric_title = metric.replace("_", " ").title()
-            _async_add_unique_id_migration(
-                migration_map,
-                system_serial,
-                f"{metric} Energy Yearly",
-                f"{metric_title} Energy Year to Date",
-            )
-            _async_add_unique_id_migration(
-                migration_map,
-                system_serial,
-                f"{metric} Energy Yesterday",
-                f"{metric_title} Energy Yesterday",
-            )
-            _async_add_unique_id_migration(
-                migration_map,
-                system_serial,
-                f"{metric} Energy Last Month",
-                f"{metric_title} Energy Last Month",
-            )
+        for metric in EnergyUsageMetric:
+            metric_name = metric.value
+            metric_labels = {
+                metric_name,
+                metric_name.replace("_", " ").title(),
+                metric.label,
+            }
+            for metric_label in metric_labels:
+                _async_add_unique_id_migration(
+                    migration_map,
+                    system_serial,
+                    f"{metric_label} Energy Yearly",
+                    f"{metric_name} Energy Year to Date",
+                )
+                _async_add_unique_id_migration(
+                    migration_map,
+                    system_serial,
+                    f"{metric_label} Energy Yesterday",
+                    f"{metric_name} Energy Yesterday",
+                )
+                _async_add_unique_id_migration(
+                    migration_map,
+                    system_serial,
+                    f"{metric_label} Energy Last Month",
+                    f"{metric_name} Energy Last Month",
+                )
 
     # Zone entities need registry context because their v1 unique IDs were based
     # on names and v2 unique IDs are based on stable Carrier zone API IDs.
@@ -416,21 +422,22 @@ def _async_build_created_unique_ids(systems: Iterable[System]) -> set[str]:
         if carrier_system.supports_heat():
             created_unique_ids.add(_async_new_unique_id(system_serial, "Heat Source"))
 
-        for metric in ENERGY_METRIC_MAP:
-            if getattr(carrier_system.energy, metric, False) is True:
-                metric_title = metric.replace("_", " ").title()
-                created_unique_ids.add(
-                    _async_new_unique_id(system_serial, f"{metric_title} Energy Year to Date")
-                )
-                created_unique_ids.add(
-                    _async_new_unique_id(system_serial, f"{metric_title} Energy Yesterday")
-                )
-                created_unique_ids.add(
-                    _async_new_unique_id(system_serial, f"{metric_title} Energy Last Month")
-                )
+        for metric in carrier_system.energy.enabled_usage_metrics():
+            created_unique_ids.add(
+                _async_new_unique_id(system_serial, f"{metric.value} Energy Year to Date")
+            )
+            created_unique_ids.add(
+                _async_new_unique_id(system_serial, f"{metric.value} Energy Yesterday")
+            )
+            created_unique_ids.add(
+                _async_new_unique_id(system_serial, f"{metric.value} Energy Last Month")
+            )
 
         fuel_type = carrier_system.config.fuel_type
-        if getattr(carrier_system.energy, "gas", False) is True and fuel_type is not None:
+        if (
+            carrier_system.energy.is_usage_metric_enabled(EnergyUsageMetric.GAS)
+            and fuel_type is not None
+        ):
             created_unique_ids.add(
                 _async_new_unique_id(
                     system_serial,

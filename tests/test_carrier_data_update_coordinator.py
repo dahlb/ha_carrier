@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from types import SimpleNamespace
-from typing import Any, cast
+from typing import Any
 from unittest.mock import patch
 
 from carrier_api import CarrierApiAuthError, CarrierApiConnectionError, CarrierApiGraphqlError
@@ -24,6 +24,14 @@ from custom_components.ha_carrier.resiliency import ResiliencyState
 from .conftest import FakeCarrierApiConnection, build_carrier_system
 
 
+def _set_coordinator_api_connection(
+    coordinator: CarrierDataUpdateCoordinator,
+    api_connection: FakeCarrierApiConnection,
+) -> None:
+    """Attach a fake API connection to a partially constructed coordinator."""
+    object.__setattr__(coordinator, "api_connection", api_connection)
+
+
 @pytest.mark.asyncio
 async def test_initial_full_refresh_preserves_systems_list_identity(
     carrier_api: FakeCarrierApiConnection,
@@ -34,7 +42,7 @@ async def test_initial_full_refresh_preserves_systems_list_identity(
     fresh_systems = [build_carrier_system()]
     carrier_api.systems = fresh_systems
     coordinator.systems = systems
-    coordinator.api_connection = cast("Any", carrier_api)
+    _set_coordinator_api_connection(coordinator, carrier_api)
     coordinator.resiliency = ResiliencyState(
         unauthorized_threshold=UNAUTHORIZED_RETRY_THRESHOLD,
         transient_threshold=TRANSIENT_FAILURE_THRESHOLD,
@@ -54,9 +62,10 @@ async def test_energy_refresh_uses_cycle_scoped_success_reset(
     """Preserve resiliency state across per-system energy successes."""
     coordinator = CarrierDataUpdateCoordinator.__new__(CarrierDataUpdateCoordinator)
     coordinator.systems = [build_carrier_system()]
-    coordinator.api_connection = cast("Any", carrier_api)
-    coordinator.resiliency = cast(
-        "Any",
+    _set_coordinator_api_connection(coordinator, carrier_api)
+    object.__setattr__(
+        coordinator,
+        "resiliency",
         SimpleNamespace(
             reset_unauthorized=lambda: None,
             reset_transient=lambda: None,
@@ -261,7 +270,7 @@ async def test_full_refresh_merges_new_changed_and_stale_systems(
     fresh_new = build_carrier_system(serial="NEW123", name="New")
     carrier_api.systems = [fresh_existing, fresh_new]
     coordinator.systems = [existing, stale]
-    coordinator.api_connection = cast("Any", carrier_api)
+    _set_coordinator_api_connection(coordinator, carrier_api)
     coordinator.resiliency = ResiliencyState(
         unauthorized_threshold=UNAUTHORIZED_RETRY_THRESHOLD,
         transient_threshold=TRANSIENT_FAILURE_THRESHOLD,
@@ -287,8 +296,9 @@ async def test_energy_refresh_records_one_unauthorized_per_cycle(
         build_carrier_system(serial="ABC123"),
         build_carrier_system(serial="DEF456"),
     ]
+    existing_energy = systems[0].energy
     coordinator.systems = systems
-    coordinator.api_connection = cast("Any", carrier_api)
+    _set_coordinator_api_connection(coordinator, carrier_api)
     coordinator.resiliency = ResiliencyState(unauthorized_threshold=2, transient_threshold=3)
     coordinator.update_interval = None
 
@@ -304,7 +314,7 @@ async def test_energy_refresh_records_one_unauthorized_per_cycle(
 
     assert coordinator.resiliency.consecutive_unauthorized == 1
     assert coordinator.update_interval is not None
-    assert systems[0].energy.raw is not None
+    assert systems[0].energy is existing_energy
 
 
 @pytest.mark.asyncio
@@ -314,7 +324,7 @@ async def test_energy_refresh_escalates_after_threshold(
     """Raise CarrierUnauthorizedError once the energy-cycle auth threshold is crossed."""
     coordinator = CarrierDataUpdateCoordinator.__new__(CarrierDataUpdateCoordinator)
     coordinator.systems = [build_carrier_system()]
-    coordinator.api_connection = cast("Any", carrier_api)
+    _set_coordinator_api_connection(coordinator, carrier_api)
     coordinator.resiliency = ResiliencyState(unauthorized_threshold=1, transient_threshold=3)
     coordinator.update_interval = None
 

@@ -56,8 +56,8 @@ async def async_setup_entry(
     coordinator = config_entry.runtime_data
     entities: list[Thermostat] = []
     for carrier_system in coordinator.systems:
-        supported_hvac_capabilities = carrier_system.supported_hvac_capabilities()
         support_flags = BASE_SUPPORT_FLAGS
+        supported_hvac_capabilities = carrier_system.supported_hvac_capabilities()
         hvac_modes: list[HVACMode] = [
             HVACMode.OFF,
         ]
