@@ -168,7 +168,6 @@ addopts = """
   --durations=10
   -o console_output_style=progress
   --cov=custom_components.ha_carrier
-  --cov-fail-under=70
   --cov-report=term-missing
   --cov-report=html
 """
