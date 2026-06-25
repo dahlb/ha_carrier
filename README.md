@@ -11,7 +11,7 @@
 Cloud-based Home Assistant integration for **Carrier Infinity**, **Bryant Evolution**, and other thermostats that use the Carrier Infinity / Côr cloud account (the same account used by the Carrier mobile app).
 
 This integration talks to Carrier's cloud and requires internet access plus your Carrier account credentials.
-> Looking for a fully local option? Try [infinitude](https://github.com/MizterB/homeassistant-infinitude-beyond) instead.
+> Looking for a fully local option? Try [Infinitude](https://github.com/MizterB/homeassistant-infinitude-beyond) or [InfinitESP](https://nebulous.github.io/infinitesp) instead.
 
 Initially tested on **SYSTXCCWIC01-B** (firmware 4.31). Other Infinity / Evolution thermostats that work in the Carrier mobile app are expected to work as well.
 
