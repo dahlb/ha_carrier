@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 from unittest.mock import patch
 
-from carrier_api import Config, Energy, Profile, Status, System
+from carrier_api import Config, Energy, EntryLevelSystem, Profile, Status, System
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 from homeassistant.core import HomeAssistant
@@ -60,6 +60,7 @@ class FakeCarrierApiConnection:
         password: str = PASSWORD,
         identity_id: str = IDENTITY_ID,
         systems: list[System] | None = None,
+        entry_level_systems: list[EntryLevelSystem] | None = None,
     ) -> None:
         """Initialize the fake API connection.
 
@@ -68,11 +69,14 @@ class FakeCarrierApiConnection:
             password: Carrier account password.
             identity_id: Carrier account identity ID returned by user info.
             systems: Systems returned by ``load_data``.
+            entry_level_systems: Entry-level systems returned by
+                ``load_entry_level_data``.
         """
         self.username = username
         self.password = password
         self.identity_id = identity_id
         self.systems = systems or [build_carrier_system()]
+        self.entry_level_systems: list[EntryLevelSystem] = entry_level_systems or []
         self.api_websocket = FakeCarrierWebsocket()
         self.calls: list[tuple[str, dict[str, Any]]] = []
         self.load_data_error: BaseException | None = None
@@ -84,6 +88,18 @@ class FakeCarrierApiConnection:
         if self.load_data_error is not None:
             raise self.load_data_error
         return self.systems
+
+    async def load_entry_level_data(self) -> list[EntryLevelSystem]:
+        """Return configured entry-level systems."""
+        self.calls.append(("load_entry_level_data", {}))
+        return self.entry_level_systems
+
+    async def update_entry_level_zone(
+        self, serial: str, index: int = 0, **kwargs: Any
+    ) -> dict[str, Any]:
+        """Record an entry-level zone write."""
+        self.calls.append(("update_entry_level_zone", {"serial": serial, "index": index, **kwargs}))
+        return {"updateEntryLevelZone": {"success": True}}
 
     async def cleanup(self) -> None:
         """Record credential-validation cleanup."""
@@ -261,6 +277,51 @@ def _status_zone_raw(*, zone_id: str, name: str, occupancy: bool = True) -> dict
         "zoneconditioning": "idle",
         "damperposition": 50,
     }
+
+
+def build_entry_level_system(
+    *,
+    serial: str = "EL123",
+    name: str = "Basement",
+    mode: str = "cool",
+) -> EntryLevelSystem:
+    """Build an entry-level (Smart Thermostat) system for tests.
+
+    Args:
+        serial: Serial number for the entry-level system.
+        name: Display name for the system.
+        mode: Zone HVAC mode string reported by Carrier.
+
+    Returns:
+        EntryLevelSystem: A single-zone entry-level system model.
+    """
+    return EntryLevelSystem(
+        {
+            "serial": serial,
+            "name": name,
+            "model": "TSTATCCEEF-01",
+            "firmware": "1.0.0",
+            "location_id": "LOCATION",
+            "temp_unit_format": "F",
+            "connection": {"isConnected": True, "deviceId": "DEVICE"},
+            "zones": [
+                {
+                    "index": 0,
+                    "mode": mode,
+                    "rt": 75,
+                    "rh": 50,
+                    "clsp": {"current": 78, "min": 60},
+                    "htsp": {"current": 62, "max": 90},
+                    "fan_mode": "auto",
+                    "schedule_enabled": True,
+                    "hold_end_time": 0,
+                    "hold_countdown": 30,
+                    "stage_status": "Idle",
+                    "outside_temp": 90,
+                }
+            ],
+        }
+    )
 
 
 def build_carrier_system(
