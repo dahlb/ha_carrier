@@ -7,7 +7,7 @@ import functools
 import logging
 from typing import Any, NoReturn
 
-from carrier_api import ApiConnectionGraphql, CarrierApiError, Energy, System
+from carrier_api import ApiConnectionGraphql, CarrierApiError, Energy, EntryLevelSystem, System
 from carrier_api.api_websocket_data_updater import WebsocketDataUpdater
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed, HomeAssistantError
@@ -88,6 +88,7 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator[list[dict[str, Any]]]):
             transient_threshold=TRANSIENT_FAILURE_THRESHOLD,
         )
         self.systems: list[System] = []
+        self.entry_level_systems: list[EntryLevelSystem] = []
         self.websocket_data_updater: WebsocketDataUpdater | None = None
         self.websocket_task: asyncio.Task[None] | None = None
         self._websocket_initialized = False
@@ -218,6 +219,7 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator[list[dict[str, Any]]]):
                     stale_system.profile.serial,
                 )
                 self.systems.remove(stale_system)
+        await self._refresh_entry_level_systems()
         if not self._websocket_initialized:
             self.websocket_data_updater = WebsocketDataUpdater(systems=self.systems)
             api_websocket = self.api_connection.api_websocket
@@ -412,6 +414,34 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator[list[dict[str, Any]]]):
         """
         for system in self.systems:
             if system.profile.serial == system_serial:
+                return system
+        return None
+
+    async def _refresh_entry_level_systems(self) -> None:
+        """Refresh entry-level (Smart Thermostat) systems as a best-effort step.
+
+        Entry-level data is independent of the Infinity systems and websocket
+        path, so a failure here is logged and swallowed rather than failing the
+        whole refresh.
+        """
+        try:
+            self.entry_level_systems = await self.api_connection.load_entry_level_data()
+        except asyncio.CancelledError, KeyboardInterrupt, SystemExit:
+            raise
+        except (CarrierApiError, *RECOVERABLE_REFRESH_EXCEPTIONS) as error:
+            _LOGGER.debug("Carrier entry-level refresh failed (non-fatal): %s", error)
+
+    def entry_level_system(self, serial: str) -> EntryLevelSystem | None:
+        """Return the tracked entry-level system matching a serial.
+
+        Args:
+            serial: Entry-level system serial to locate.
+
+        Returns:
+            EntryLevelSystem | None: Matching system, or None when not found.
+        """
+        for system in self.entry_level_systems:
+            if system.serial == serial:
                 return system
         return None
 

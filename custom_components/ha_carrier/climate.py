@@ -28,6 +28,7 @@ from . import ConfigEntryCarrier
 from .carrier_data_update_coordinator import CarrierDataUpdateCoordinator
 from .carrier_entity import CarrierZoneEntity
 from .const import CONF_INFINITE_HOLDS, DEFAULT_INFINITE_HOLDS, FAN_AUTO
+from .entry_level_climate import build_entry_level_entities
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 
@@ -83,6 +84,7 @@ async def async_setup_entry(
             for zone in carrier_system.config.zones
         )
     async_add_entities(entities)
+    async_add_entities(build_entry_level_entities(coordinator))
 
 
 class CarrierClimate(CarrierZoneEntity, ClimateEntity):
