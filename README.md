@@ -8,7 +8,7 @@
 | custom\_components/ha\_carrier/binary\_sensor.py                     |       54 |        2 |        6 |        2 |     93% |37-\>43, 77, 93 |
 | custom\_components/ha\_carrier/carrier\_data\_update\_coordinator.py |      171 |       20 |       46 |        8 |     85% |157, 227, 232-233, 274, 311-317, 336-\>342, 346-353, 387-388, 394, 429-432, 444-\>443, 446, 464, 479-480 |
 | custom\_components/ha\_carrier/carrier\_entity.py                    |       80 |        9 |       24 |        9 |     83% |70-77, 112, 127-\>126, 129-130, 144-\>143, 146-147, 187, 213-\>215 |
-| custom\_components/ha\_carrier/climate.py                            |      228 |       25 |       84 |       18 |     84% |68-\>70, 70-\>72, 72-\>75, 138, 162, 187, 197, 202, 219, 293-\>exit, 304-305, 335-344, 369, 409-\>412, 456, 461-462, 464-465, 468 |
+| custom\_components/ha\_carrier/climate.py                            |      229 |       25 |       84 |       18 |     84% |68-\>70, 70-\>72, 72-\>75, 138, 162, 187, 197, 202, 228, 302-\>exit, 313-314, 344-353, 378, 418-\>421, 465, 470-471, 473-474, 477 |
 | custom\_components/ha\_carrier/config\_flow.py                       |      125 |        5 |       38 |        9 |     91% |58-\>65, 66-67, 152-\>169, 211, 219, 263-\>292, 278-\>283, 284 |
 | custom\_components/ha\_carrier/const.py                              |       31 |        0 |        0 |        0 |    100% |           |
 | custom\_components/ha\_carrier/diagnostics.py                        |       32 |        0 |        8 |        2 |     95% |63-\>46, 80-\>87 |
@@ -19,7 +19,7 @@
 | custom\_components/ha\_carrier/select.py                             |       51 |        6 |        8 |        4 |     83% |65, 81, 110, 126, 157-158 |
 | custom\_components/ha\_carrier/sensor.py                             |      285 |       28 |       56 |       16 |     87% |90-\>96, 96-\>102, 102-\>108, 129-\>146, 186, 203, 303-305, 313-319, 328-335, 366-372, 518, 574-575, 603-604, 632-633, 695-696, 758, 823-824 |
 | custom\_components/ha\_carrier/util.py                               |       66 |        5 |       34 |        5 |     90% |83, 87, 120, 123, 131 |
-| **TOTAL**                                                            | **1708** |  **177** |  **500** |  **127** | **85%** |           |
+| **TOTAL**                                                            | **1709** |  **177** |  **500** |  **127** | **85%** |           |
 
 
 ## Setup coverage badge
