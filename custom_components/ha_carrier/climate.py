@@ -202,16 +202,25 @@ class CarrierClimate(CarrierZoneEntity, ClimateEntity):
             self._attr_target_temperature_step = PRECISION_HALVES
         else:
             self._attr_target_temperature_step = PRECISION_WHOLE
+        # Read the target set points from the resolved config activity rather
+        # than the status zone. The status zone's clsp/htsp is only refreshed by
+        # the periodic full poll — the realtime websocket keeps room temperature
+        # current but lets the status set points go stale — so a set point change
+        # (from Home Assistant, the app, or the thermostat) can be missing for up
+        # to the full-refresh interval. The config activity tracks those changes,
+        # so it reflects the true target promptly. Fall back to the status zone
+        # when the current activity can't be resolved from config.
+        setpoint_source = self._current_activity() or self._status_zone
         self._attr_target_temperature = None
         self._attr_target_temperature_high = None
         self._attr_target_temperature_low = None
         if hvac_mode == HVACMode.HEAT:
-            self._attr_target_temperature = self._status_zone.heat_set_point
+            self._attr_target_temperature = setpoint_source.heat_set_point
         elif hvac_mode == HVACMode.COOL:
-            self._attr_target_temperature = self._status_zone.cool_set_point
+            self._attr_target_temperature = setpoint_source.cool_set_point
         elif hvac_mode == HVACMode.HEAT_COOL:
-            self._attr_target_temperature_high = self._status_zone.cool_set_point
-            self._attr_target_temperature_low = self._status_zone.heat_set_point
+            self._attr_target_temperature_high = setpoint_source.cool_set_point
+            self._attr_target_temperature_low = setpoint_source.heat_set_point
 
         if self.carrier_system.config.humidifier_enabled:
             self._attr_target_humidity = self.carrier_system.config.humidifier_heat_target

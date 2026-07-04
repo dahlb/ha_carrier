@@ -26,6 +26,7 @@ from homeassistant.components.climate.const import (
 from homeassistant.const import ATTR_ENTITY_ID
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
+from homeassistant.util.unit_system import US_CUSTOMARY_SYSTEM
 import pytest
 
 from custom_components.ha_carrier.const import FAN_AUTO
@@ -88,6 +89,38 @@ async def test_climate_preset_mode_uses_status_activity(
 
     assert state is not None
     assert state.attributes["preset_mode"] == "away"
+
+
+@pytest.mark.asyncio
+async def test_climate_setpoint_prefers_config_activity_over_stale_status(
+    hass: HomeAssistant,
+    carrier_api: FakeCarrierApiConnection,
+    setup_integration: Callable[..., Any],
+) -> None:
+    """Surface the config activity set point, not a stale status clsp/htsp.
+
+    The status zone's set points only refresh on the periodic full poll, so a
+    recent change can leave clsp/htsp stale while the resolved config activity is
+    current. The entity should report the config activity value.
+    """
+    hass.config.units = US_CUSTOMARY_SYSTEM
+    carrier_api.systems = [build_carrier_system()]
+    system = carrier_api.systems[0]
+    system.config.mode = "cool"
+    # Fresh set point lives on the resolved (home) config activity...
+    home_activity = system.config.zones[0].find_activity(ActivityTypes.HOME)
+    assert home_activity is not None
+    home_activity.cool_set_point = 63
+    # ...while the status zone still reports a stale cool set point.
+    system.status.zones[0].cool_set_point = 71
+
+    await setup_integration()
+    entity_id = entity_id_for_unique_id(hass, CLIMATE_DOMAIN, "abc123_zone_1_thermostat")
+    state = hass.states.get(entity_id)
+
+    assert state is not None
+    assert state.state == HVACMode.COOL
+    assert state.attributes["temperature"] == 63
 
 
 @pytest.mark.asyncio
