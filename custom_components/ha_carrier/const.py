@@ -44,6 +44,19 @@ HEAT_SOURCE_ODU_ONLY_LABEL = "heat pump only"
 HEAT_SOURCE_SYSTEM_LABEL = "system in control"
 
 DEFAULT_UPDATE_INTERVAL_MINUTES: int = 30
+# Force a full refresh at least this often even while the websocket stays
+# connected, so websocket-maintained status that silently goes stale (a dropped
+# or rebroadcast partial delta) is reconciled against an authoritative full pull.
+# Kept a multiple of the poll interval so intermediate polls stay lightweight
+# (energy-only) and only every Nth poll pays for a full pull.
+FULL_RECONCILE_INTERVAL_MINUTES: int = DEFAULT_UPDATE_INTERVAL_MINUTES * 4
+# After an HA write, Carrier's cloud can replay the pre-write snapshot over the
+# websocket (a fast bounce within seconds, or a slow revert ~2 min later). For
+# this window after a write the coordinator re-asserts any control field (mode /
+# set point) the cloud reverts back to the intended value, so HA never shows the
+# stale value. The stale replay is forward-timestamped, so it cannot be told
+# apart by content — the window is the only reliable discriminator.
+POST_WRITE_INTERCEPT_WINDOW_MINUTES: int = 5
 UNAUTHORIZED_RETRY_THRESHOLD: int = 3
 MAX_WRITE_ATTEMPTS: int = 2
 

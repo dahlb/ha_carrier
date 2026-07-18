@@ -95,6 +95,11 @@ class CarrierEntity(CoordinatorEntity[CarrierDataUpdateCoordinator]):
         coordinator refresh round-trip.
         """
         self._sync_entity_attrs()
+        # The optimistic local mutation has already been applied by the caller;
+        # open the post-write intercept window now, scoped to the system (and
+        # zone) this entity actually wrote, so the coordinator snapshots the
+        # intended post-write control state and never touches other targets.
+        self.coordinator.begin_post_write_intercept(self._system_serial, self.zone_api_id)
         self.async_write_ha_state()
 
     @property

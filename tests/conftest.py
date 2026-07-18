@@ -330,6 +330,8 @@ def build_carrier_system(
     name: str = "Home",
     zone_name: str = "Living Room",
     zone_id: str = "1",
+    second_zone_id: str | None = None,
+    second_zone_name: str = "Bedroom",
     has_heat_pump: bool = True,
     fan_enabled: bool | None = None,
     disconnected: bool = False,
@@ -341,6 +343,10 @@ def build_carrier_system(
         name: Human-readable system name. Defaults to ``"Home"``.
         zone_name: Display name for the single zone. Defaults to ``"Living Room"``.
         zone_id: Identifier assigned to the zone. Defaults to ``"1"``.
+        second_zone_id: When set, add a second zone with this id to both config and
+            status, producing a multi-zone system. Defaults to ``None`` (single zone).
+        second_zone_name: Display name for the optional second zone. Defaults to
+            ``"Bedroom"``.
         has_heat_pump: When ``True``, configure the outdoor unit as a variable-capacity
             heat pump; otherwise configure it as an air conditioner. Defaults to ``True``.
         fan_enabled: Optional Carrier ``cfgfan`` value. Defaults to ``None`` to omit the
@@ -383,6 +389,10 @@ def build_carrier_system(
         "vacfan": "off",
         "zones": [_zone_raw(zone_id=zone_id, name=zone_name)],
     }
+    status_zones = [_status_zone_raw(zone_id=zone_id, name=zone_name)]
+    if second_zone_id is not None:
+        config_raw["zones"].append(_zone_raw(zone_id=second_zone_id, name=second_zone_name))
+        status_zones.append(_status_zone_raw(zone_id=second_zone_id, name=second_zone_name))
     if fan_enabled is not None:
         config_raw["cfgfan"] = "on" if fan_enabled else "off"
     config = Config(config_raw)
@@ -399,7 +409,7 @@ def build_carrier_system(
             "idu": {"cfm": 1200, "blwrpm": 500, "statpress": 0.2, "opstat": "idle"},
             "odu": {"opstat": "idle"},
             "utcTime": "2026-05-05T12:00:00+00:00",
-            "zones": [_status_zone_raw(zone_id=zone_id, name=zone_name)],
+            "zones": status_zones,
         }
     )
     energy = Energy(
