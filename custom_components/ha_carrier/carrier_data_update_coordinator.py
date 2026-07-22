@@ -21,8 +21,10 @@ from homeassistant.helpers.update_coordinator import (
 from .const import (
     DEFAULT_UPDATE_INTERVAL_MINUTES,
     DOMAIN,
+    FULL_RECONCILE_INTERVAL_MINUTES,
     MAX_REFRESH_ATTEMPTS,
     MAX_WRITE_ATTEMPTS,
+    POST_WRITE_INTERCEPT_WINDOW_MINUTES,
     REFRESH_RETRY_BASE_DELAY_SECONDS,
     REFRESH_RETRY_MAX_DELAY_SECONDS,
     RETRY_JITTER_FRACTION,
@@ -42,6 +44,9 @@ from .util import (
 )
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
+
+FULL_RECONCILE_INTERVAL = timedelta(minutes=FULL_RECONCILE_INTERVAL_MINUTES)
+POST_WRITE_INTERCEPT_WINDOW = timedelta(minutes=POST_WRITE_INTERCEPT_WINDOW_MINUTES)
 
 REFRESH_RETRY_POLICY = RetryPolicy(
     name="carrier-refresh",
@@ -96,6 +101,7 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator[list[dict[str, Any]]]):
         self.timestamp_all_data: datetime | None = None
         self.timestamp_websocket: datetime | None = None
         self.timestamp_energy: datetime | None = None
+        self._intercept_guards: dict[tuple[str, str | None], dict[str, Any]] = {}
 
         super().__init__(
             hass,
@@ -111,6 +117,158 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator[list[dict[str, Any]]]):
                 function=self.async_refresh,
             ),
         )
+
+    def _full_reconcile_due(self) -> bool:
+        """Return True when websocket-maintained data is overdue for a full fetch.
+
+        In steady state the poll cycle only refreshes energy and relies on
+        websocket deltas for status. A delta that is dropped or rebroadcast stale
+        leaves a status field frozen with no self-correction while the socket
+        stays connected. A periodic full refresh reconciles that state against an
+        authoritative pull.
+
+        Returns:
+            bool: True when the last full refresh is older than
+                ``FULL_RECONCILE_INTERVAL`` or has never completed.
+        """
+        if self.timestamp_all_data is None:
+            return True
+        return datetime.now(UTC) - self.timestamp_all_data >= FULL_RECONCILE_INTERVAL
+
+    def begin_post_write_intercept(
+        self, system_serial: str, zone_api_id: str | None = None
+    ) -> None:
+        """Open (or refresh) a post-write guard for the system (and zone) just written.
+
+        Carrier's cloud can replay the pre-write snapshot over the websocket
+        (a fast bounce within seconds, or a slow revert ~2 min later), so for a
+        window after each successful write the coordinator re-asserts any control
+        field (mode / set point) the cloud reverts *on the written target* back to
+        the intended value, while still publishing every other field, zone, and
+        system. See ``updated_callback``.
+
+        Guards are tracked independently, keyed by ``(system_serial, zone_api_id)``
+        with a system-level mode guard keyed by ``(system_serial, None)``. Each
+        guard carries its own expiry, so concurrent writes to different systems or
+        zones — a second thermostat, or this integration's own ``climate.turn_off``
+        auto-shutoff writing a different system — each keep their own protection for
+        their own five minutes, and a later write to one target never extends
+        another target's guard. A repeat write to the same target upserts it.
+
+        The system mode guard is re-stamped to the current mode on every write to
+        the system, so it never holds a stale mode; each zone guard freezes that
+        zone's intended set point and expires on its own clock.
+
+        Called by the writing entity from ``_write_local_state`` *after* it has
+        applied its optimistic local mutation, so the snapshot captures the intended
+        post-write control state rather than the pre-write state.
+
+        Args:
+            system_serial: Serial of the system the entity wrote.
+            zone_api_id: Zone written, or None for a system-level write (mode).
+        """
+        system = self.system(system_serial)
+        if system is None:
+            return
+        expires_at = datetime.now(UTC) + POST_WRITE_INTERCEPT_WINDOW
+        self._intercept_guards[(system_serial, None)] = {
+            "expires_at": expires_at,
+            "mode": system.config.mode,
+        }
+        if zone_api_id is not None:
+            zone_state = self._capture_zone_state(system, zone_api_id)
+            if zone_state is not None:
+                self._intercept_guards[(system_serial, zone_api_id)] = {
+                    "expires_at": expires_at,
+                    **zone_state,
+                }
+
+    def _capture_zone_state(self, system: System, zone_api_id: str) -> dict[str, Any] | None:
+        """Return the intended activity type and resolved set points for one zone.
+
+        Resolves the set point the same way the climate entity reads it back
+        (``config_zone.current_status_activity(status_zone) or status_zone``) so a
+        later re-assert compares like with like. Volatile status (temperature,
+        humidity, conditioning, blower) is deliberately excluded so a normal reading
+        update is never mistaken for a reverted write.
+        """
+        status_zone, config_zone = self._zone_pair(system, zone_api_id)
+        if status_zone is None or config_zone is None:
+            return None
+        source = config_zone.current_status_activity(status_zone) or status_zone
+        return {
+            "activity_type": status_zone.current_status_activity_type,
+            "heat_set_point": source.heat_set_point,
+            "cool_set_point": source.cool_set_point,
+        }
+
+    def _prune_intercept_guards(self) -> None:
+        """Drop post-write guards whose own protection period has elapsed."""
+        now = datetime.now(UTC)
+        expired = [
+            key for key, guard in self._intercept_guards.items() if now >= guard["expires_at"]
+        ]
+        for key in expired:
+            del self._intercept_guards[key]
+
+    def _in_post_write_intercept(self) -> bool:
+        """Return True while any written target still has a live post-write guard."""
+        self._prune_intercept_guards()
+        return bool(self._intercept_guards)
+
+    def _zone_pair(self, system: System, zone_api_id: str) -> tuple[Any, Any] | tuple[None, None]:
+        """Return the (status_zone, config_zone) pair for a zone id, or (None, None)."""
+        status_zone = next(
+            (zone for zone in system.status.zones if zone.api_id == zone_api_id), None
+        )
+        config_zone = next(
+            (zone for zone in system.config.zones if zone.api_id == zone_api_id), None
+        )
+        if status_zone is None or config_zone is None:
+            return None, None
+        return status_zone, config_zone
+
+    def _reassert_control(self) -> None:
+        """Restore reverted control fields on every written target with a live guard.
+
+        Runs after ``message_handler`` has applied a websocket message. Only each
+        guarded target — a written system's mode, or a written zone's set point — is
+        considered; every other system, zone, and non-control field is left exactly
+        as delivered, so a revert on a guarded target never drops — or reverts —
+        another target's update. Does not read the API. When Carrier finally accepts
+        a write its value matches the snapshot and nothing is rewritten; when a
+        guard expires that target is trusted again.
+        """
+        self._prune_intercept_guards()
+        for (system_serial, zone_api_id), guard in self._intercept_guards.items():
+            system = self.system(system_serial)
+            if system is None:
+                continue
+            if zone_api_id is None:
+                if system.config.mode != guard["mode"]:
+                    system.config.mode = guard["mode"]
+            else:
+                self._reassert_zone(system, zone_api_id, guard)
+
+    def _reassert_zone(self, system: System, zone_api_id: str, zone_state: dict[str, Any]) -> None:
+        """Restore one written zone's reverted activity type and set points."""
+        status_zone, config_zone = self._zone_pair(system, zone_api_id)
+        if status_zone is None or config_zone is None:
+            return
+        source = config_zone.current_status_activity(status_zone) or status_zone
+        if (
+            source.heat_set_point == zone_state["heat_set_point"]
+            and source.cool_set_point == zone_state["cool_set_point"]
+            and status_zone.current_status_activity_type == zone_state["activity_type"]
+        ):
+            return
+        status_zone.current_status_activity_type = zone_state["activity_type"]
+        status_zone.heat_set_point = zone_state["heat_set_point"]
+        status_zone.cool_set_point = zone_state["cool_set_point"]
+        reasserted = config_zone.find_activity(zone_state["activity_type"])
+        if reasserted is not None:
+            reasserted.heat_set_point = zone_state["heat_set_point"]
+            reasserted.cool_set_point = zone_state["cool_set_point"]
 
     async def _async_update_data(self) -> list[dict[str, Any]]:
         """Fetch Carrier data and translate escalated failures for Home Assistant.
@@ -133,6 +291,13 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator[list[dict[str, Any]]]):
             UpdateFailed: Raised when transient failures escalate or refresh
                 cannot complete successfully for other reasons.
         """
+        if not self.data_flush and self._full_reconcile_due():
+            _LOGGER.debug(
+                "forcing full refresh: last full reconcile was >= %s minutes ago",
+                FULL_RECONCILE_INTERVAL_MINUTES,
+            )
+            self.data_flush = True
+
         if self.data_flush:
             refresh_context = "full data refresh"
             refresh_operation = self._async_full_refresh
@@ -238,6 +403,9 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator[list[dict[str, Any]]]):
         self.timestamp_energy = self.timestamp_all_data
         self.data_flush = False
         self.update_interval = timedelta(minutes=DEFAULT_UPDATE_INTERVAL_MINUTES)
+        # A full read is authoritative; end every post-write guard so re-assert
+        # cannot fight freshly-read truth.
+        self._intercept_guards = {}
 
     async def _async_energy_refresh(self) -> None:
         """Refresh energy data while accounting for failures once per cycle.
@@ -481,4 +649,10 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator[list[dict[str, Any]]]):
                     "%s",
                     async_redact_data(self.mapped_system_data(system), TO_REDACT_MAPPED),
                 )
+        if self._in_post_write_intercept():
+            # Re-assert any control field (mode / set point) the cloud reverted
+            # back to the intended post-write value. The message is still
+            # published normally below, so every other field and zone in the
+            # same websocket message reaches Home Assistant.
+            self._reassert_control()
         self.async_update_listeners()
