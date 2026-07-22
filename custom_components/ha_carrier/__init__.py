@@ -169,6 +169,12 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntryCarrie
             f"{DOMAIN}_ws_{config_entry.entry_id}",
         )
         coordinator.websocket_task = websocket_task
+        coordinator.start_reconcile_schedule()
+        # Like cancel_websocket_task below, registering on unload covers the
+        # failed-setup path too (HA fires on_unload callbacks when setup fails
+        # later in this function); stop_reconcile_schedule is idempotent, so
+        # the second call from async_unload_entry on a normal unload is safe.
+        config_entry.async_on_unload(coordinator.stop_reconcile_schedule)
 
         def cancel_websocket_task() -> None:
             """Request websocket listener shutdown during entry unload.
@@ -267,6 +273,7 @@ async def async_unload_entry(hass: HomeAssistant, config_entry: ConfigEntryCarri
         bool: True when all platforms were unloaded cleanly.
     """
     _LOGGER.debug("unload entry")
+    config_entry.runtime_data.stop_reconcile_schedule()
     websocket_task = config_entry.runtime_data.websocket_task
 
     if websocket_task is not None:
