@@ -143,7 +143,7 @@ def _load_script(module_name: str, script_path: Path) -> ModuleType:
 @pytest.mark.parametrize(
     "needle",
     [
-        "actions/setup-python@v6",
+        "actions/setup-python@v7",
         "python-version: '3.14'",
         "Automated update of carrier-api dependency pins.",
         "custom_components/ha_carrier/manifest.json",
