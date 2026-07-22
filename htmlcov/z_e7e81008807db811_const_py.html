@@ -55,8 +55,8 @@
             </div>
         </aside>
         <h2>
-            <span class="text">31 statements &nbsp;</span>
-            <button type="button" class="run button_toggle_run" value="run" data-shortcut="r" title="Toggle lines run">31<span class="text"> run</span></button>
+            <span class="text">33 statements &nbsp;</span>
+            <button type="button" class="run button_toggle_run" value="run" data-shortcut="r" title="Toggle lines run">33<span class="text"> run</span></button>
             <button type="button" class="mis show_mis button_toggle_mis" value="mis" data-shortcut="m" title="Toggle lines missing">0<span class="text"> missing</span></button>
             <button type="button" class="exc show_exc button_toggle_exc" value="exc" data-shortcut="x" title="Toggle lines excluded">0<span class="text"> excluded</span></button>
             <button type="button" class="par run show_par button_toggle_par" value="par" data-shortcut="p" title="Toggle lines partially run">0<span class="text"> partial</span></button>
@@ -67,7 +67,7 @@
             <a id="nextFileLink" class="nav" href="z_e7e81008807db811_diagnostics_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.14.3">coverage.py v7.14.3</a>,
-            created at 2026-07-22 02:09 +0000
+            created at 2026-07-22 02:12 +0000
         </p>
         <aside class="hidden">
             <button type="button" class="button_next_chunk" data-shortcut="j"></button>
@@ -128,25 +128,38 @@
     <p class="run"><span class="n"><a id="t44" href="#t44">44</a></span><span class="t"><span class="nam">HEAT_SOURCE_SYSTEM_LABEL</span> <span class="op">=</span> <span class="str">"system in control"</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t45" href="#t45">45</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t46" href="#t46">46</a></span><span class="t"><span class="nam">DEFAULT_UPDATE_INTERVAL_MINUTES</span><span class="op">:</span> <span class="nam">int</span> <span class="op">=</span> <span class="num">30</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t47" href="#t47">47</a></span><span class="t"><span class="nam">UNAUTHORIZED_RETRY_THRESHOLD</span><span class="op">:</span> <span class="nam">int</span> <span class="op">=</span> <span class="num">3</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t48" href="#t48">48</a></span><span class="t"><span class="nam">MAX_WRITE_ATTEMPTS</span><span class="op">:</span> <span class="nam">int</span> <span class="op">=</span> <span class="num">2</span>&nbsp;</span><span class="r"></span></p>
-    <p class="pln"><span class="n"><a id="t49" href="#t49">49</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t50" href="#t50">50</a></span><span class="t"><span class="nam">WEBSOCKET_RETRY_INITIAL_DELAY_SECONDS</span><span class="op">:</span> <span class="nam">int</span> <span class="op">=</span> <span class="num">1</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t51" href="#t51">51</a></span><span class="t"><span class="nam">WEBSOCKET_RETRY_MAX_DELAY_SECONDS</span><span class="op">:</span> <span class="nam">int</span> <span class="op">=</span> <span class="num">30</span>&nbsp;</span><span class="r"></span></p>
-    <p class="pln"><span class="n"><a id="t52" href="#t52">52</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
-    <p class="pln"><span class="n"><a id="t53" href="#t53">53</a></span><span class="t"><span class="com"># Resiliency</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t54" href="#t54">54</a></span><span class="t"><span class="nam">TRANSIENT_FAILURE_THRESHOLD</span><span class="op">:</span> <span class="nam">int</span> <span class="op">=</span> <span class="num">5</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t55" href="#t55">55</a></span><span class="t"><span class="nam">RETRY_JITTER_FRACTION</span><span class="op">:</span> <span class="nam">float</span> <span class="op">=</span> <span class="num">0.25</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t56" href="#t56">56</a></span><span class="t"><span class="nam">WRITE_RETRY_BASE_DELAY_SECONDS</span><span class="op">:</span> <span class="nam">float</span> <span class="op">=</span> <span class="num">1.0</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t57" href="#t57">57</a></span><span class="t"><span class="nam">WRITE_RETRY_MAX_DELAY_SECONDS</span><span class="op">:</span> <span class="nam">float</span> <span class="op">=</span> <span class="num">4.0</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t58" href="#t58">58</a></span><span class="t"><span class="nam">REFRESH_RETRY_BASE_DELAY_SECONDS</span><span class="op">:</span> <span class="nam">float</span> <span class="op">=</span> <span class="num">1.0</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t59" href="#t59">59</a></span><span class="t"><span class="nam">REFRESH_RETRY_MAX_DELAY_SECONDS</span><span class="op">:</span> <span class="nam">float</span> <span class="op">=</span> <span class="num">4.0</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t60" href="#t60">60</a></span><span class="t"><span class="nam">MAX_REFRESH_ATTEMPTS</span><span class="op">:</span> <span class="nam">int</span> <span class="op">=</span> <span class="num">2</span>&nbsp;</span><span class="r"></span></p>
-    <p class="pln"><span class="n"><a id="t61" href="#t61">61</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
-    <p class="pln"><span class="n"><a id="t62" href="#t62">62</a></span><span class="t"><span class="com"># Config flow error keys</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t63" href="#t63">63</a></span><span class="t"><span class="nam">ERROR_AUTH</span><span class="op">:</span> <span class="nam">str</span> <span class="op">=</span> <span class="str">"invalid_auth"</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t64" href="#t64">64</a></span><span class="t"><span class="nam">ERROR_CANNOT_CONNECT</span><span class="op">:</span> <span class="nam">str</span> <span class="op">=</span> <span class="str">"cannot_connect"</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t65" href="#t65">65</a></span><span class="t"><span class="nam">ERROR_UNKNOWN</span><span class="op">:</span> <span class="nam">str</span> <span class="op">=</span> <span class="str">"unknown"</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t47" href="#t47">47</a></span><span class="t"><span class="com"># Force a full refresh at least this often even while the websocket stays</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t48" href="#t48">48</a></span><span class="t"><span class="com"># connected, so websocket-maintained status that silently goes stale (a dropped</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t49" href="#t49">49</a></span><span class="t"><span class="com"># or rebroadcast partial delta) is reconciled against an authoritative full pull.</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t50" href="#t50">50</a></span><span class="t"><span class="com"># Kept a multiple of the poll interval so intermediate polls stay lightweight</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t51" href="#t51">51</a></span><span class="t"><span class="com"># (energy-only) and only every Nth poll pays for a full pull.</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t52" href="#t52">52</a></span><span class="t"><span class="nam">FULL_RECONCILE_INTERVAL_MINUTES</span><span class="op">:</span> <span class="nam">int</span> <span class="op">=</span> <span class="nam">DEFAULT_UPDATE_INTERVAL_MINUTES</span> <span class="op">*</span> <span class="num">4</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t53" href="#t53">53</a></span><span class="t"><span class="com"># After an HA write, Carrier's cloud can replay the pre-write snapshot over the</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t54" href="#t54">54</a></span><span class="t"><span class="com"># websocket (a fast bounce within seconds, or a slow revert ~2 min later). For</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t55" href="#t55">55</a></span><span class="t"><span class="com"># this window after a write the coordinator re-asserts any control field (mode /</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t56" href="#t56">56</a></span><span class="t"><span class="com"># set point) the cloud reverts back to the intended value, so HA never shows the</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t57" href="#t57">57</a></span><span class="t"><span class="com"># stale value. The stale replay is forward-timestamped, so it cannot be told</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t58" href="#t58">58</a></span><span class="t"><span class="com"># apart by content &#8212; the window is the only reliable discriminator.</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t59" href="#t59">59</a></span><span class="t"><span class="nam">POST_WRITE_INTERCEPT_WINDOW_MINUTES</span><span class="op">:</span> <span class="nam">int</span> <span class="op">=</span> <span class="num">5</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t60" href="#t60">60</a></span><span class="t"><span class="nam">UNAUTHORIZED_RETRY_THRESHOLD</span><span class="op">:</span> <span class="nam">int</span> <span class="op">=</span> <span class="num">3</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t61" href="#t61">61</a></span><span class="t"><span class="nam">MAX_WRITE_ATTEMPTS</span><span class="op">:</span> <span class="nam">int</span> <span class="op">=</span> <span class="num">2</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t62" href="#t62">62</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t63" href="#t63">63</a></span><span class="t"><span class="nam">WEBSOCKET_RETRY_INITIAL_DELAY_SECONDS</span><span class="op">:</span> <span class="nam">int</span> <span class="op">=</span> <span class="num">1</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t64" href="#t64">64</a></span><span class="t"><span class="nam">WEBSOCKET_RETRY_MAX_DELAY_SECONDS</span><span class="op">:</span> <span class="nam">int</span> <span class="op">=</span> <span class="num">30</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t65" href="#t65">65</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t66" href="#t66">66</a></span><span class="t"><span class="com"># Resiliency</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t67" href="#t67">67</a></span><span class="t"><span class="nam">TRANSIENT_FAILURE_THRESHOLD</span><span class="op">:</span> <span class="nam">int</span> <span class="op">=</span> <span class="num">5</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t68" href="#t68">68</a></span><span class="t"><span class="nam">RETRY_JITTER_FRACTION</span><span class="op">:</span> <span class="nam">float</span> <span class="op">=</span> <span class="num">0.25</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t69" href="#t69">69</a></span><span class="t"><span class="nam">WRITE_RETRY_BASE_DELAY_SECONDS</span><span class="op">:</span> <span class="nam">float</span> <span class="op">=</span> <span class="num">1.0</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t70" href="#t70">70</a></span><span class="t"><span class="nam">WRITE_RETRY_MAX_DELAY_SECONDS</span><span class="op">:</span> <span class="nam">float</span> <span class="op">=</span> <span class="num">4.0</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t71" href="#t71">71</a></span><span class="t"><span class="nam">REFRESH_RETRY_BASE_DELAY_SECONDS</span><span class="op">:</span> <span class="nam">float</span> <span class="op">=</span> <span class="num">1.0</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t72" href="#t72">72</a></span><span class="t"><span class="nam">REFRESH_RETRY_MAX_DELAY_SECONDS</span><span class="op">:</span> <span class="nam">float</span> <span class="op">=</span> <span class="num">4.0</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t73" href="#t73">73</a></span><span class="t"><span class="nam">MAX_REFRESH_ATTEMPTS</span><span class="op">:</span> <span class="nam">int</span> <span class="op">=</span> <span class="num">2</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t74" href="#t74">74</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t75" href="#t75">75</a></span><span class="t"><span class="com"># Config flow error keys</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t76" href="#t76">76</a></span><span class="t"><span class="nam">ERROR_AUTH</span><span class="op">:</span> <span class="nam">str</span> <span class="op">=</span> <span class="str">"invalid_auth"</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t77" href="#t77">77</a></span><span class="t"><span class="nam">ERROR_CANNOT_CONNECT</span><span class="op">:</span> <span class="nam">str</span> <span class="op">=</span> <span class="str">"cannot_connect"</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t78" href="#t78">78</a></span><span class="t"><span class="nam">ERROR_UNKNOWN</span><span class="op">:</span> <span class="nam">str</span> <span class="op">=</span> <span class="str">"unknown"</span>&nbsp;</span><span class="r"></span></p>
 </main>
 <footer>
     <div class="content">
@@ -156,7 +169,7 @@
             <a class="nav" href="z_e7e81008807db811_diagnostics_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.14.3">coverage.py v7.14.3</a>,
-            created at 2026-07-22 02:09 +0000
+            created at 2026-07-22 02:12 +0000
         </p>
     </div>
 </footer>
