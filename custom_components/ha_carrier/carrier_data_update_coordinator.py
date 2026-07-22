@@ -7,13 +7,11 @@ import functools
 import logging
 from typing import Any, NoReturn
 
-from aiohttp import ClientError
 from carrier_api import ApiConnectionGraphql, CarrierApiError, Energy, EntryLevelSystem, System
 from carrier_api.api_websocket_data_updater import WebsocketDataUpdater
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed, HomeAssistantError
 from homeassistant.helpers.debounce import Debouncer
-from homeassistant.helpers.event import async_call_later, async_track_time_interval
 from homeassistant.helpers.update_coordinator import (
     REQUEST_REFRESH_DEFAULT_COOLDOWN,
     DataUpdateCoordinator,
@@ -27,8 +25,6 @@ from .const import (
     MAX_REFRESH_ATTEMPTS,
     MAX_WRITE_ATTEMPTS,
     POST_WRITE_INTERCEPT_WINDOW_MINUTES,
-    RECONCILE_BACKGROUND_INTERVAL_SECONDS,
-    RECONCILE_BURST_DELAYS_SECONDS,
     REFRESH_RETRY_BASE_DELAY_SECONDS,
     REFRESH_RETRY_MAX_DELAY_SECONDS,
     RETRY_JITTER_FRACTION,
@@ -43,7 +39,6 @@ from .resiliency import ResiliencyState, RetryPolicy, async_call_with_retry
 from .util import (
     RECOVERABLE_REFRESH_EXCEPTIONS,
     RECOVERABLE_WRITE_COMMUNICATION_EXCEPTIONS,
-    TRANSIENT_TRANSPORT_EXCEPTIONS,
     async_redact_data,
     is_unauthorized_error,
 )
@@ -74,16 +69,6 @@ WRITE_RETRY_POLICY = RetryPolicy(
 ENERGY_REFRESH_EXCEPTIONS: tuple[type[BaseException], ...] = (
     *RECOVERABLE_REFRESH_EXCEPTIONS,
     CarrierUnauthorizedError,
-)
-
-# Failures a reconcile send may hit: raw websocket transport errors from
-# aiohttp plus the carrier_api transient wrappers. A reconcile is a best-effort
-# nudge, so these are logged and swallowed — the next scheduled send retries.
-RECONCILE_SEND_EXCEPTIONS: tuple[type[BaseException], ...] = (
-    ClientError,
-    TimeoutError,
-    OSError,
-    *TRANSIENT_TRANSPORT_EXCEPTIONS,
 )
 
 
@@ -117,9 +102,6 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator[list[dict[str, Any]]]):
         self.timestamp_websocket: datetime | None = None
         self.timestamp_energy: datetime | None = None
         self._intercept_guards: dict[tuple[str, str | None], dict[str, Any]] = {}
-        self._reconcile_tick_unsub: Callable[[], None] | None = None
-        self._reconcile_burst_unsub: Callable[[], None] | None = None
-        self._reconcile_burst_index: int = 0
 
         super().__init__(
             hass,
@@ -135,96 +117,6 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator[list[dict[str, Any]]]):
                 function=self.async_refresh,
             ),
         )
-
-    def start_reconcile_schedule(self) -> None:
-        """Start the periodic websocket reconcile tick. Idempotent.
-
-        Carrier's realtime push stream is at-most-once: a dropped delta, or a
-        stale post-write snapshot delivered after the genuine transition it
-        predates, leaves a status field frozen with nothing to correct it while
-        the compressor runs steadily (the cloud only pushes edges). The stream
-        carries no sequence numbers and stale snapshots are re-stamped with
-        fresh timestamps, so a wrong value cannot be detected — only outlived.
-        The tick sends ``{"action": "reconcile"}`` on the open socket every
-        ``RECONCILE_BACKGROUND_INTERVAL_SECONDS`` so the cloud re-pushes current
-        state, bounding how long any silently stale field can survive.
-        """
-        if self._reconcile_tick_unsub is None:
-            self._reconcile_tick_unsub = async_track_time_interval(
-                self.hass,
-                self._async_reconcile_tick,
-                timedelta(seconds=RECONCILE_BACKGROUND_INTERVAL_SECONDS),
-            )
-
-    def stop_reconcile_schedule(self) -> None:
-        """Stop the periodic tick and cancel any pending burst step."""
-        if self._reconcile_tick_unsub is not None:
-            self._reconcile_tick_unsub()
-            self._reconcile_tick_unsub = None
-        self._cancel_reconcile_burst()
-
-    def _cancel_reconcile_burst(self) -> None:
-        """Cancel the pending burst step, if one is scheduled."""
-        if self._reconcile_burst_unsub is not None:
-            self._reconcile_burst_unsub()
-            self._reconcile_burst_unsub = None
-
-    def schedule_reconcile_burst(self) -> None:
-        """(Re)start the post-write reconcile burst.
-
-        Right after a write the cloud's read model lags the physical unit, so
-        its pushes — including the post-write snapshot the API layer already
-        requests — can restate pre-write status that overwrites a genuine
-        transition (for example a zone stuck ``idle`` while the compressor
-        runs). The burst re-asks on ``RECONCILE_BURST_DELAYS_SECONDS`` backoff:
-        early steps converge the UI quickly when the cloud is fast, the later
-        steps land after the cloud's measured worst-case lag and after
-        ``POST_WRITE_INTERCEPT_WINDOW_MINUTES`` expires, re-pulling truth once
-        the post-write guard stops re-asserting. A newer write restarts the
-        burst; its race window supersedes the old one.
-        """
-        self._cancel_reconcile_burst()
-        self._reconcile_burst_index = 0
-        self._schedule_next_burst_step()
-
-    def _schedule_next_burst_step(self) -> None:
-        """Schedule the burst step at the current backoff delay."""
-        delay = RECONCILE_BURST_DELAYS_SECONDS[self._reconcile_burst_index]
-        self._reconcile_burst_unsub = async_call_later(self.hass, delay, self._async_burst_step)
-
-    async def _async_burst_step(self, _now: datetime) -> None:
-        """Send one burst reconcile and schedule the next step, if any.
-
-        Only ``RECONCILE_SEND_EXCEPTIONS`` are swallowed by the send. Anything
-        else is a genuine bug and deliberately propagates, abandoning the rest
-        of this burst; the periodic tick still recovers state on its cadence.
-        """
-        self._reconcile_burst_unsub = None
-        await self._async_send_reconcile()
-        self._reconcile_burst_index += 1
-        if self._reconcile_burst_index < len(RECONCILE_BURST_DELAYS_SECONDS):
-            self._schedule_next_burst_step()
-
-    async def _async_reconcile_tick(self, _now: datetime) -> None:
-        """Send the periodic background reconcile."""
-        await self._async_send_reconcile()
-
-    async def _async_send_reconcile(self) -> None:
-        """Ask Carrier to re-push current state over the websocket.
-
-        Best-effort: skipped quietly when the websocket client does not exist
-        yet, and transport failures are logged at debug and swallowed — the
-        next scheduled send is the retry. A dead socket is already handled by
-        the websocket task's own full-refresh recovery path.
-        """
-        api_websocket = self.api_connection.api_websocket
-        if api_websocket is None:
-            _LOGGER.debug("reconcile skipped: websocket client not initialized")
-            return
-        try:
-            await api_websocket.send_reconcile()
-        except RECONCILE_SEND_EXCEPTIONS as error:
-            _LOGGER.debug("reconcile send failed; next scheduled send retries: %s", error)
 
     def _full_reconcile_due(self) -> bool:
         """Return True when websocket-maintained data is overdue for a full fetch.
@@ -652,7 +544,7 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator[list[dict[str, Any]]]):
                 exhausted for retryable failures or for non-retryable failures.
         """
         try:
-            result = await async_call_with_retry(
+            return await async_call_with_retry(
                 request,
                 policy=WRITE_RETRY_POLICY,
                 state=self.resiliency,
@@ -678,10 +570,6 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator[list[dict[str, Any]]]):
             raise HomeAssistantError(
                 "Carrier rejected the request. Check the requested setting and try again."
             ) from error
-        # Successful write: the cloud's read model now lags the unit, so start
-        # the reconcile burst to converge websocket-maintained status quickly.
-        self.schedule_reconcile_burst()
-        return result
 
     def system(self, system_serial: str) -> System | None:
         """Return the tracked system matching a Carrier serial.
