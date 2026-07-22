@@ -57,6 +57,22 @@ FULL_RECONCILE_INTERVAL_MINUTES: int = DEFAULT_UPDATE_INTERVAL_MINUTES * 4
 # stale value. The stale replay is forward-timestamped, so it cannot be told
 # apart by content — the window is the only reliable discriminator.
 POST_WRITE_INTERCEPT_WINDOW_MINUTES: int = 5
+# Carrier's realtime service accepts an {"action": "reconcile"} frame that makes
+# the cloud re-push its current state over the websocket. The push stream is
+# at-most-once with no sequence numbers, and stale snapshots are re-stamped with
+# fresh timestamps, so a lost or clobbered delta cannot be detected — it can only
+# be outlived. Scheduled reconciles bound how long any stale field survives:
+# - A background tick re-asks on a fixed interval so a lost push for a
+#   thermostat-initiated transition (zone staging, cycle edges) self-heals.
+# - After every write, a burst of reconciles on exponential backoff converges
+#   the display quickly while the cloud's own read model is still catching up
+#   (measured lag up to ~2 minutes). The last step (cumulative ~8.5 minutes)
+#   intentionally lands past POST_WRITE_INTERCEPT_WINDOW_MINUTES so truth is
+#   re-pulled after the post-write guard stops re-asserting.
+# Each reconcile is one small frame on the open socket (the client already sends
+# a keepalive every 55 seconds); no REST/GraphQL calls are involved.
+RECONCILE_BACKGROUND_INTERVAL_SECONDS: int = 300
+RECONCILE_BURST_DELAYS_SECONDS: tuple[int, ...] = (2, 4, 8, 16, 32, 64, 128, 256)
 UNAUTHORIZED_RETRY_THRESHOLD: int = 3
 MAX_WRITE_ATTEMPTS: int = 2
 
