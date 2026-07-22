@@ -33,14 +33,6 @@ class FakeCarrierWebsocket:
         self.callbacks: list[Callable[[str], Any]] = []
         self.listener_errors: list[BaseException] = []
         self.listener_calls = 0
-        self.reconcile_calls = 0
-        self.reconcile_errors: list[BaseException] = []
-
-    async def send_reconcile(self) -> None:
-        """Record a reconcile request, raising a queued error when present."""
-        if self.reconcile_errors:
-            raise self.reconcile_errors.pop(0)
-        self.reconcile_calls += 1
 
     def callback_add(self, callback: Callable[[str], Any]) -> None:
         """Store a websocket callback registered by the coordinator.
