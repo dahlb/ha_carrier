@@ -104,7 +104,7 @@ def fetch_latest_version() -> str:
         ValueError: If PyPI does not return a usable version.
     """
     try:
-        with urlopen(PYPI_URL, timeout=30) as response:  # noqa: S310
+        with urlopen(PYPI_URL, timeout=30) as response:
             payload = json.load(response)
         return _select_latest_stable_version(payload)
     except (HTTPError, URLError) as err:
