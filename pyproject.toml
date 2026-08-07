@@ -82,6 +82,7 @@ ignore = [
     "ANN003",   # missing-type-kwargs
     "ANN401",   # any-type
     "ARG",      # flake8-unused-arguments
+    "CPY001",	# flake8-copyright
     "EM",       # flake8-errmsg
     "ERA",      # eradicate
     "FBT",      # flake8-boolean-trap
