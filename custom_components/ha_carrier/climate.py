@@ -88,10 +88,10 @@ async def async_setup_entry(
     async_add_entities(entities)
     async_add_entities(build_entry_level_entities(coordinator))
 
-    # Expose a no-hold "edit the current activity's comfort set point" service.
+    # PATCH (hava): expose a no-hold "edit the current activity's comfort set point" service.
     # Stock set_temperature always forces a MANUAL hold; this edits whatever activity the zone
     # is currently following, so an independent human hold still wins and an HA outage leaves
-    # the thermostat on its own schedule at the last value.
+    # the thermostat on its own schedule at the last value. See ha/vendor-patches/ha_carrier.
     platform = entity_platform.async_get_current_platform()
     platform.async_register_entity_service(
         "set_activity_setpoint",
@@ -219,6 +219,10 @@ class CarrierClimate(CarrierZoneEntity, ClimateEntity):
             self._attr_target_temperature_step = PRECISION_HALVES
         else:
             self._attr_target_temperature_step = PRECISION_WHOLE
+        # union range for both units (45°F=7°C, 95°F=35°C) — covers
+        # 7–35°C and 45–95°F so the service selector and entity clamp match
+        self._attr_min_temp = 7
+        self._attr_max_temp = 95
         # Read the target set points from the resolved config activity rather
         # than the status zone. The status zone's clsp/htsp is only refreshed by
         # the periodic full poll — the realtime websocket keeps room temperature
@@ -537,13 +541,13 @@ class Thermostat(CarrierClimate):
         self._write_local_state()
 
     async def async_set_activity_setpoint(self, **kwargs: Any) -> None:
-        """Edit the CURRENT activity's comfort set point(s) in place — NO hold.
+        """PATCH (hava): edit the CURRENT activity's comfort set point(s) in place — NO hold.
 
         Unlike async_set_temperature (which forces a MANUAL hold and suspends the schedule), this
         edits the set point of whatever activity the zone is currently following, via the
         carrier_api zone-activity mutation. So a human can still place an independent hold that
         takes precedence, and if HA is offline the thermostat keeps running its own schedule at
-        the last value written.
+        the last value written. Used by the upstairs zone-averaging automations.
 
         Raises:
             HomeAssistantError: when the current activity or a required set point can't be resolved.
