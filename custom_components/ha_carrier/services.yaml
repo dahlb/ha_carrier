@@ -1,0 +1,40 @@
+set_activity_setpoint:
+  name: Set activity setpoint (no hold)
+  description: >-
+    Edit the CURRENT activity's comfort set point in place WITHOUT creating a manual hold.
+    Unlike the built-in temperature set (which forces a hold and suspends the schedule), this
+    edits whatever activity the zone is currently following, so a human can still place an
+    independent hold that takes precedence, and an HA outage leaves the thermostat on its own
+    schedule at the last value written.
+  target:
+    entity:
+      integration: ha_carrier
+      domain: climate
+  fields:
+    temperature:
+      name: Temperature
+      description: Single set point, for heat or cool mode.
+      example: 74
+      selector:
+        number:
+          min: 7
+          max: 95
+          step: 0.5
+    target_temp_low:
+      name: Heat set point
+      description: Heat set point, for heat_cool (auto) mode.
+      example: 68
+      selector:
+        number:
+          min: 7
+          max: 95
+          step: 0.5
+    target_temp_high:
+      name: Cool set point
+      description: Cool set point, for heat_cool (auto) mode.
+      example: 74
+      selector:
+        number:
+          min: 7
+          max: 95
+          step: 0.5
