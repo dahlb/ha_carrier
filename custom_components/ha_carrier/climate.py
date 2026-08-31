@@ -575,15 +575,6 @@ class Thermostat(CarrierClimate):
                 "'target_temp_low' and 'target_temp_high' in heat_cool mode"
             )
 
-        variables = {
-            "input": {
-                "serial": self.carrier_system.profile.serial,
-                "zoneId": self._required_zone_api_id,
-                "activityType": current.type.value,  # the CURRENT activity, not "manual"
-                "clsp": str(cool_set_point),
-                "htsp": str(heat_set_point),
-            }
-        }
         _LOGGER.debug(
             "set_activity_setpoint; activity=%s heat=%s cool=%s",
             current.type.value,
@@ -593,8 +584,12 @@ class Thermostat(CarrierClimate):
         await self.coordinator.async_perform_api_call(
             "set activity setpoint",
             partial(
-                self.coordinator.api_connection._update_infinity_zone_activity,
-                variables=variables,
+                self.coordinator.api_connection.set_config_activity,
+                system_serial=self.carrier_system.profile.serial,
+                zone_id=self._required_zone_api_id,
+                activity_type=current.type,
+                heat_set_point=str(heat_set_point),
+                cool_set_point=str(cool_set_point),
             ),
         )
         # reflect promptly; deliberately do NOT touch any hold_* / current_status_activity_type
