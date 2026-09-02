@@ -17,6 +17,7 @@ import pytest
 
 from custom_components.ha_carrier.util import (
     async_redact_data,
+    is_retryable_error,
     is_transient_transport_error,
     is_unauthorized_error,
 )
@@ -66,6 +67,26 @@ def test_exception_classifiers_inspect_context_when_cause_exists(
 def test_graphql_errors_are_not_classified_as_transient_transport() -> None:
     """Keep Carrier GraphQL rejections out of transport retry classification."""
     assert is_transient_transport_error(CarrierApiGraphqlError("rejected")) is False
+
+
+def test_graphql_errors_are_classified_as_retryable() -> None:
+    """Retry a rejected GraphQL operation without calling it a transport error."""
+    error = CarrierApiGraphqlError("rejected")
+
+    assert is_retryable_error(error) is True
+    assert is_transient_transport_error(error) is False
+
+
+def test_transport_errors_remain_retryable() -> None:
+    """Keep every transport error inside the widened retry classification."""
+    assert is_retryable_error(CarrierApiConnectionError("boom")) is True
+    assert is_retryable_error(CarrierApiTokenRefreshError("boom")) is True
+    assert is_retryable_error(CarrierApiWebsocketError("boom")) is True
+
+
+def test_auth_errors_are_not_retryable() -> None:
+    """Leave 401 handling to the unauthorized branch of the retry helper."""
+    assert is_retryable_error(CarrierApiAuthError("denied")) is False
 
 
 def test_async_redact_data_recursively_redacts_mappings_and_lists() -> None:

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 
-from carrier_api import CarrierApiAuthError, CarrierApiConnectionError
+from carrier_api import CarrierApiAuthError, CarrierApiConnectionError, CarrierApiGraphqlError
 import pytest
 
 from custom_components.ha_carrier.exceptions import CarrierUnauthorizedError
@@ -56,6 +56,62 @@ async def test_retry_helper_retries_transient_failure_then_resets_state(
     assert result == "ok"
     assert attempts == 2
     assert state.consecutive_transient == 0
+
+
+@pytest.mark.asyncio
+async def test_retry_helper_retries_graphql_failure_then_succeeds(
+    retry_policy: RetryPolicy,
+) -> None:
+    """Retry a rejected GraphQL operation instead of failing the whole cycle."""
+    state = ResiliencyState(unauthorized_threshold=3, transient_threshold=3)
+    attempts = 0
+
+    async def operation() -> str:
+        """Fail once with a GraphQL rejection, then succeed."""
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            raise CarrierApiGraphqlError("Carrier GraphQL operation failed: getInfinitySystems")
+        return "ok"
+
+    result = await async_call_with_retry(
+        operation,
+        policy=retry_policy,
+        state=state,
+        operation_name="full data refresh",
+        logger=logging.getLogger(__name__),
+    )
+
+    assert result == "ok"
+    assert attempts == 2
+    assert state.consecutive_transient == 0
+
+
+@pytest.mark.asyncio
+async def test_retry_helper_escalates_repeated_graphql_failures(
+    retry_policy: RetryPolicy,
+) -> None:
+    """Surface a sustained GraphQL outage instead of retrying it forever."""
+    state = ResiliencyState(unauthorized_threshold=3, transient_threshold=2)
+    attempts = 0
+
+    async def operation() -> str:
+        """Always fail with a GraphQL rejection."""
+        nonlocal attempts
+        attempts += 1
+        raise CarrierApiGraphqlError("Carrier GraphQL operation failed: getInfinitySystems")
+
+    with pytest.raises(CarrierApiGraphqlError):
+        await async_call_with_retry(
+            operation,
+            policy=retry_policy,
+            state=state,
+            operation_name="full data refresh",
+            logger=logging.getLogger(__name__),
+        )
+
+    assert attempts == 2
+    assert state.consecutive_transient == 2
 
 
 @pytest.mark.asyncio

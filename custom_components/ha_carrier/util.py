@@ -11,6 +11,7 @@ from carrier_api import (
     CarrierApiAuthError,
     CarrierApiConnectionError,
     CarrierApiError,
+    CarrierApiGraphqlError,
     CarrierApiTokenRefreshError,
     CarrierApiWebsocketError,
 )
@@ -28,6 +29,18 @@ TRANSIENT_TRANSPORT_EXCEPTIONS: tuple[type[BaseException], ...] = (
     CarrierApiConnectionError,
     CarrierApiTokenRefreshError,
     CarrierApiWebsocketError,
+)
+
+# Application-layer Carrier errors worth retrying before the caller gives up.
+# A GraphQL operation failure is usually a short-lived server-side rejection
+# rather than a permanent contract break, so it deserves the same bounded retry
+# as a transport failure even though it is not a transport error.
+TRANSIENT_API_EXCEPTIONS: tuple[type[BaseException], ...] = (CarrierApiGraphqlError,)
+
+# Every failure the shared retry helper should retry with backoff.
+RETRYABLE_EXCEPTIONS: tuple[type[BaseException], ...] = (
+    *TRANSIENT_TRANSPORT_EXCEPTIONS,
+    *TRANSIENT_API_EXCEPTIONS,
 )
 
 # Exceptions a coordinator refresh may recover from on a later interval.
@@ -175,6 +188,25 @@ def is_unauthorized_error(error: BaseException) -> bool:
         if isinstance(current, CarrierUnauthorizedError | CarrierApiAuthError):
             return True
     return False
+
+
+def is_retryable_error(error: BaseException) -> bool:
+    """Return True if any exception in the chain should be retried with backoff.
+
+    Covers transport failures and the application-layer Carrier errors that are
+    usually short-lived. `is_transient_transport_error` remains the narrower
+    transport-only test for callers that must distinguish a connection problem
+    from a rejected operation.
+
+    Args:
+        error: Exception raised by the Carrier client or transport.
+
+    Returns:
+        bool: True when the error or one of its causes is worth retrying.
+    """
+    return any(
+        isinstance(current, RETRYABLE_EXCEPTIONS) for current in _iter_exception_chain(error)
+    )
 
 
 def is_transient_transport_error(error: BaseException) -> bool:
