@@ -222,7 +222,7 @@ class CarrierClimate(CarrierZoneEntity, ClimateEntity):
         # union range for both units (45°F=7°C, 95°F=35°C) — covers
         # 7–35°C and 45–95°F so the service selector and entity clamp match
         self._attr_min_temp = 7
-        self._attr_max_temp = 95
+        self._attr_max_temp = 35
         # Read the target set points from the resolved config activity rather
         # than the status zone. The status zone's clsp/htsp is only refreshed by
         # the periodic full poll — the realtime websocket keeps room temperature
