@@ -24,8 +24,26 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Update prek hooks
-        id: prek-autoupdate
-        uses: Snuffy2/prek-autoupdate@v2
+      - name: Install prek
+        uses: taiki-e/install-action@v2
         with:
-          update-day: "5"
+          tool: prek
+
+      - name: Run prek autoupdate
+        run: prek autoupdate
+
+      - name: Create Pull Request
+        uses: peter-evans/create-pull-request@v8
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: "chore: auto-update prek hooks"
+          title: "chore: auto-update prek hooks"
+          body: |
+            Bumps hook versions in `prek.toml` to their latest releases using `prek autoupdate`.
+          branch: prek-autoupdate
+          delete-branch: true
+          add-paths: |
+            prek.toml
+          labels: |
+            dependencies
+            automated-pr
