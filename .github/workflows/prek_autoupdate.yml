@@ -33,6 +33,7 @@ jobs:
         run: prek autoupdate
 
       - name: Create Pull Request
+        id: cpr
         uses: peter-evans/create-pull-request@v8
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
@@ -47,7 +48,9 @@ jobs:
           labels: |
             dependencies
             automated-pr
+
       - name: Enable Pull Request Automerge
-        run: gh pr merge --merge --auto "1"
+        run: gh pr merge --auto --squash "$PR_NUMBER"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ steps.cpr.outputs.pull-request-number }}
