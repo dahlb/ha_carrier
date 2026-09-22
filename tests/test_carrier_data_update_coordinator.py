@@ -871,10 +871,29 @@ async def test_updated_callback_records_timestamp_and_notifies_listeners() -> No
         notified = True
 
     with patch.object(coordinator, "async_update_listeners", fake_update_listeners):
-        await coordinator.updated_callback("{}")
+        await coordinator.updated_callback(
+            '{"deviceId": "ABC123", "payload": {"messageType": "InfinityStatus", "oat": 70}}'
+        )
 
     assert coordinator.timestamp_websocket is not None
     assert notified is True
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("message", ["{}", "[]", "not json", '{"payload": {"oat": 70}}'])
+async def test_updated_callback_does_not_timestamp_messages_without_a_device(
+    message: str,
+) -> None:
+    """Leave the websocket timestamp alone for keepalive replies and other non-device messages."""
+    coordinator = CarrierDataUpdateCoordinator.__new__(CarrierDataUpdateCoordinator)
+    coordinator.systems = [build_carrier_system()]
+    coordinator._intercept_guards = {}
+    coordinator.timestamp_websocket = None
+
+    with patch.object(coordinator, "async_update_listeners", lambda: None):
+        await coordinator.updated_callback(message)
+
+    assert coordinator.timestamp_websocket is None
 
 
 def test_system_returns_matching_system_or_none() -> None:
