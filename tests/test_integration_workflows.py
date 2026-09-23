@@ -176,12 +176,17 @@ async def test_websocket_callback_updates_timestamp_and_survives_entry_unload(
     config_entry = await setup_integration()
     coordinator = config_entry.runtime_data
 
-    for callback in carrier_api.api_websocket.callbacks:
-        result = callback("{}")
-        if isawaitable(result):
-            await result
-    await hass.async_block_till_done()
+    async def send(message: str) -> None:
+        for callback in carrier_api.api_websocket.callbacks:
+            result = callback(message)
+            if isawaitable(result):
+                await result
+        await hass.async_block_till_done()
 
+    await send("{}")
+    assert coordinator.timestamp_websocket is None
+
+    await send('{"messageType": "InfinityStatus", "deviceId": "ABC123", "oat": 70}')
     assert coordinator.timestamp_websocket is not None
     await _async_unload_loaded_entry(hass, config_entry)
     assert coordinator.websocket_task is None

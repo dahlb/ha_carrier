@@ -4,11 +4,12 @@ import asyncio
 from collections.abc import Awaitable, Callable, Mapping
 from datetime import UTC, datetime, timedelta
 import functools
+from json import JSONDecodeError, loads
 import logging
 from typing import Any, NoReturn
 
 from carrier_api import ApiConnectionGraphql, CarrierApiError, Energy, EntryLevelSystem, System
-from carrier_api.api_websocket_data_updater import WebsocketDataUpdater
+from carrier_api.api_websocket_data_updater import WebsocketDataUpdater, unwrap_envelope
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed, HomeAssistantError
 from homeassistant.helpers.debounce import Debouncer
@@ -70,6 +71,29 @@ ENERGY_REFRESH_EXCEPTIONS: tuple[type[BaseException], ...] = (
     *RECOVERABLE_REFRESH_EXCEPTIONS,
     CarrierUnauthorizedError,
 )
+
+
+def is_device_message(message: str) -> bool:
+    """Return True when a websocket message is addressed to a Carrier device.
+
+    Carrier answers each keepalive with an empty ``{}`` that carries no device
+    id and no data. Only messages that name a device can update a system.
+
+    Args:
+        message: Raw websocket payload string.
+
+    Returns:
+        bool: True when the (possibly envelope-wrapped) message has a
+            ``deviceId`` or ``serial``.
+    """
+    try:
+        message_json = loads(message)
+    except JSONDecodeError:
+        return False
+    if not isinstance(message_json, dict):
+        return False
+    body = unwrap_envelope(message_json)
+    return body.get("deviceId") is not None or body.get("serial") is not None
 
 
 class CarrierDataUpdateCoordinator(DataUpdateCoordinator[list[dict[str, Any]]]):
@@ -632,16 +656,21 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator[list[dict[str, Any]]]):
             raise TypeError("carrier_api System serializer returned a non-mapping payload")
         return dict(mapped_data)
 
-    async def updated_callback(self, _message: str) -> None:
+    async def updated_callback(self, message: str) -> None:
         """Handle websocket updates and notify Home Assistant listeners.
 
+        ``timestamp_websocket`` only moves for messages addressed to a device,
+        so the keepalive replies Carrier sends every minute do not make a
+        silent feed look live.
+
         Args:
-            _message: Raw websocket payload string (unused after callback wiring).
+            message: Raw websocket payload string.
 
         Returns:
             None: Listener state is refreshed in-place.
         """
-        self.timestamp_websocket = datetime.now(UTC)
+        if is_device_message(message):
+            self.timestamp_websocket = datetime.now(UTC)
         _LOGGER.debug("websocket updated system")
         if _LOGGER.isEnabledFor(logging.DEBUG):
             for system in self.systems:
