@@ -118,6 +118,7 @@ The integration adds a Home Assistant device per Carrier system, with entities f
 After setup, click **Configure** on the integration to change:
 
 - **Infinite holds** (default: on) — when on, manual changes from Home Assistant hold until you choose **Resume**. When off, holds expire at the next scheduled activity transition on your thermostat.
+- **Full refresh interval** (default: 120 minutes, range 5–120) — how often the integration fetches the complete system state from Carrier, on top of the live websocket updates. Most systems get live updates and should leave this at 120. Carrier has said its A-model controls (such as the `SYSTXCCITC01-A`) are obsolete and that features like live updates may no longer work on them, so their status only changes on a full refresh. If yours behaves that way, set this to a low value such as 5. Lower values mean more requests to Carrier's API.
 
 ### Re-authentication
 
@@ -139,7 +140,7 @@ If something isn't working as expected:
 
 - **"Invalid authentication"** — double-check your username and password in the Carrier mobile app. If the mobile app works but Home Assistant doesn't, open an issue with diagnostics.
 - **Entities show as unavailable** — check the **Online** binary sensor for the system. If it reports offline, the thermostat has lost its connection to Carrier's cloud (often a router or internet issue at the thermostat's location).
-- **Slow updates** — most state changes arrive within a few seconds via websocket; energy data is refreshed at most every 30 minutes.
+- **Slow updates** — most state changes arrive within a few seconds via websocket; energy data is refreshed every 30 minutes, or more often if you lower the full refresh interval. If changes only show up after you reload the integration, your system is probably not receiving live updates; lower the **Full refresh interval** option (see [Options](#options)).
 
 ## Support
 

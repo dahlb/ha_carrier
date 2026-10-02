@@ -7,6 +7,7 @@ from datetime import timedelta
 from inspect import isawaitable
 
 from carrier_api import CarrierApiConnectionError
+from freezegun.api import FrozenDateTimeFactory
 from homeassistant import config_entries
 from homeassistant.components.climate import (
     ATTR_HVAC_MODE,
@@ -31,6 +32,7 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry, async_
 
 from custom_components.ha_carrier import async_migrate_entry
 from custom_components.ha_carrier.const import (
+    CONF_FULL_REFRESH_INTERVAL,
     CONF_INFINITE_HOLDS,
     DEFAULT_UPDATE_INTERVAL_MINUTES,
     DOMAIN,
@@ -139,6 +141,70 @@ async def test_scheduled_refresh_uses_energy_path_and_unload_cancels_future_refr
 
     assert coordinator.websocket_task is None
     assert carrier_api.calls == []
+
+
+@pytest.mark.asyncio
+async def test_full_refresh_interval_option_drives_scheduled_full_refreshes(
+    hass: HomeAssistant,
+    carrier_api: FakeCarrierApiConnection,
+    setup_integration: Callable[..., Awaitable[ConfigEntry]],
+    freezer: FrozenDateTimeFactory,
+) -> None:
+    """Run a full refresh on every poll when the option is set to five minutes."""
+    config_entry = await setup_integration(options={CONF_FULL_REFRESH_INTERVAL: 5})
+    coordinator = config_entry.runtime_data
+    assert coordinator.update_interval == timedelta(minutes=5)
+
+    for _ in range(2):
+        carrier_api.calls.clear()
+        freezer.tick(timedelta(minutes=5))
+        async_fire_time_changed(hass)
+        await hass.async_block_till_done()
+        assert [call[0] for call in carrier_api.calls if call[0] != "load_entry_level_data"] == [
+            "load_data"
+        ]
+
+    await _async_unload_loaded_entry(hass, config_entry)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("stored", "expected"), [(0, 5), (-10, 5), (500, 120)])
+async def test_stored_full_refresh_interval_is_clamped(
+    hass: HomeAssistant,
+    setup_integration: Callable[..., Awaitable[ConfigEntry]],
+    stored: int,
+    expected: int,
+) -> None:
+    """Clamp a stored interval that bypassed the options flow instead of failing setup."""
+    config_entry = await setup_integration(options={CONF_FULL_REFRESH_INTERVAL: stored})
+    coordinator = config_entry.runtime_data
+
+    assert config_entry.state is ConfigEntryState.LOADED
+    assert coordinator.full_refresh_interval == timedelta(minutes=expected)
+    await _async_unload_loaded_entry(hass, config_entry)
+
+
+@pytest.mark.asyncio
+async def test_failed_refresh_recovers_to_the_configured_poll_interval(
+    hass: HomeAssistant,
+    carrier_api: FakeCarrierApiConnection,
+    setup_integration: Callable[..., Awaitable[ConfigEntry]],
+) -> None:
+    """Return to the configured poll interval, not the default, after a failed refresh."""
+    config_entry = await setup_integration(options={CONF_FULL_REFRESH_INTERVAL: 10})
+    coordinator = config_entry.runtime_data
+    coordinator.data_flush = True
+    carrier_api.load_data_error = CarrierApiConnectionError("temporary")
+
+    await coordinator.async_refresh()
+    assert coordinator.update_interval == timedelta(minutes=1)
+
+    carrier_api.load_data_error = None
+    await coordinator.async_refresh()
+
+    assert coordinator.last_update_success is True
+    assert coordinator.update_interval == timedelta(minutes=10)
+    await _async_unload_loaded_entry(hass, config_entry)
 
 
 @pytest.mark.asyncio

@@ -18,6 +18,7 @@ PLATFORMS: list[Platform] = [
 
 CONF_INFINITE_HOLDS: str = "infinite_holds"
 DEFAULT_INFINITE_HOLDS: bool = True
+CONF_FULL_REFRESH_INTERVAL: str = "full_refresh_interval"
 
 FAN_AUTO = "auto"
 
@@ -47,9 +48,13 @@ DEFAULT_UPDATE_INTERVAL_MINUTES: int = 30
 # Force a full refresh at least this often even while the websocket stays
 # connected, so websocket-maintained status that silently goes stale (a dropped
 # or rebroadcast partial delta) is reconciled against an authoritative full pull.
-# Kept a multiple of the poll interval so intermediate polls stay lightweight
-# (energy-only) and only every Nth poll pays for a full pull.
-FULL_RECONCILE_INTERVAL_MINUTES: int = DEFAULT_UPDATE_INTERVAL_MINUTES * 4
+# Users can lower it: some Carrier systems receive no realtime websocket pushes
+# at all (see issue #430), so a full refresh is the only way their status moves.
+# The floor keeps request volume well clear of the GraphQL "Rate Exceeded"
+# responses Carrier already returns at times.
+DEFAULT_FULL_REFRESH_INTERVAL_MINUTES: int = DEFAULT_UPDATE_INTERVAL_MINUTES * 4
+MIN_FULL_REFRESH_INTERVAL_MINUTES: int = 5
+MAX_FULL_REFRESH_INTERVAL_MINUTES: int = DEFAULT_FULL_REFRESH_INTERVAL_MINUTES
 # After an HA write, Carrier's cloud can replay the pre-write snapshot over the
 # websocket (a fast bounce within seconds, or a slow revert ~2 min later). For
 # this window after a write the coordinator re-asserts any control field (mode /

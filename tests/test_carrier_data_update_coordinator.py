@@ -8,15 +8,18 @@ from typing import Any
 from unittest.mock import patch
 
 from carrier_api import CarrierApiAuthError, CarrierApiConnectionError, CarrierApiGraphqlError
+from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed, HomeAssistantError
 from homeassistant.helpers.update_coordinator import UpdateFailed
 import pytest
 
 from custom_components.ha_carrier.carrier_data_update_coordinator import (
     CarrierDataUpdateCoordinator,
+    poll_interval_for,
 )
 from custom_components.ha_carrier.const import (
-    FULL_RECONCILE_INTERVAL_MINUTES,
+    DEFAULT_FULL_REFRESH_INTERVAL_MINUTES,
+    DEFAULT_UPDATE_INTERVAL_MINUTES,
     TRANSIENT_FAILURE_THRESHOLD,
     UNAUTHORIZED_RETRY_THRESHOLD,
 )
@@ -324,9 +327,10 @@ async def test_update_data_forces_full_refresh_when_reconcile_interval_elapsed()
     """Force a full reconcile when websocket-maintained data is overdue for a full fetch."""
     coordinator = CarrierDataUpdateCoordinator.__new__(CarrierDataUpdateCoordinator)
     coordinator.data_flush = False
+    coordinator._intercept_guards = {}
     coordinator.systems = [build_carrier_system()]
     coordinator.timestamp_all_data = datetime.now(UTC) - timedelta(
-        minutes=FULL_RECONCILE_INTERVAL_MINUTES + 1
+        minutes=DEFAULT_FULL_REFRESH_INTERVAL_MINUTES + 1
     )
     full_refresh_called = False
     energy_refresh_called = False
@@ -364,7 +368,7 @@ async def test_update_data_stays_energy_only_before_reconcile_interval() -> None
     coordinator.data_flush = False
     coordinator.systems = [build_carrier_system()]
     coordinator.timestamp_all_data = datetime.now(UTC) - timedelta(
-        minutes=FULL_RECONCILE_INTERVAL_MINUTES - 1
+        minutes=DEFAULT_FULL_REFRESH_INTERVAL_MINUTES - DEFAULT_UPDATE_INTERVAL_MINUTES
     )
     full_refresh_called = False
     energy_refresh_called = False
@@ -402,14 +406,109 @@ def test_full_reconcile_due_covers_timestamp_states() -> None:
     assert coordinator._full_reconcile_due() is True
 
     coordinator.timestamp_all_data = datetime.now(UTC) - timedelta(
-        minutes=FULL_RECONCILE_INTERVAL_MINUTES + 1
+        minutes=DEFAULT_FULL_REFRESH_INTERVAL_MINUTES + 1
     )
     assert coordinator._full_reconcile_due() is True
 
     coordinator.timestamp_all_data = datetime.now(UTC) - timedelta(
-        minutes=FULL_RECONCILE_INTERVAL_MINUTES - 1
+        minutes=DEFAULT_FULL_REFRESH_INTERVAL_MINUTES - DEFAULT_UPDATE_INTERVAL_MINUTES
     )
     assert coordinator._full_reconcile_due() is False
+
+
+@pytest.mark.parametrize(
+    ("full_refresh_minutes", "poll_minutes"),
+    [(120, 30), (90, 30), (60, 30), (100, 25), (45, 22.5), (30, 30), (10, 10), (5, 5)],
+)
+def test_poll_interval_divides_full_refresh_interval_evenly(
+    full_refresh_minutes: int, poll_minutes: float
+) -> None:
+    """Pick the longest poll interval, at most the default, that divides the full interval."""
+    assert poll_interval_for(timedelta(minutes=full_refresh_minutes)) == timedelta(
+        minutes=poll_minutes
+    )
+
+
+def test_full_reconcile_due_honours_a_configured_interval() -> None:
+    """Treat a full refresh as due from half a poll interval before the configured interval."""
+    coordinator = CarrierDataUpdateCoordinator.__new__(CarrierDataUpdateCoordinator)
+    coordinator.full_refresh_interval = timedelta(minutes=5)
+    coordinator.poll_interval = timedelta(minutes=5)
+
+    coordinator.timestamp_all_data = datetime.now(UTC) - timedelta(minutes=5)
+    assert coordinator._full_reconcile_due() is True
+
+    # A poll fired a few seconds early, or an off-cycle refresh close to due.
+    coordinator.timestamp_all_data = datetime.now(UTC) - timedelta(minutes=4, seconds=55)
+    assert coordinator._full_reconcile_due() is True
+    coordinator.timestamp_all_data = datetime.now(UTC) - timedelta(minutes=3)
+    assert coordinator._full_reconcile_due() is True
+
+    coordinator.timestamp_all_data = datetime.now(UTC) - timedelta(minutes=2)
+    assert coordinator._full_reconcile_due() is False
+
+
+def test_full_reconcile_due_keeps_the_default_cadence() -> None:
+    """Keep the default full refresh on the fourth 30-minute poll, not the third."""
+    coordinator = CarrierDataUpdateCoordinator.__new__(CarrierDataUpdateCoordinator)
+
+    coordinator.timestamp_all_data = datetime.now(UTC) - timedelta(minutes=90)
+    assert coordinator._full_reconcile_due() is False
+
+    coordinator.timestamp_all_data = datetime.now(UTC) - timedelta(minutes=119, seconds=59)
+    assert coordinator._full_reconcile_due() is True
+
+
+@pytest.mark.asyncio
+async def test_update_data_defers_scheduled_full_refresh_during_post_write_window() -> None:
+    """Keep a due full refresh from ending a live post-write guard."""
+    coordinator = CarrierDataUpdateCoordinator.__new__(CarrierDataUpdateCoordinator)
+    coordinator.data_flush = False
+    coordinator.systems = [build_carrier_system()]
+    coordinator.timestamp_all_data = datetime.now(UTC) - timedelta(
+        minutes=DEFAULT_FULL_REFRESH_INTERVAL_MINUTES + 1
+    )
+    coordinator._intercept_guards = {
+        ("ABC123", None): {
+            "expires_at": datetime.now(UTC) + timedelta(minutes=2),
+            "mode": "cool",
+        }
+    }
+    calls: list[str] = []
+
+    async def fake_full_refresh(self: CarrierDataUpdateCoordinator) -> None:
+        """Record a full refresh."""
+        calls.append("full")
+
+    async def fake_energy_refresh(self: CarrierDataUpdateCoordinator) -> None:
+        """Record an energy-only refresh."""
+        calls.append("energy")
+
+    with (
+        patch.object(CarrierDataUpdateCoordinator, "_async_full_refresh", fake_full_refresh),
+        patch.object(CarrierDataUpdateCoordinator, "_async_energy_refresh", fake_energy_refresh),
+    ):
+        await coordinator._async_update_data()
+        coordinator._intercept_guards = {}
+        await coordinator._async_update_data()
+
+    assert calls == ["energy", "full"]
+
+
+@pytest.mark.asyncio
+async def test_coordinator_polls_on_the_configured_full_refresh_cadence(
+    hass: HomeAssistant,
+) -> None:
+    """Shorten the poll interval to fit a low full refresh interval."""
+    coordinator = CarrierDataUpdateCoordinator(
+        hass,
+        FakeCarrierApiConnection(),
+        full_refresh_interval=timedelta(minutes=5),
+    )
+
+    assert coordinator.full_refresh_interval == timedelta(minutes=5)
+    assert coordinator.poll_interval == timedelta(minutes=5)
+    assert coordinator.update_interval == timedelta(minutes=5)
 
 
 @pytest.mark.asyncio
