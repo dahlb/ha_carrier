@@ -1,6 +1,7 @@
 """Initialize and manage the Home Assistant Carrier integration lifecycle."""
 
 import asyncio
+from datetime import timedelta
 import logging
 
 from carrier_api import ApiConnectionGraphql, CarrierApiConnectionError
@@ -12,8 +13,12 @@ from homeassistant.helpers import config_validation as cv
 
 from .carrier_data_update_coordinator import CarrierDataUpdateCoordinator
 from .const import (
+    CONF_FULL_REFRESH_INTERVAL,
     CONFIG_FLOW_VERSION,
+    DEFAULT_FULL_REFRESH_INTERVAL_MINUTES,
     DOMAIN,
+    MAX_FULL_REFRESH_INTERVAL_MINUTES,
+    MIN_FULL_REFRESH_INTERVAL_MINUTES,
     PLATFORMS,
     RETRY_JITTER_FRACTION,
     TO_REDACT,
@@ -102,6 +107,17 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntryCarrie
         coordinator = CarrierDataUpdateCoordinator(
             hass=hass,
             api_connection=api_connection,
+            full_refresh_interval=timedelta(
+                minutes=min(
+                    max(
+                        config_entry.options.get(
+                            CONF_FULL_REFRESH_INTERVAL, DEFAULT_FULL_REFRESH_INTERVAL_MINUTES
+                        ),
+                        MIN_FULL_REFRESH_INTERVAL_MINUTES,
+                    ),
+                    MAX_FULL_REFRESH_INTERVAL_MINUTES,
+                )
+            ),
         )
         await coordinator.async_config_entry_first_refresh()
         config_entry.runtime_data = coordinator

@@ -12,17 +12,21 @@ from homeassistant import config_entries, data_entry_flow
 from homeassistant.config_entries import ConfigEntry, ConfigEntryState
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 from homeassistant.core import HomeAssistant
-from homeassistant.data_entry_flow import FlowResultType
+from homeassistant.data_entry_flow import FlowResultType, InvalidData
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.ha_carrier import config_flow
 from custom_components.ha_carrier.const import (
+    CONF_FULL_REFRESH_INTERVAL,
     CONF_INFINITE_HOLDS,
+    DEFAULT_FULL_REFRESH_INTERVAL_MINUTES,
     DOMAIN,
     ERROR_AUTH,
     ERROR_CANNOT_CONNECT,
     ERROR_UNKNOWN,
+    MAX_FULL_REFRESH_INTERVAL_MINUTES,
+    MIN_FULL_REFRESH_INTERVAL_MINUTES,
 )
 
 from .conftest import IDENTITY_ID, PASSWORD, USERNAME, FakeCarrierApiConnection
@@ -346,7 +350,60 @@ async def test_options_flow_updates_infinite_hold_option(hass: HomeAssistant) ->
     )
 
     assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["data"] == {CONF_INFINITE_HOLDS: False}
+    assert result["data"] == {
+        CONF_INFINITE_HOLDS: False,
+        CONF_FULL_REFRESH_INTERVAL: DEFAULT_FULL_REFRESH_INTERVAL_MINUTES,
+    }
+
+
+@pytest.mark.asyncio
+async def test_options_flow_defaults_and_updates_full_refresh_interval(hass: HomeAssistant) -> None:
+    """Offer the full refresh interval at its default and store a lower choice."""
+    config_entry = MockConfigEntry(
+        domain=DOMAIN,
+        title=USERNAME,
+        data={CONF_USERNAME: USERNAME, CONF_PASSWORD: PASSWORD},
+        options={CONF_INFINITE_HOLDS: True},
+    )
+    config_entry.add_to_hass(hass)
+
+    form = await hass.config_entries.options.async_init(config_entry.entry_id)
+    defaults = {
+        str(key): key.default() for key in form["data_schema"].schema if hasattr(key, "default")
+    }
+    assert defaults[CONF_FULL_REFRESH_INTERVAL] == DEFAULT_FULL_REFRESH_INTERVAL_MINUTES
+
+    result = await hass.config_entries.options.async_configure(
+        form["flow_id"],
+        user_input={CONF_INFINITE_HOLDS: True, CONF_FULL_REFRESH_INTERVAL: 10},
+    )
+
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert result["data"] == {CONF_INFINITE_HOLDS: True, CONF_FULL_REFRESH_INTERVAL: 10}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "interval",
+    [MIN_FULL_REFRESH_INTERVAL_MINUTES - 1, MAX_FULL_REFRESH_INTERVAL_MINUTES + 1],
+)
+async def test_options_flow_rejects_out_of_range_full_refresh_interval(
+    hass: HomeAssistant, interval: int
+) -> None:
+    """Reject full refresh intervals outside the supported range."""
+    config_entry = MockConfigEntry(
+        domain=DOMAIN,
+        title=USERNAME,
+        data={CONF_USERNAME: USERNAME, CONF_PASSWORD: PASSWORD},
+    )
+    config_entry.add_to_hass(hass)
+
+    form = await hass.config_entries.options.async_init(config_entry.entry_id)
+    with pytest.raises(InvalidData):
+        await hass.config_entries.options.async_configure(
+            form["flow_id"],
+            user_input={CONF_INFINITE_HOLDS: True, CONF_FULL_REFRESH_INTERVAL: interval},
+        )
 
 
 def test_reauth_confirm_returns_unknown_when_validated_identity_is_missing(

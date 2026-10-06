@@ -7,19 +7,24 @@ from typing import Any
 
 from carrier_api import ApiConnectionGraphql, CarrierApiError
 from homeassistant.config_entries import ConfigEntry, ConfigFlow, ConfigFlowResult, OptionsFlow
-from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
+from homeassistant.const import CONF_PASSWORD, CONF_USERNAME, UnitOfTime
 from homeassistant.core import callback
+from homeassistant.helpers import selector
 import homeassistant.helpers.config_validation as cv
 import voluptuous as vol
 
 from .const import (
+    CONF_FULL_REFRESH_INTERVAL,
     CONF_INFINITE_HOLDS,
     CONFIG_FLOW_VERSION,
+    DEFAULT_FULL_REFRESH_INTERVAL_MINUTES,
     DEFAULT_INFINITE_HOLDS,
     DOMAIN,
     ERROR_AUTH,
     ERROR_CANNOT_CONNECT,
     ERROR_UNKNOWN,
+    MAX_FULL_REFRESH_INTERVAL_MINUTES,
+    MIN_FULL_REFRESH_INTERVAL_MINUTES,
 )
 from .util import async_get_carrier_identity_id, is_transient_transport_error, is_unauthorized_error
 
@@ -328,6 +333,23 @@ class CarrierOptionsFlow(OptionsFlow):
                     CONF_INFINITE_HOLDS,
                     default=config_entry.options.get(CONF_INFINITE_HOLDS, DEFAULT_INFINITE_HOLDS),
                 ): cv.boolean,
+                vol.Required(
+                    CONF_FULL_REFRESH_INTERVAL,
+                    default=config_entry.options.get(
+                        CONF_FULL_REFRESH_INTERVAL, DEFAULT_FULL_REFRESH_INTERVAL_MINUTES
+                    ),
+                ): vol.All(
+                    selector.NumberSelector(
+                        selector.NumberSelectorConfig(
+                            min=MIN_FULL_REFRESH_INTERVAL_MINUTES,
+                            max=MAX_FULL_REFRESH_INTERVAL_MINUTES,
+                            step=1,
+                            unit_of_measurement=UnitOfTime.MINUTES,
+                            mode=selector.NumberSelectorMode.BOX,
+                        )
+                    ),
+                    vol.Coerce(int),
+                ),
             }
         )
 

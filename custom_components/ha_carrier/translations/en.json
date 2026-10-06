@@ -42,7 +42,11 @@
       "init": {
         "title": "Carrier Infinity: Configuration",
         "data": {
-          "infinite_holds": "Holds are infinite, when off holds are until next scheduled activity"
+          "infinite_holds": "Holds are infinite, when off holds are until next scheduled activity",
+          "full_refresh_interval": "Full refresh interval"
+        },
+        "data_description": {
+          "full_refresh_interval": "How often to fetch the complete system state from Carrier. Leave it at the default if your thermostat gets live updates. Lower it if your system's status only changes after a reload."
         }
       }
     }
