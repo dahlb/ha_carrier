@@ -168,7 +168,7 @@ async def test_full_refresh_interval_option_drives_scheduled_full_refreshes(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize(("stored", "expected"), [(0, 5), (-10, 5), (500, 120)])
+@pytest.mark.parametrize(("stored", "expected"), [(0, 5), (-10, 5), (1000, 960)])
 async def test_stored_full_refresh_interval_is_clamped(
     hass: HomeAssistant,
     setup_integration: Callable[..., Awaitable[ConfigEntry]],
