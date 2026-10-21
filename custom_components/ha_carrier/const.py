@@ -2,7 +2,7 @@
 
 from homeassistant.const import CONF_PASSWORD, CONF_UNIQUE_ID, CONF_USERNAME, Platform
 
-VERSION: str = "2.29.1"
+VERSION: str = "2.29.2"
 
 # Configuration Constants
 DOMAIN: str = "ha_carrier"
