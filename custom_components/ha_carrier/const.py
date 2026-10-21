@@ -54,7 +54,7 @@ DEFAULT_UPDATE_INTERVAL_MINUTES: int = 30
 # responses Carrier already returns at times.
 DEFAULT_FULL_REFRESH_INTERVAL_MINUTES: int = DEFAULT_UPDATE_INTERVAL_MINUTES * 4
 MIN_FULL_REFRESH_INTERVAL_MINUTES: int = 5
-MAX_FULL_REFRESH_INTERVAL_MINUTES: int = DEFAULT_FULL_REFRESH_INTERVAL_MINUTES
+MAX_FULL_REFRESH_INTERVAL_MINUTES: int = DEFAULT_FULL_REFRESH_INTERVAL_MINUTES * 8
 # After an HA write, Carrier's cloud can replay the pre-write snapshot over the
 # websocket (a fast bounce within seconds, or a slow revert ~2 min later). For
 # this window after a write the coordinator re-asserts any control field (mode /
