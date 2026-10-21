@@ -96,6 +96,7 @@ class HeatSourceSelect(CarrierSelect):
         """
         super().__init__("Heat Source", coordinator, system_serial)
         if self.carrier_system.profile.outdoor_unit_type in [
+            "hp1stg",
             "hp2stg",
             "varcaphp",
             "multistghp",
