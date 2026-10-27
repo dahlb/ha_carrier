@@ -20,7 +20,7 @@ jobs:
           fetch-depth: 0
       - name: Get semantic release info
         id: semantic_release_info
-        uses: cycjimmy/semantic-release-action@v6
+        uses: cycjimmy/semantic-release-action@v8
         with:
           dry_run: true
         env:
