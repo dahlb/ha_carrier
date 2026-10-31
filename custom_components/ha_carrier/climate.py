@@ -20,9 +20,9 @@ from homeassistant.const import (
     PRECISION_WHOLE,
     UnitOfTemperature,
 )
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, ServiceResponse, SupportsResponse
 from homeassistant.exceptions import HomeAssistantError
-from homeassistant.helpers import entity_platform
+from homeassistant.helpers import config_validation as cv, entity_platform
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 import voluptuous as vol
 
@@ -33,6 +33,20 @@ from .const import CONF_INFINITE_HOLDS, DEFAULT_INFINITE_HOLDS, FAN_AUTO
 from .entry_level_climate import build_entry_level_entities
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
+
+SETPOINT_ACTIVITIES = [
+    ActivityTypes.HOME.value,
+    ActivityTypes.AWAY.value,
+    ActivityTypes.SLEEP.value,
+    ActivityTypes.WAKE.value,
+    ActivityTypes.MANUAL.value,
+]
+PROGRAM_ACTIVITIES = [
+    ActivityTypes.HOME.value,
+    ActivityTypes.AWAY.value,
+    ActivityTypes.SLEEP.value,
+    ActivityTypes.WAKE.value,
+]
 
 BASE_SUPPORT_FLAGS: ClimateEntityFeature = (
     ClimateEntityFeature.TURN_ON
@@ -99,8 +113,36 @@ async def async_setup_entry(
             vol.Optional(ATTR_TEMPERATURE): vol.Coerce(float),
             vol.Optional(ATTR_TARGET_TEMP_LOW): vol.Coerce(float),
             vol.Optional(ATTR_TARGET_TEMP_HIGH): vol.Coerce(float),
+            vol.Optional("activity"): vol.In(SETPOINT_ACTIVITIES),
         },
         "async_set_activity_setpoint",
+    )
+    platform.async_register_entity_service(
+        "get_schedule",
+        None,
+        "async_get_schedule",
+        supports_response=SupportsResponse.ONLY,
+    )
+    platform.async_register_entity_service(
+        "set_program_day",
+        {
+            vol.Required("day_id"): cv.string,
+            vol.Required("periods"): vol.All(
+                cv.ensure_list,
+                [
+                    vol.Schema(
+                        {
+                            vol.Required("id"): cv.string,
+                            vol.Required("activity"): vol.In(PROGRAM_ACTIVITIES),
+                            vol.Optional("time"): cv.string,
+                            vol.Optional("enabled"): vol.In(["on", "off"]),
+                        }
+                    )
+                ],
+            ),
+            vol.Optional("etag"): cv.string,
+        },
+        "async_set_program_day",
     )
 
 
@@ -548,9 +590,17 @@ class Thermostat(CarrierClimate):
         Raises:
             HomeAssistantError: when the current activity or a required set point can't be resolved.
         """
-        current = self._current_activity()
-        if current is None:
-            raise HomeAssistantError("Current activity unavailable, try again later")
+        current_activity = self._current_activity()
+        requested = kwargs.get("activity")
+        if requested is None:
+            current = current_activity
+            if current is None:
+                raise HomeAssistantError("Current activity unavailable, try again later")
+        else:
+            current = self._config_zone.find_activity(ActivityTypes(requested))
+            if current is None:
+                raise HomeAssistantError(f"Activity {requested} is not configured for this zone")
+        is_current_activity = current_activity is not None and current.type == current_activity.type
 
         heat_set_point = kwargs.get(ATTR_TARGET_TEMP_LOW)
         cool_set_point = kwargs.get(ATTR_TARGET_TEMP_HIGH)
@@ -591,6 +641,92 @@ class Thermostat(CarrierClimate):
         # reflect promptly; deliberately do NOT touch any hold_* / current_status_activity_type
         current.heat_set_point = heat_set_point
         current.cool_set_point = cool_set_point
-        self._status_zone.heat_set_point = heat_set_point
-        self._status_zone.cool_set_point = cool_set_point
+        if is_current_activity:
+            self._status_zone.heat_set_point = heat_set_point
+            self._status_zone.cool_set_point = cool_set_point
         self._write_local_state()
+
+    async def async_get_schedule(self) -> ServiceResponse:
+        """Return the zone's program and activity set points.
+
+        Returns:
+            ServiceResponse: The zone id, the config and program etags, each
+            program day keyed by its Carrier day id with its etag and periods,
+            and each configured activity's set points and fan mode.
+        """
+        program = self._config_zone.program_json or {}
+        days: dict[str, Any] = {}
+        for day in program.get("day") or []:
+            days[str(day.get("id"))] = {
+                "etag": day.get("etag"),
+                "periods": [
+                    {
+                        "id": period.get("id"),
+                        "activity": period.get("activity"),
+                        "time": period.get("time"),
+                        "enabled": period.get("enabled"),
+                    }
+                    for period in day.get("period") or []
+                ],
+            }
+        return {
+            "zone_id": self._required_zone_api_id,
+            "config_etag": self.carrier_system.config.etag,
+            "program_etag": program.get("etag"),
+            "program": days,
+            "activities": {
+                activity.type.value: {
+                    "htsp": activity.heat_set_point,
+                    "clsp": activity.cool_set_point,
+                    "fan": activity.fan.value,
+                }
+                for activity in self._config_zone.activities
+            },
+        }
+
+    async def async_set_program_day(
+        self, day_id: str, periods: list[dict[str, str]], etag: str | None = None
+    ) -> None:
+        """Replace one day of the zone's program.
+
+        The Carrier replaces the day with the periods sent, so pass every
+        period of the day as ``get_schedule`` returns them. Without ``etag`` the
+        day's own etag from the last refresh is sent.
+
+        Args:
+            day_id: Carrier day id, as ``get_schedule`` returns it.
+            periods: The day's periods (``id``, ``activity``, optional ``time``
+                and ``enabled``).
+            etag: Optional etag to send instead of the day's.
+
+        Raises:
+            HomeAssistantError: When the day is not in the zone's program, no
+                etag is known, or the Carrier refuses the write.
+        """
+        program = self._config_zone.program_json or {}
+        day = next(
+            (day for day in program.get("day") or [] if str(day.get("id")) == day_id),
+            None,
+        )
+        if day is None:
+            raise HomeAssistantError(f"Day {day_id} is not in this zone's program")
+        send_etag = (
+            etag or day.get("etag") or program.get("etag") or self.carrier_system.config.etag
+        )
+        if not send_etag:
+            raise HomeAssistantError("No program etag known yet, try again after a refresh")
+        _LOGGER.debug(
+            "set_program_day; zone=%s day=%s periods=%s", self.zone_api_id, day_id, periods
+        )
+        await self.coordinator.async_perform_api_call(
+            "set program day",
+            partial(
+                self.coordinator.api_connection.set_program_day,
+                system_serial=self.carrier_system.profile.serial,
+                zone_id=self._required_zone_api_id,
+                day_id=day_id,
+                periods=[dict(period) for period in periods],
+                etag=send_etag,
+            ),
+        )
+        await self.coordinator.async_refresh()

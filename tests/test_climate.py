@@ -310,3 +310,147 @@ async def test_climate_fan_mode_requires_current_activity(
             {ATTR_ENTITY_ID: entity_id, ATTR_FAN_MODE: "high"},
             blocking=True,
         )
+
+
+ZONE_1 = "abc123_zone_1_thermostat"
+NEW_PERIODS: list[dict[str, str]] = [
+    {"id": "1", "enabled": "on", "time": "06:15", "activity": "home"},
+    {"id": "2", "enabled": "on", "time": "22:00", "activity": "sleep"},
+]
+
+
+@pytest.mark.asyncio
+async def test_get_schedule_returns_the_program_and_activities(
+    hass: HomeAssistant,
+    setup_integration: Callable[..., Any],
+) -> None:
+    """Return the zone's program with its etags and its activity set points."""
+    await setup_integration()
+    entity_id = entity_id_for_unique_id(hass, CLIMATE_DOMAIN, ZONE_1)
+
+    response = await hass.services.async_call(
+        "ha_carrier",
+        "get_schedule",
+        {ATTR_ENTITY_ID: entity_id},
+        blocking=True,
+        return_response=True,
+    )
+
+    schedule = response[entity_id]
+    assert schedule["zone_id"] == "1"
+    assert schedule["config_etag"] == "etag"
+    assert schedule["program_etag"] == "program-etag"
+    assert sorted(schedule["program"]) == [str(day_id) for day_id in range(7)]
+    assert schedule["program"]["3"] == {
+        "etag": "day-etag-3",
+        "periods": [
+            {"id": "1", "activity": "home", "time": "00:00", "enabled": "on"},
+            {"id": "2", "activity": "sleep", "time": "23:59", "enabled": "on"},
+        ],
+    }
+    assert schedule["activities"]["sleep"] == {"htsp": 66.0, "clsp": 76.0, "fan": "off"}
+
+
+@pytest.mark.asyncio
+async def test_set_program_day_sends_the_periods_with_the_day_etag(
+    hass: HomeAssistant,
+    carrier_api: FakeCarrierApiConnection,
+    setup_integration: Callable[..., Any],
+) -> None:
+    """Send the day's periods with that day's etag unless one is given."""
+    await setup_integration()
+    entity_id = entity_id_for_unique_id(hass, CLIMATE_DOMAIN, ZONE_1)
+
+    await hass.services.async_call(
+        "ha_carrier",
+        "set_program_day",
+        {ATTR_ENTITY_ID: entity_id, "day_id": "3", "periods": NEW_PERIODS},
+        blocking=True,
+    )
+    await hass.services.async_call(
+        "ha_carrier",
+        "set_program_day",
+        {ATTR_ENTITY_ID: entity_id, "day_id": "3", "periods": NEW_PERIODS, "etag": "etag"},
+        blocking=True,
+    )
+
+    writes = [call[1] for call in carrier_api.calls if call[0] == "set_program_day"]
+    assert writes == [
+        {
+            "system_serial": "ABC123",
+            "zone_id": "1",
+            "day_id": "3",
+            "periods": NEW_PERIODS,
+            "etag": "day-etag-3",
+        },
+        {
+            "system_serial": "ABC123",
+            "zone_id": "1",
+            "day_id": "3",
+            "periods": NEW_PERIODS,
+            "etag": "etag",
+        },
+    ]
+
+
+@pytest.mark.asyncio
+async def test_set_program_day_rejects_an_unknown_day(
+    hass: HomeAssistant,
+    carrier_api: FakeCarrierApiConnection,
+    setup_integration: Callable[..., Any],
+) -> None:
+    """Refuse a day the zone's program does not have, without writing."""
+    await setup_integration()
+    entity_id = entity_id_for_unique_id(hass, CLIMATE_DOMAIN, ZONE_1)
+
+    with pytest.raises(HomeAssistantError):
+        await hass.services.async_call(
+            "ha_carrier",
+            "set_program_day",
+            {ATTR_ENTITY_ID: entity_id, "day_id": "9", "periods": NEW_PERIODS},
+            blocking=True,
+        )
+
+    assert not [call for call in carrier_api.calls if call[0] == "set_program_day"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("data", "expected_activity", "expected_heat", "expected_cool"),
+    [
+        ({}, ActivityTypes.HOME, "68.0", "74.0"),
+        ({"activity": "sleep"}, ActivityTypes.SLEEP, "68.0", "74.0"),
+    ],
+)
+async def test_set_activity_setpoint_edits_the_named_or_current_activity(
+    hass: HomeAssistant,
+    carrier_api: FakeCarrierApiConnection,
+    setup_integration: Callable[..., Any],
+    data: dict[str, str],
+    expected_activity: ActivityTypes,
+    expected_heat: str,
+    expected_cool: str,
+) -> None:
+    """Edit the named activity, or the current one when none is named, without a hold."""
+    await setup_integration()
+    entity_id = entity_id_for_unique_id(hass, CLIMATE_DOMAIN, ZONE_1)
+
+    await hass.services.async_call(
+        "ha_carrier",
+        "set_activity_setpoint",
+        {ATTR_ENTITY_ID: entity_id, ATTR_TARGET_TEMP_LOW: 68, ATTR_TARGET_TEMP_HIGH: 74, **data},
+        blocking=True,
+    )
+
+    writes = [call for call in carrier_api.calls if call[0] != "load_data"]
+    assert writes[-1] == (
+        "set_config_activity",
+        {
+            "system_serial": "ABC123",
+            "zone_id": "1",
+            "activity_type": expected_activity,
+            "heat_set_point": expected_heat,
+            "cool_set_point": expected_cool,
+        },
+    )
+    assert "set_config_hold" not in [call[0] for call in writes]

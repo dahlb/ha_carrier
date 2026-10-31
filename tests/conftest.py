@@ -205,6 +205,57 @@ class FakeCarrierApiConnection:
             )
         )
 
+    async def set_config_activity(
+        self,
+        *,
+        system_serial: str,
+        zone_id: str,
+        activity_type: Any,
+        heat_set_point: str,
+        cool_set_point: str,
+    ) -> None:
+        """Record an activity set point write."""
+        self.calls.append(
+            (
+                "set_config_activity",
+                {
+                    "system_serial": system_serial,
+                    "zone_id": zone_id,
+                    "activity_type": activity_type,
+                    "heat_set_point": heat_set_point,
+                    "cool_set_point": cool_set_point,
+                },
+            )
+        )
+
+    async def set_program_day(
+        self,
+        *,
+        system_serial: str,
+        zone_id: str,
+        day_id: str,
+        periods: list[dict[str, str]],
+        etag: str,
+    ) -> dict[str, Any]:
+        """Record a program day write.
+
+        Returns:
+            dict[str, Any]: Carrier GraphQL-shaped mutation response.
+        """
+        self.calls.append(
+            (
+                "set_program_day",
+                {
+                    "system_serial": system_serial,
+                    "zone_id": zone_id,
+                    "day_id": day_id,
+                    "periods": periods,
+                    "etag": etag,
+                },
+            )
+        )
+        return {"updateInfinityProgramDay": {"id": day_id, "etag": "new-etag", "period": periods}}
+
     async def set_heat_source(self, *, system_serial: str, heat_source: Any) -> None:
         """Record a heat-source write."""
         self.calls.append(
@@ -229,13 +280,22 @@ class FakeCarrierApiConnection:
         raise ValueError(f"Unknown fake Carrier system: {system_serial}")
 
 
-def _schedule_day() -> dict[str, Any]:
-    """Return one enabled Carrier schedule day."""
+def _schedule_day(day_id: int = 0) -> dict[str, Any]:
+    """Return one enabled Carrier schedule day.
+
+    Args:
+        day_id: Carrier day identifier, ``0`` for Sunday.
+
+    Returns:
+        dict[str, Any]: Carrier GraphQL-shaped program day.
+    """
     return {
+        "id": str(day_id),
+        "etag": f"day-etag-{day_id}",
         "period": [
-            {"enabled": "on", "time": "00:00", "activity": "home"},
-            {"enabled": "on", "time": "23:59", "activity": "sleep"},
-        ]
+            {"id": "1", "enabled": "on", "time": "00:00", "activity": "home"},
+            {"id": "2", "enabled": "on", "time": "23:59", "activity": "sleep"},
+        ],
     }
 
 
@@ -255,7 +315,7 @@ def _zone_raw(*, zone_id: str, name: str, occupancy_enabled: bool = True) -> dic
             {"type": "sleep", "id": "sleep", "fan": "off", "htsp": 66, "clsp": 76},
             {"type": "manual", "id": "manual", "fan": "low", "htsp": 69, "clsp": 75},
         ],
-        "program": {"day": [_schedule_day() for _ in range(7)]},
+        "program": {"etag": "program-etag", "day": [_schedule_day(day_id) for day_id in range(7)]},
     }
 
 
