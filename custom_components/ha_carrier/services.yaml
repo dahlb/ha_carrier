@@ -38,3 +38,59 @@ set_activity_setpoint:
           min: 7
           max: 95
           step: 0.5
+    activity:
+      name: Activity
+      description: >-
+        Activity whose set points to edit. Omit to edit the activity the zone is following now.
+      example: sleep
+      selector:
+        select:
+          options:
+            - home
+            - away
+            - sleep
+            - wake
+            - manual
+
+get_schedule:
+  name: Get schedule
+  description: >-
+    Return the zone's program (each day's periods, keyed by Carrier day id, with the day's etag)
+    and each activity's set points and fan mode, from the latest refresh.
+  target:
+    entity:
+      integration: ha_carrier
+      domain: climate
+
+set_program_day:
+  name: Set program day
+  description: >-
+    Replace one day of the zone's program. The Carrier replaces the whole day, so send every
+    period of the day, enabled or not, as get_schedule returns them. The zone keeps running its
+    own schedule; no hold is created.
+  target:
+    entity:
+      integration: ha_carrier
+      domain: climate
+  fields:
+    day_id:
+      name: Day
+      description: Carrier day id as get_schedule returns it ("0" to "6").
+      required: true
+      example: "3"
+      selector:
+        text:
+    periods:
+      name: Periods
+      description: >-
+        The day's periods, each with id and activity (home, away, sleep or wake) and optionally
+        time (HH:MM) and enabled (on or off).
+      required: true
+      example: '[{"id": "1", "activity": "wake", "time": "06:00", "enabled": "on"}]'
+      selector:
+        object:
+    etag:
+      name: Etag
+      description: Etag to send. Omit to send the day's etag from the latest refresh.
+      selector:
+        text:
