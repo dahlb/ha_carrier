@@ -729,4 +729,8 @@ class Thermostat(CarrierClimate):
                 etag=send_etag,
             ),
         )
+        # A plain refresh after a write is the light energy refresh; force a
+        # full read so the new day shows in get_schedule now, not at the next
+        # scheduled full refresh.
+        self.coordinator.data_flush = True
         await self.coordinator.async_refresh()

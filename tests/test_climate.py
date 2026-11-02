@@ -394,6 +394,34 @@ async def test_set_program_day_sends_the_periods_with_the_day_etag(
 
 
 @pytest.mark.asyncio
+async def test_set_program_day_reads_the_program_back_in_full(
+    hass: HomeAssistant,
+    carrier_api: FakeCarrierApiConnection,
+    setup_integration: Callable[..., Any],
+) -> None:
+    """Follow the write with a full read, so get_schedule shows the new day.
+
+    A plain refresh after a write is the light energy refresh, which leaves the
+    program as it was until the next scheduled full refresh (up to two hours).
+    """
+    await setup_integration()
+    entity_id = entity_id_for_unique_id(hass, CLIMATE_DOMAIN, ZONE_1)
+    full_reads_before = len([call for call in carrier_api.calls if call[0] == "load_data"])
+
+    await hass.services.async_call(
+        "ha_carrier",
+        "set_program_day",
+        {ATTR_ENTITY_ID: entity_id, "day_id": "3", "periods": NEW_PERIODS},
+        blocking=True,
+    )
+
+    calls = [call[0] for call in carrier_api.calls]
+    write_index = calls.index("set_program_day")
+    assert "load_data" in calls[write_index + 1 :]
+    assert len([c for c in calls if c == "load_data"]) == full_reads_before + 1
+
+
+@pytest.mark.asyncio
 async def test_set_program_day_rejects_an_unknown_day(
     hass: HomeAssistant,
     carrier_api: FakeCarrierApiConnection,
