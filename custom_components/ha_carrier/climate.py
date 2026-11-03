@@ -20,16 +20,17 @@ from homeassistant.const import (
     PRECISION_WHOLE,
     UnitOfTemperature,
 )
-from homeassistant.core import HomeAssistant, ServiceResponse, SupportsResponse
+from homeassistant.core import CALLBACK_TYPE, HomeAssistant, ServiceResponse, SupportsResponse
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import config_validation as cv, entity_platform
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.event import async_call_later
 import voluptuous as vol
 
 from . import ConfigEntryCarrier
 from .carrier_data_update_coordinator import CarrierDataUpdateCoordinator
 from .carrier_entity import CarrierZoneEntity
-from .const import CONF_INFINITE_HOLDS, DEFAULT_INFINITE_HOLDS, FAN_AUTO
+from .const import CONF_INFINITE_HOLDS, DEFAULT_INFINITE_HOLDS, FAN_AUTO, PROGRAM_READBACK_DELAY_S
 from .entry_level_climate import build_entry_level_entities
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
@@ -173,6 +174,7 @@ class CarrierClimate(CarrierZoneEntity, ClimateEntity):
             zone_api_id=zone_api_id,
             unique_id_suffix=unique_id_suffix,
         )
+        self._cancel_program_readback: CALLBACK_TYPE | None = None
         self._sync_entity_attrs()
 
     def _current_activity(self) -> ConfigZoneActivity | None:
@@ -730,7 +732,25 @@ class Thermostat(CarrierClimate):
             ),
         )
         # A plain refresh after a write is the light energy refresh; force a
-        # full read so the new day shows in get_schedule now, not at the next
-        # scheduled full refresh.
+        # full read now, and once more after PROGRAM_READBACK_DELAY_S, because
+        # the cloud returns the old day for a while after the write.
         self.coordinator.data_flush = True
         await self.coordinator.async_refresh()
+        if self._cancel_program_readback is not None:
+            self._cancel_program_readback()
+        self._cancel_program_readback = async_call_later(
+            self.hass, PROGRAM_READBACK_DELAY_S, self._async_read_program_again
+        )
+
+    async def _async_read_program_again(self, _now: Any) -> None:
+        """Read the program in full once the cloud shows a program write."""
+        self._cancel_program_readback = None
+        self.coordinator.data_flush = True
+        await self.coordinator.async_refresh()
+
+    async def async_will_remove_from_hass(self) -> None:
+        """Cancel a pending program read-back with the entity."""
+        if self._cancel_program_readback is not None:
+            self._cancel_program_readback()
+            self._cancel_program_readback = None
+        await super().async_will_remove_from_hass()

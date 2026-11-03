@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from datetime import timedelta
 from typing import Any
 
 from carrier_api import ActivityTypes, FanModes
+from freezegun.api import FrozenDateTimeFactory
 from homeassistant.components.climate import (
     ATTR_HVAC_MODE,
     ATTR_PRESET_MODE,
@@ -28,8 +30,9 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.util.unit_system import US_CUSTOMARY_SYSTEM
 import pytest
+from pytest_homeassistant_custom_component.common import async_fire_time_changed
 
-from custom_components.ha_carrier.const import FAN_AUTO
+from custom_components.ha_carrier.const import FAN_AUTO, PROGRAM_READBACK_DELAY_S
 
 from .conftest import FakeCarrierApiConnection, build_carrier_system, entity_id_for_unique_id
 
@@ -352,6 +355,7 @@ async def test_get_schedule_returns_the_program_and_activities(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("expected_lingering_timers", [True])  # the 45 s read-back
 async def test_set_program_day_sends_the_periods_with_the_day_etag(
     hass: HomeAssistant,
     carrier_api: FakeCarrierApiConnection,
@@ -394,6 +398,7 @@ async def test_set_program_day_sends_the_periods_with_the_day_etag(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("expected_lingering_timers", [True])  # the 45 s read-back
 async def test_set_program_day_reads_the_program_back_in_full(
     hass: HomeAssistant,
     carrier_api: FakeCarrierApiConnection,
@@ -419,6 +424,39 @@ async def test_set_program_day_reads_the_program_back_in_full(
     write_index = calls.index("set_program_day")
     assert "load_data" in calls[write_index + 1 :]
     assert len([c for c in calls if c == "load_data"]) == full_reads_before + 1
+
+
+@pytest.mark.asyncio
+async def test_set_program_day_reads_the_program_again_once_the_cloud_shows_it(
+    hass: HomeAssistant,
+    carrier_api: FakeCarrierApiConnection,
+    setup_integration: Callable[..., Any],
+    freezer: FrozenDateTimeFactory,
+) -> None:
+    """Read the program in full again after the write has had time to reach the cloud.
+
+    Live, a full read right after the write still returned the old day; about 40 s later
+    the new one. The second read makes get_schedule show the day the Carrier now runs.
+    """
+    await setup_integration()
+    entity_id = entity_id_for_unique_id(hass, CLIMATE_DOMAIN, ZONE_1)
+    await hass.services.async_call(
+        "ha_carrier",
+        "set_program_day",
+        {ATTR_ENTITY_ID: entity_id, "day_id": "3", "periods": NEW_PERIODS},
+        blocking=True,
+    )
+    reads_after_write = len([c for c in carrier_api.calls if c[0] == "load_data"])
+
+    freezer.tick(timedelta(seconds=PROGRAM_READBACK_DELAY_S - 1))
+    async_fire_time_changed(hass)
+    await hass.async_block_till_done()
+    assert len([c for c in carrier_api.calls if c[0] == "load_data"]) == reads_after_write
+
+    freezer.tick(timedelta(seconds=2))
+    async_fire_time_changed(hass)
+    await hass.async_block_till_done()
+    assert len([c for c in carrier_api.calls if c[0] == "load_data"]) == reads_after_write + 1
 
 
 @pytest.mark.asyncio
