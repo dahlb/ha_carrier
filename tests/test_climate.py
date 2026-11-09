@@ -310,3 +310,105 @@ async def test_climate_fan_mode_requires_current_activity(
             {ATTR_ENTITY_ID: entity_id, ATTR_FAN_MODE: "high"},
             blocking=True,
         )
+
+
+@pytest.mark.asyncio
+async def test_cancel_system_vacation_calls_system_mutation_once(
+    hass: HomeAssistant,
+    carrier_api: FakeCarrierApiConnection,
+    setup_integration: Callable[..., Any],
+) -> None:
+    """Cancel the system-wide Vacation flag, not a per-zone preset hold."""
+    carrier_api.systems[0].config.raw["vacat"] = "on"
+    await setup_integration()
+    entity_id = entity_id_for_unique_id(hass, CLIMATE_DOMAIN, "abc123_zone_1_thermostat")
+
+    await hass.services.async_call(
+        "ha_carrier",
+        "cancel_system_vacation",
+        {ATTR_ENTITY_ID: entity_id},
+        blocking=True,
+    )
+
+    writes = [data for name, data in carrier_api.calls if name == "_update_infinity_config"]
+    assert writes == [{"input": {"serial": "abc123", "vacat": "off"}}]
+    assert not any(name == "resume_schedule" for name, _ in carrier_api.calls)
+
+
+@pytest.mark.asyncio
+async def test_cancel_system_vacation_is_noop_when_already_off(
+    hass: HomeAssistant,
+    carrier_api: FakeCarrierApiConnection,
+    setup_integration: Callable[..., Any],
+) -> None:
+    """Avoid an unnecessary cloud mutation when Vacation is already disabled."""
+    carrier_api.systems[0].config.raw["vacat"] = "off"
+    await setup_integration()
+    entity_id = entity_id_for_unique_id(hass, CLIMATE_DOMAIN, "abc123_zone_1_thermostat")
+
+    await hass.services.async_call(
+        "ha_carrier",
+        "cancel_system_vacation",
+        {ATTR_ENTITY_ID: entity_id},
+        blocking=True,
+    )
+
+    assert not any(name == "_update_infinity_config" for name, _ in carrier_api.calls)
+
+
+@pytest.mark.asyncio
+async def test_cancel_system_vacation_does_not_change_zone_setpoints(
+    hass: HomeAssistant,
+    carrier_api: FakeCarrierApiConnection,
+    setup_integration: Callable[..., Any],
+) -> None:
+    """System cancellation must not modify zone temperatures or activities."""
+    carrier_api.systems[0].config.raw["vacat"] = "on"
+    await setup_integration()
+    entity_id = entity_id_for_unique_id(hass, CLIMATE_DOMAIN, "abc123_zone_1_thermostat")
+    before = hass.states.get(entity_id)
+    assert before is not None
+    before_targets = (
+        before.attributes.get("target_temp_low"),
+        before.attributes.get("target_temp_high"),
+    )
+
+    await hass.services.async_call(
+        "ha_carrier",
+        "cancel_system_vacation",
+        {ATTR_ENTITY_ID: entity_id},
+        blocking=True,
+    )
+    after = hass.states.get(entity_id)
+    assert after is not None
+    assert (
+        after.attributes.get("target_temp_low"),
+        after.attributes.get("target_temp_high"),
+    ) == before_targets
+    assert not any(
+        name in ("set_config_hold", "set_config_manual_activity", "set_config_activity")
+        for name, _ in carrier_api.calls
+    )
+
+
+@pytest.mark.asyncio
+async def test_cancel_system_vacation_propagates_api_failure(
+    hass: HomeAssistant,
+    carrier_api: FakeCarrierApiConnection,
+    setup_integration: Callable[..., Any],
+) -> None:
+    """Do not silently claim cancellation when Carrier rejects the mutation."""
+    carrier_api.systems[0].config.raw["vacat"] = "on"
+    carrier_api.vacation_cancel_error = RuntimeError("Carrier mutation rejected")
+    await setup_integration()
+    entity_id = entity_id_for_unique_id(hass, CLIMATE_DOMAIN, "abc123_zone_1_thermostat")
+
+    with pytest.raises((HomeAssistantError, RuntimeError)):
+        await hass.services.async_call(
+            "ha_carrier",
+            "cancel_system_vacation",
+            {ATTR_ENTITY_ID: entity_id},
+            blocking=True,
+        )
+
+    assert carrier_api.systems[0].config.raw["vacat"] == "on"
