@@ -111,6 +111,82 @@ async def test_websocket_task_recovers_from_carrier_api_error(
 
 
 @pytest.mark.asyncio
+async def test_websocket_task_stops_after_coordinator_escalates_to_reauth(
+    hass: HomeAssistant,
+    carrier_api: FakeCarrierApiConnection,
+    monkeypatch: pytest.MonkeyPatch,
+    setup_integration: Callable[..., Any],
+) -> None:
+    """Stop reconnecting, and so retrying the password, once reauth is required."""
+    monkeypatch.setattr("custom_components.ha_carrier.compute_backoff_delay", lambda *_: 0)
+    monkeypatch.setattr("custom_components.ha_carrier.WEBSOCKET_AUTH_RECOVERY_POLL_SECONDS", 0)
+    carrier_api.api_websocket.listener_errors.append(CarrierApiAuthError("bad password"))
+
+    async def _refresh_escalates(self: CarrierDataUpdateCoordinator) -> None:
+        """Simulate a coordinator refresh that crossed the reauth threshold."""
+        self.last_update_success = False
+        self.last_exception = ConfigEntryAuthFailed("reauth required")
+
+    monkeypatch.setattr(CarrierDataUpdateCoordinator, "async_request_refresh", _refresh_escalates)
+
+    config_entry = await setup_integration()
+    websocket_task = config_entry.runtime_data.websocket_task
+    assert websocket_task is not None
+
+    for _ in range(10):
+        await hass.async_block_till_done()
+        if websocket_task.done():
+            break
+        await asyncio.sleep(0)
+
+    assert websocket_task.done()
+    assert websocket_task.exception() is None
+    assert carrier_api.api_websocket.listener_calls == 1
+
+
+@pytest.mark.asyncio
+async def test_websocket_task_waits_for_coordinator_recovery_after_auth_error(
+    hass: HomeAssistant,
+    carrier_api: FakeCarrierApiConnection,
+    monkeypatch: pytest.MonkeyPatch,
+    setup_integration: Callable[..., Any],
+) -> None:
+    """Reconnect only after the coordinator refreshes successfully again."""
+    monkeypatch.setattr("custom_components.ha_carrier.compute_backoff_delay", lambda *_: 0)
+    monkeypatch.setattr("custom_components.ha_carrier.WEBSOCKET_AUTH_RECOVERY_POLL_SECONDS", 0)
+    carrier_api.api_websocket.listener_errors.append(CarrierApiAuthError("rejected"))
+
+    async def _refresh_fails(self: CarrierDataUpdateCoordinator) -> None:
+        """Simulate a coordinator refresh that failed below the reauth threshold."""
+        self.last_update_success = False
+        self.last_exception = None
+
+    monkeypatch.setattr(CarrierDataUpdateCoordinator, "async_request_refresh", _refresh_fails)
+
+    config_entry = await setup_integration()
+    coordinator = config_entry.runtime_data
+    websocket_task = coordinator.websocket_task
+    assert websocket_task is not None
+
+    for _ in range(10):
+        await hass.async_block_till_done()
+        await asyncio.sleep(0)
+
+    assert carrier_api.api_websocket.listener_calls == 1
+    assert not websocket_task.done()
+
+    coordinator.last_update_success = True
+    for _ in range(10):
+        await hass.async_block_till_done()
+        if carrier_api.api_websocket.listener_calls >= 2:
+            break
+        await asyncio.sleep(0)
+
+    assert carrier_api.api_websocket.listener_calls == 2
+    assert not websocket_task.done()
+
+
+@pytest.mark.asyncio
 async def test_unload_ignores_websocket_task_data_update_failure(
     hass: HomeAssistant,
     setup_integration: Callable[..., Any],

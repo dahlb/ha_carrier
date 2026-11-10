@@ -48,10 +48,38 @@ WEBSOCKET_RETRY_POLICY = RetryPolicy(
 # `async_call_with_retry` with this `WEBSOCKET_RETRY_POLICY` and
 # `max_attempts=None` if websocket reconnections should enforce that flag.
 
+# How often the websocket loop rechecks coordinator health after an auth failure.
+WEBSOCKET_AUTH_RECOVERY_POLL_SECONDS: float = float(WEBSOCKET_RETRY_MAX_DELAY_SECONDS)
+
 type ConfigEntryCarrier = ConfigEntry[CarrierDataUpdateCoordinator]
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
+
+
+async def _async_wait_for_coordinator_recovery(
+    coordinator: CarrierDataUpdateCoordinator,
+) -> bool:
+    """Wait until the coordinator refreshes successfully after an auth failure.
+
+    The Carrier client logs in with the stored password whenever its refresh
+    token was rejected, so reconnecting the websocket while credentials are
+    failing would retry that password every backoff interval. Waiting here
+    leaves login attempts and reauth escalation to the coordinator's own
+    polling.
+
+    Args:
+        coordinator: Coordinator whose refresh results gate reconnection.
+
+    Returns:
+        bool: True once a refresh succeeds; False when the coordinator has
+            escalated to reauthentication.
+    """
+    while not coordinator.last_update_success:
+        if isinstance(coordinator.last_exception, ConfigEntryAuthFailed):
+            return False
+        await asyncio.sleep(WEBSOCKET_AUTH_RECOVERY_POLL_SECONDS)
+    return True
 
 
 async def _async_await_websocket_task(websocket_task: asyncio.Task[None]) -> None:
@@ -131,7 +159,10 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntryCarrie
             after a successful listener session. The websocket loop does not
             update resiliency counters directly; it requests a coordinator
             refresh, and the refresh path owns outage accounting and any reauth
-            escalation.
+            escalation. After an unauthorized failure the loop waits for a
+            successful coordinator refresh before reconnecting, and stops once
+            the coordinator escalates to reauthentication; the reauth flow
+            reloads the entry, which starts a new websocket task.
 
             Returns:
                 None: This coroutine runs until cancelled.
@@ -163,6 +194,14 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntryCarrie
                     await coordinator.async_request_refresh()
                     await asyncio.sleep(delay)
                     attempt += 1
+                    if is_unauthorized_error(
+                        error
+                    ) and not await _async_wait_for_coordinator_recovery(coordinator):
+                        _LOGGER.warning(
+                            "Carrier rejected the stored credentials; websocket updates "
+                            "stop until the integration is reauthenticated"
+                        )
+                        return
                 except WEBSOCKET_DATA_UPDATE_EXCEPTIONS as error:
                     delay = compute_backoff_delay(WEBSOCKET_RETRY_POLICY, attempt)
                     _LOGGER.exception(
