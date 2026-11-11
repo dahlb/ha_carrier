@@ -331,7 +331,7 @@ async def test_cancel_system_vacation_calls_system_mutation_once(
     )
 
     writes = [data for name, data in carrier_api.calls if name == "_update_infinity_config"]
-    assert writes == [{"input": {"serial": "abc123", "vacat": "off"}}]
+    assert writes == [{"input": {"serial": "ABC123", "vacat": "off"}}]
     assert not any(name == "resume_schedule" for name, _ in carrier_api.calls)
 
 
