@@ -136,6 +136,13 @@ class FakeCarrierApiConnection:
             )
         )
 
+    async def _update_infinity_config(self, variables: dict[str, Any]) -> dict[str, Any]:
+        """Record system-wide config mutations and emulate Carrier's response."""
+        self.calls.append(("_update_infinity_config", deepcopy(variables)))
+        if getattr(self, "vacation_cancel_error", None) is not None:
+            raise self.vacation_cancel_error
+        return {"updateInfinityConfig": {"etag": "updated"}}
+
     async def resume_schedule(self, *, system_serial: str, zone_id: str) -> None:
         """Record a resume-schedule write."""
         self.calls.append(("resume_schedule", {"system_serial": system_serial, "zone_id": zone_id}))

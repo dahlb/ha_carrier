@@ -93,6 +93,14 @@ async def async_setup_entry(
     # is currently following, so an independent human hold still wins and an HA outage leaves
     # the thermostat on its own schedule at the last value.
     platform = entity_platform.async_get_current_platform()
+    # Carrier Vacation is a system-wide setting, not a zone preset hold.
+    # This service can be invoked on either zone of the same system.
+    platform.async_register_entity_service(
+        "cancel_system_vacation",
+        {},
+        "async_cancel_system_vacation",
+    )
+
     platform.async_register_entity_service(
         "set_activity_setpoint",
         {
@@ -394,6 +402,32 @@ class Thermostat(CarrierClimate):
         if not self.infinite_hold:
             return self._config_zone.next_activity_time()
         return None
+
+    async def async_cancel_system_vacation(self) -> None:
+        """Cancel the system-wide Carrier Vacation period without changing setpoints.
+
+        A zone's 'resume' preset clears its zone hold but does not disable
+        the system-level Vacation period (vacat/vacstart/vacend).
+        """
+        config = self.carrier_system.config
+        if config.raw.get("vacat") != "on":
+            _LOGGER.debug("Carrier system Vacation is already off")
+            return
+
+        await self.coordinator.async_perform_api_call(
+            "cancel system vacation",
+            partial(
+                self.coordinator.api_connection._update_infinity_config,
+                {"input": {
+                    "serial": self.carrier_system.profile.serial,
+                    "vacat": "off",
+                }},
+            ),
+        )
+        # Force a full cloud refresh. Carrier may take time to propagate
+        # the change; don't optimistically report Vacation as cancelled.
+        self.coordinator.data_flush = True
+        await self.coordinator.async_refresh()
 
     async def async_set_preset_mode(self, preset_mode: str) -> None:
         """Apply a preset activity or resume scheduled programming.
