@@ -417,11 +417,13 @@ class Thermostat(CarrierClimate):
         await self.coordinator.async_perform_api_call(
             "cancel system vacation",
             partial(
-                self.coordinator.api_connection._update_infinity_config,
-                {"input": {
-                    "serial": self.carrier_system.profile.serial,
-                    "vacat": "off",
-                }},
+                self.coordinator.api_connection._update_infinity_config,  # noqa: SLF001
+                {
+                    "input": {
+                        "serial": self.carrier_system.profile.serial,
+                        "vacat": "off",
+                    },
+                },
             ),
         )
         # Force a full cloud refresh. Carrier may take time to propagate
