@@ -703,6 +703,9 @@ class StaticPressureSensor(CarrierSensor):
 
     _attr_device_class = SensorDeviceClass.PRESSURE
     _attr_native_unit_of_measurement = UnitOfPressure.INH2O
+    # Home Assistant's unit systems would otherwise convert this to psi or kPa,
+    # which makes duct static pressure unreadable.
+    _attr_suggested_unit_of_measurement = UnitOfPressure.INH2O
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_icon = "mdi:air-filter"
 

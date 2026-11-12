@@ -21,7 +21,7 @@ from .conftest import FakeCarrierApiConnection, build_carrier_system, entity_id_
         ("abc123_outdoor_temperature", "4.44444444444444"),
         ("abc123_filter_remaining", "80"),
         ("abc123_airflow", "1200"),
-        ("abc123_static_pressure", "0.049817781666667"),
+        ("abc123_static_pressure", "0.2"),
         ("abc123_zone_1_temperature", "21.1111111111111"),
         ("abc123_zone_1_humidity", "45"),
         ("abc123_cooling_energy_year_to_date", "100"),
@@ -153,7 +153,7 @@ async def test_unit_status_sensors_use_carrier_api_status_unit_helpers(
 
     expected_states = {
         "abc123_airflow": "1200",
-        "abc123_static_pressure": "0.049817781666667",
+        "abc123_static_pressure": "0.2",
     }
     for unique_id, expected_state in expected_states.items():
         entity_id = entity_id_for_unique_id(hass, "sensor", unique_id)
@@ -179,7 +179,7 @@ async def test_unit_status_sensors_do_not_expose_raw_attributes_when_mapped_unit
 
     expected_states = {
         "abc123_airflow": "1200",
-        "abc123_static_pressure": "0.049817781666667",
+        "abc123_static_pressure": "0.2",
     }
     for unique_id, expected_state in expected_states.items():
         entity_id = entity_id_for_unique_id(hass, "sensor", unique_id)
@@ -226,7 +226,7 @@ async def test_airflow_and_static_pressure_fall_back_when_mapped_fields_are_miss
 
     expected_states = {
         "abc123_airflow": "1200",
-        "abc123_static_pressure": "0.049817781666667",
+        "abc123_static_pressure": "0.2",
     }
     for unique_id, expected_state in expected_states.items():
         entity_id = entity_id_for_unique_id(hass, "sensor", unique_id)
