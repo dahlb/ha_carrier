@@ -263,3 +263,30 @@ async def test_sensor_platform_maps_outdoor_operational_status_variants(
 
     assert state is not None
     assert state.state == expected_state
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("operational_status", "expected_state"),
+    [("67", "67.0"), ("off", "0.0"), ("idle", "unavailable")],
+)
+async def test_modulating_furnace_registers_idu_var_sensor(
+    hass: HomeAssistant,
+    carrier_api: FakeCarrierApiConnection,
+    setup_integration: Callable[..., Any],
+    operational_status: str,
+    expected_state: str,
+) -> None:
+    """Report a modulating furnace's operational status as a percentage."""
+    carrier_api.systems = [build_carrier_system()]
+    system = carrier_api.systems[0]
+    assert system.status.indoor_unit is not None
+    system.status.indoor_unit.type = "furnacemodulating"
+    system.status.indoor_unit_operational_status = operational_status
+
+    await setup_integration()
+
+    state = hass.states.get(entity_id_for_unique_id(hass, "sensor", "abc123_idu_var"))
+
+    assert state is not None
+    assert state.state == expected_state
