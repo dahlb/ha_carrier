@@ -238,8 +238,8 @@ class CarrierClimate(CarrierZoneEntity, ClimateEntity):
                 hvac_mode = None
 
         self._attr_current_humidity = self._status_zone.humidity
-        self._attr_current_temperature = self._status_zone.temperature
-        self._attr_temperature_unit = temperature_unit
+        self._attr_native_current_temperature = self._status_zone.temperature
+        self._attr_native_temperature_unit = temperature_unit
         self._attr_hvac_mode = hvac_mode
         if hvac_mode == HVACMode.OFF:
             self._attr_hvac_action = HVACAction.OFF
