@@ -272,16 +272,16 @@ class CarrierClimate(CarrierZoneEntity, ClimateEntity):
         # so it reflects the true target promptly. Fall back to the status zone
         # when the current activity can't be resolved from config.
         setpoint_source = self._current_activity() or self._status_zone
-        self._attr_target_temperature = None
-        self._attr_target_temperature_high = None
-        self._attr_target_temperature_low = None
+        self._attr_native_target_temperature = None
+        self._attr_native_target_temperature_high = None
+        self._attr_native_target_temperature_low = None
         if hvac_mode == HVACMode.HEAT:
-            self._attr_target_temperature = setpoint_source.heat_set_point
+            self._attr_native_target_temperature = setpoint_source.heat_set_point
         elif hvac_mode == HVACMode.COOL:
-            self._attr_target_temperature = setpoint_source.cool_set_point
+            self._attr_native_target_temperature = setpoint_source.cool_set_point
         elif hvac_mode == HVACMode.HEAT_COOL:
-            self._attr_target_temperature_high = setpoint_source.cool_set_point
-            self._attr_target_temperature_low = setpoint_source.heat_set_point
+            self._attr_native_target_temperature_high = setpoint_source.cool_set_point
+            self._attr_native_target_temperature_low = setpoint_source.heat_set_point
 
         if self.carrier_system.config.humidifier_enabled:
             self._attr_target_humidity = self.carrier_system.config.humidifier_heat_target
