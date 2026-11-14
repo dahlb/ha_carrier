@@ -13,6 +13,9 @@ from custom_components.ha_carrier.const import DOMAIN
 
 from .conftest import FakeCarrierApiConnection, build_carrier_system, entity_id_for_unique_id
 
+# Home Assistant converts the 1200 CFM fixture airflow to m³/min under the metric unit system.
+AIRFLOW_METRIC_STATE = "33.9802159104"
+
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
@@ -20,7 +23,7 @@ from .conftest import FakeCarrierApiConnection, build_carrier_system, entity_id_
     [
         ("abc123_outdoor_temperature", "4.44444444444444"),
         ("abc123_filter_remaining", "80"),
-        ("abc123_airflow", "1200"),
+        ("abc123_airflow", AIRFLOW_METRIC_STATE),
         ("abc123_static_pressure", "0.049817781666667"),
         ("abc123_zone_1_temperature", "21.1111111111111"),
         ("abc123_zone_1_humidity", "45"),
@@ -152,7 +155,7 @@ async def test_unit_status_sensors_use_carrier_api_status_unit_helpers(
         assert {key: state.attributes[key] for key in attributes} == attributes
 
     expected_states = {
-        "abc123_airflow": "1200",
+        "abc123_airflow": AIRFLOW_METRIC_STATE,
         "abc123_static_pressure": "0.049817781666667",
     }
     for unique_id, expected_state in expected_states.items():
@@ -178,7 +181,7 @@ async def test_unit_status_sensors_do_not_expose_raw_attributes_when_mapped_unit
     await setup_integration()
 
     expected_states = {
-        "abc123_airflow": "1200",
+        "abc123_airflow": AIRFLOW_METRIC_STATE,
         "abc123_static_pressure": "0.049817781666667",
     }
     for unique_id, expected_state in expected_states.items():
@@ -225,7 +228,7 @@ async def test_airflow_and_static_pressure_fall_back_when_mapped_fields_are_miss
     await setup_integration()
 
     expected_states = {
-        "abc123_airflow": "1200",
+        "abc123_airflow": AIRFLOW_METRIC_STATE,
         "abc123_static_pressure": "0.049817781666667",
     }
     for unique_id, expected_state in expected_states.items():

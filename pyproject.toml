@@ -58,6 +58,10 @@ warn_unused_configs = true
 module = ["carrier_api.*"]
 ignore_missing_imports = true
 
+[[tool.mypy.overrides]]
+module = ["pytest_homeassistant.*"]
+ignore_missing_imports = true
+
 [tool.ruff]
 line-length = 100
 indent-width = 4
