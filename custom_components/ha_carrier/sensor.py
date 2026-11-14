@@ -93,6 +93,14 @@ async def async_setup_entry(
                     coordinator=coordinator, system_serial=carrier_system.profile.serial
                 )
             )
+        # The profile only says "furnace"; the status payload names the staging.
+        indoor_unit = carrier_system.status.indoor_unit
+        if indoor_unit is not None and indoor_unit.type == "furnacemodulating":
+            entities.append(
+                IndoorUnitVarSensor(
+                    coordinator=coordinator, system_serial=carrier_system.profile.serial
+                )
+            )
         if carrier_system.config.humidifier_enabled:
             entities.append(
                 HumidifierRemainingSensor(
@@ -703,6 +711,9 @@ class StaticPressureSensor(CarrierSensor):
 
     _attr_device_class = SensorDeviceClass.PRESSURE
     _attr_native_unit_of_measurement = UnitOfPressure.INH2O
+    # Home Assistant's unit systems would otherwise convert this to psi or kPa,
+    # which makes duct static pressure unreadable.
+    _attr_suggested_unit_of_measurement = UnitOfPressure.INH2O
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_icon = "mdi:air-filter"
 
@@ -795,30 +806,39 @@ class OutdoorUnitVarSensor(CarrierSensor):
     """Sensor for variable-capacity outdoor unit percentage output."""
 
     _attr_icon = "mdi:percent-box"
+    _entity_name = "ODU Var"
     _attr_native_unit_of_measurement = PERCENTAGE
     _attr_state_class = SensorStateClass.MEASUREMENT
 
     def __init__(self, coordinator: CarrierDataUpdateCoordinator, system_serial: str) -> None:
-        """Initialize a variable outdoor unit percentage sensor.
+        """Initialize a variable-capacity unit percentage sensor.
 
         Args:
             coordinator: Coordinator that provides system telemetry.
             system_serial: Carrier system serial for this entity.
         """
         super().__init__(
-            entity_name="ODU Var",
+            entity_name=self._entity_name,
             coordinator=coordinator,
             system_serial=system_serial,
         )
 
+    def _operational_status(self) -> str | None:
+        """Return the unit operational status that carries the percentage.
+
+        Returns:
+            Carrier's operational status for the outdoor unit.
+        """
+        return self.carrier_system.status.outdoor_unit_operational_status
+
     def _update_entity_attrs(self) -> None:
-        """Update outdoor unit variable rate.
+        """Update the unit's variable rate.
 
         Non-numeric values such as ``'off'`` are treated as 0 % so the sensor
         stays available while the unit is idle rather than going unavailable.
 
         """
-        value = self.carrier_system.status.outdoor_unit_operational_status
+        value = self._operational_status()
         if value is None or not isinstance(value, str):
             self._attr_available = False
             return
@@ -831,3 +851,17 @@ class OutdoorUnitVarSensor(CarrierSensor):
             self._attr_available = True
         except ValueError:
             self._attr_available = False
+
+
+class IndoorUnitVarSensor(OutdoorUnitVarSensor):
+    """Sensor for modulating furnace percentage output."""
+
+    _entity_name = "IDU Var"
+
+    def _operational_status(self) -> str | None:
+        """Return the unit operational status that carries the percentage.
+
+        Returns:
+            Carrier's operational status for the indoor unit.
+        """
+        return self.carrier_system.status.indoor_unit_operational_status
