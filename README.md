@@ -59,6 +59,7 @@ The integration adds a Home Assistant device per Carrier system, with entities f
 - Outdoor unit (ODU) status, with detailed diagnostics
 - Indoor unit (IDU) status, with detailed diagnostics
 - Variable-capacity ODU output (%, on variable-capacity heat pumps and AC units)
+- Modulating furnace (IDU) output (%, on modulating furnaces)
 - Energy usage per source (heat pump, electric heat, gas, fan, cooling, reheat, loop pump): yesterday, last month, and year-to-date — wired up for Home Assistant's Energy dashboard
 - Gas / propane usage year-to-date *(when applicable)*
 - Last-update timestamps for full data refresh, websocket updates, and energy refresh
