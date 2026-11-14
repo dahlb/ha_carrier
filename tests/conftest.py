@@ -15,7 +15,7 @@ from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
 import pytest
-from pytest_homeassistant_custom_component.common import MockConfigEntry
+from pytest_homeassistant.common import MockConfigEntry
 
 import custom_components
 from custom_components.ha_carrier.const import DOMAIN
@@ -600,11 +600,7 @@ async def setup_integration(
         """
         config_entry = MockConfigEntry(
             domain=DOMAIN,
-            title=USERNAME,
-            unique_id=USERNAME,
             data={CONF_USERNAME: USERNAME, CONF_PASSWORD: PASSWORD},
-            options=options or {},
-            version=version,
         )
         config_entry.add_to_hass(hass)
         assert await hass.config_entries.async_setup(config_entry.entry_id)
