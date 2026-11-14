@@ -2,7 +2,7 @@
 
 from homeassistant.const import CONF_PASSWORD, CONF_UNIQUE_ID, CONF_USERNAME, Platform
 
-VERSION: str = "2.29.2"
+VERSION: str = "2.31.1"
 
 # Configuration Constants
 DOMAIN: str = "ha_carrier"
@@ -81,3 +81,7 @@ MAX_REFRESH_ATTEMPTS: int = 2
 ERROR_AUTH: str = "invalid_auth"
 ERROR_CANNOT_CONNECT: str = "cannot_connect"
 ERROR_UNKNOWN: str = "unknown"
+
+# A program write shows in a full read only after the Carrier cloud has taken it (live:
+# the old day right after the write, the new one ~40 s later), so read again after this.
+PROGRAM_READBACK_DELAY_S = 45

@@ -36,6 +36,10 @@ The integration adds a Home Assistant device per Carrier system, with entities f
 - Fan speed: Auto, Low, Medium, High
 - Preset activities defined on your thermostat: **Home**, **Away**, **Sleep**, **Wake**, **Manual**, plus a special **Resume** preset that returns the zone to its scheduled program
 - Optional "infinite hold" behavior — when enabled *(default)*, manual changes hold indefinitely; when disabled, holds end at the next scheduled activity transition
+- Services that work with the thermostat's own schedule instead of holds:
+  - `ha_carrier.set_activity_setpoint` edits an activity's set points without a hold (the current activity, or the one named by `activity`)
+  - `ha_carrier.get_schedule` returns the zone's program and each activity's set points
+  - `ha_carrier.set_program_day` replaces one day of the zone's program
 
 ### Sensors
 
@@ -55,6 +59,7 @@ The integration adds a Home Assistant device per Carrier system, with entities f
 - Outdoor unit (ODU) status, with detailed diagnostics
 - Indoor unit (IDU) status, with detailed diagnostics
 - Variable-capacity ODU output (%, on variable-capacity heat pumps and AC units)
+- Modulating furnace (IDU) output (%, on modulating furnaces)
 - Energy usage per source (heat pump, electric heat, gas, fan, cooling, reheat, loop pump): yesterday, last month, and year-to-date — wired up for Home Assistant's Energy dashboard
 - Gas / propane usage year-to-date *(when applicable)*
 - Last-update timestamps for full data refresh, websocket updates, and energy refresh

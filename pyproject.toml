@@ -22,8 +22,8 @@ version = { attr = "custom_components.ha_carrier.const.VERSION" }
 
 [dependency-groups]
 ha = [
-    "carrier-api==3.6.2",
-    "homeassistant",
+    "carrier-api==3.7.0",
+    "homeassistant==2026.11.0",
 ]
 lint = [
     { include-group = "ha" },
@@ -36,7 +36,7 @@ pytest = [
     "pytest",
     "pytest-asyncio",
     "pytest-cov",
-    "pytest-homeassistant-custom-component",
+    "pytest-homeassistant",
     "pytest-timeout",
 ]
 dev = [
@@ -59,7 +59,7 @@ module = ["carrier_api.*"]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
-module = ["pytest_homeassistant_custom_component.*"]
+module = ["pytest_homeassistant.*"]
 ignore_missing_imports = true
 
 [tool.ruff]
@@ -163,7 +163,11 @@ convention = "google"
 ignore-words-list = "hass"
 
 [tool.pytest.ini_options]
+asyncio_default_fixture_loop_scope = "function"
+# Let Home Assistant install its httpx alias before respx is imported.
+pythonpath = ["."]
 addopts = """
+  -p no:respx
   --quiet
   --timeout=20
   --durations=10

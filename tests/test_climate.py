@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from datetime import timedelta
 from typing import Any
 
 from carrier_api import ActivityTypes, FanModes
+from freezegun.api import FrozenDateTimeFactory
 from homeassistant.components.climate import (
     ATTR_HVAC_MODE,
     ATTR_PRESET_MODE,
@@ -28,8 +30,9 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.util.unit_system import US_CUSTOMARY_SYSTEM
 import pytest
+from pytest_homeassistant.common import async_fire_time_changed
 
-from custom_components.ha_carrier.const import FAN_AUTO
+from custom_components.ha_carrier.const import FAN_AUTO, PROGRAM_READBACK_DELAY_S
 
 from .conftest import FakeCarrierApiConnection, build_carrier_system, entity_id_for_unique_id
 
@@ -312,6 +315,211 @@ async def test_climate_fan_mode_requires_current_activity(
         )
 
 
+ZONE_1 = "abc123_zone_1_thermostat"
+NEW_PERIODS: list[dict[str, str]] = [
+    {"id": "1", "enabled": "on", "time": "06:15", "activity": "home"},
+    {"id": "2", "enabled": "on", "time": "22:00", "activity": "sleep"},
+]
+
+
+@pytest.mark.asyncio
+async def test_get_schedule_returns_the_program_and_activities(
+    hass: HomeAssistant,
+    setup_integration: Callable[..., Any],
+) -> None:
+    """Return the zone's program with its etags and its activity set points."""
+    await setup_integration()
+    entity_id = entity_id_for_unique_id(hass, CLIMATE_DOMAIN, ZONE_1)
+
+    response = await hass.services.async_call(
+        "ha_carrier",
+        "get_schedule",
+        {ATTR_ENTITY_ID: entity_id},
+        blocking=True,
+        return_response=True,
+    )
+
+    schedule = response[entity_id]
+    assert schedule["zone_id"] == "1"
+    assert schedule["config_etag"] == "etag"
+    assert schedule["program_etag"] == "program-etag"
+    assert sorted(schedule["program"]) == [str(day_id) for day_id in range(7)]
+    assert schedule["program"]["3"] == {
+        "etag": "day-etag-3",
+        "periods": [
+            {"id": "1", "activity": "home", "time": "00:00", "enabled": "on"},
+            {"id": "2", "activity": "sleep", "time": "23:59", "enabled": "on"},
+        ],
+    }
+    assert schedule["activities"]["sleep"] == {"htsp": 66.0, "clsp": 76.0, "fan": "off"}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("expected_lingering_timers", [True])  # the 45 s read-back
+async def test_set_program_day_sends_the_periods_with_the_day_etag(
+    hass: HomeAssistant,
+    carrier_api: FakeCarrierApiConnection,
+    setup_integration: Callable[..., Any],
+) -> None:
+    """Send the day's periods with that day's etag unless one is given."""
+    await setup_integration()
+    entity_id = entity_id_for_unique_id(hass, CLIMATE_DOMAIN, ZONE_1)
+
+    await hass.services.async_call(
+        "ha_carrier",
+        "set_program_day",
+        {ATTR_ENTITY_ID: entity_id, "day_id": "3", "periods": NEW_PERIODS},
+        blocking=True,
+    )
+    await hass.services.async_call(
+        "ha_carrier",
+        "set_program_day",
+        {ATTR_ENTITY_ID: entity_id, "day_id": "3", "periods": NEW_PERIODS, "etag": "etag"},
+        blocking=True,
+    )
+
+    writes = [call[1] for call in carrier_api.calls if call[0] == "set_program_day"]
+    assert writes == [
+        {
+            "system_serial": "ABC123",
+            "zone_id": "1",
+            "day_id": "3",
+            "periods": NEW_PERIODS,
+            "etag": "day-etag-3",
+        },
+        {
+            "system_serial": "ABC123",
+            "zone_id": "1",
+            "day_id": "3",
+            "periods": NEW_PERIODS,
+            "etag": "etag",
+        },
+    ]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("expected_lingering_timers", [True])  # the 45 s read-back
+async def test_set_program_day_reads_the_program_back_in_full(
+    hass: HomeAssistant,
+    carrier_api: FakeCarrierApiConnection,
+    setup_integration: Callable[..., Any],
+) -> None:
+    """Follow the write with a full read, so get_schedule shows the new day.
+
+    A plain refresh after a write is the light energy refresh, which leaves the
+    program as it was until the next scheduled full refresh (up to two hours).
+    """
+    await setup_integration()
+    entity_id = entity_id_for_unique_id(hass, CLIMATE_DOMAIN, ZONE_1)
+    full_reads_before = len([call for call in carrier_api.calls if call[0] == "load_data"])
+
+    await hass.services.async_call(
+        "ha_carrier",
+        "set_program_day",
+        {ATTR_ENTITY_ID: entity_id, "day_id": "3", "periods": NEW_PERIODS},
+        blocking=True,
+    )
+
+    calls = [call[0] for call in carrier_api.calls]
+    write_index = calls.index("set_program_day")
+    assert "load_data" in calls[write_index + 1 :]
+    assert len([c for c in calls if c == "load_data"]) == full_reads_before + 1
+
+
+@pytest.mark.asyncio
+async def test_set_program_day_reads_the_program_again_once_the_cloud_shows_it(
+    hass: HomeAssistant,
+    carrier_api: FakeCarrierApiConnection,
+    setup_integration: Callable[..., Any],
+    freezer: FrozenDateTimeFactory,
+) -> None:
+    """Read the program in full again after the write has had time to reach the cloud.
+
+    Live, a full read right after the write still returned the old day; about 40 s later
+    the new one. The second read makes get_schedule show the day the Carrier now runs.
+    """
+    await setup_integration()
+    entity_id = entity_id_for_unique_id(hass, CLIMATE_DOMAIN, ZONE_1)
+    await hass.services.async_call(
+        "ha_carrier",
+        "set_program_day",
+        {ATTR_ENTITY_ID: entity_id, "day_id": "3", "periods": NEW_PERIODS},
+        blocking=True,
+    )
+    reads_after_write = len([c for c in carrier_api.calls if c[0] == "load_data"])
+
+    freezer.tick(timedelta(seconds=PROGRAM_READBACK_DELAY_S - 1))
+    async_fire_time_changed(hass)
+    await hass.async_block_till_done()
+    assert len([c for c in carrier_api.calls if c[0] == "load_data"]) == reads_after_write
+
+    freezer.tick(timedelta(seconds=2))
+    async_fire_time_changed(hass)
+    await hass.async_block_till_done()
+    assert len([c for c in carrier_api.calls if c[0] == "load_data"]) == reads_after_write + 1
+
+
+@pytest.mark.asyncio
+async def test_set_program_day_rejects_an_unknown_day(
+    hass: HomeAssistant,
+    carrier_api: FakeCarrierApiConnection,
+    setup_integration: Callable[..., Any],
+) -> None:
+    """Refuse a day the zone's program does not have, without writing."""
+    await setup_integration()
+    entity_id = entity_id_for_unique_id(hass, CLIMATE_DOMAIN, ZONE_1)
+
+    with pytest.raises(HomeAssistantError):
+        await hass.services.async_call(
+            "ha_carrier",
+            "set_program_day",
+            {ATTR_ENTITY_ID: entity_id, "day_id": "9", "periods": NEW_PERIODS},
+            blocking=True,
+        )
+
+    assert not [call for call in carrier_api.calls if call[0] == "set_program_day"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("data", "expected_activity", "expected_heat", "expected_cool"),
+    [
+        ({}, ActivityTypes.HOME, "68.0", "74.0"),
+        ({"activity": "sleep"}, ActivityTypes.SLEEP, "68.0", "74.0"),
+    ],
+)
+async def test_set_activity_setpoint_edits_the_named_or_current_activity(
+    hass: HomeAssistant,
+    carrier_api: FakeCarrierApiConnection,
+    setup_integration: Callable[..., Any],
+    data: dict[str, str],
+    expected_activity: ActivityTypes,
+    expected_heat: str,
+    expected_cool: str,
+) -> None:
+    """Edit the named activity, or the current one when none is named, without a hold."""
+    await setup_integration()
+    entity_id = entity_id_for_unique_id(hass, CLIMATE_DOMAIN, ZONE_1)
+
+    await hass.services.async_call(
+        "ha_carrier",
+        "set_activity_setpoint",
+        {ATTR_ENTITY_ID: entity_id, ATTR_TARGET_TEMP_LOW: 68, ATTR_TARGET_TEMP_HIGH: 74, **data},
+        blocking=True,
+    )
+
+    writes = [call for call in carrier_api.calls if call[0] != "load_data"]
+    assert writes[-1] == (
+        "set_config_activity",
+        {
+            "system_serial": "ABC123",
+            "zone_id": "1",
+            "activity_type": expected_activity,
+            "heat_set_point": expected_heat,
+            "cool_set_point": expected_cool,
+        },
+    )
+    assert "set_config_hold" not in [call[0] for call in writes]
 @pytest.mark.asyncio
 async def test_cancel_system_vacation_calls_system_mutation_once(
     hass: HomeAssistant,
