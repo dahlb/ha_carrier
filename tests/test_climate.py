@@ -30,7 +30,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.util.unit_system import US_CUSTOMARY_SYSTEM
 import pytest
-from pytest_homeassistant_custom_component.common import async_fire_time_changed
+from pytest_homeassistant.common import async_fire_time_changed
 
 from custom_components.ha_carrier.const import FAN_AUTO, PROGRAM_READBACK_DELAY_S
 

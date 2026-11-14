@@ -15,7 +15,7 @@ from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
 import pytest
-from pytest_homeassistant_custom_component.common import MockConfigEntry
+from pytest_homeassistant.common import MockConfigEntry
 
 import custom_components
 from custom_components.ha_carrier.const import DOMAIN
@@ -533,14 +533,27 @@ def entity_id_for_unique_id(hass: HomeAssistant, domain: str, unique_id: str) ->
     return entity_id
 
 
-@pytest.fixture(autouse=True)
-def auto_enable_custom_integrations(
-    enable_custom_integrations: None,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Enable loading custom integrations in Home Assistant pytest."""
+@pytest.fixture(autouse=True, scope="session")
+def restrict_custom_components_path() -> Iterator[None]:
+    """Limit ``custom_components`` to this repository's real directory.
+
+    An editable install (``pip install -e .``) adds a setuptools path-hook
+    placeholder to the ``custom_components`` namespace path. Home Assistant
+    iterates that path while creating the ``hass`` fixture, so the placeholder
+    must be removed before any function-scoped fixture runs.
+
+    Yields:
+        None: Control while the restricted path is active.
+    """
     components_path = str(Path(__file__).parents[1] / "custom_components")
-    monkeypatch.setattr(custom_components, "__path__", [components_path])
+    with pytest.MonkeyPatch.context() as monkeypatch:
+        monkeypatch.setattr(custom_components, "__path__", [components_path])
+        yield
+
+
+@pytest.fixture(autouse=True)
+def auto_enable_custom_integrations(enable_custom_integrations: None) -> None:
+    """Enable loading custom integrations in Home Assistant pytest."""
 
 
 @pytest.fixture

@@ -65,7 +65,7 @@ class EntryLevelThermostat(CoordinatorEntity[CarrierDataUpdateCoordinator], Clim
 
     _attr_has_entity_name = True
     _attr_name = None
-    _attr_temperature_unit = UnitOfTemperature.FAHRENHEIT
+    _attr_native_temperature_unit = UnitOfTemperature.FAHRENHEIT
     _attr_target_temperature_step = PRECISION_WHOLE
     _attr_hvac_modes: ClassVar[list[HVACMode]] = [
         HVACMode.OFF,
@@ -127,7 +127,7 @@ class EntryLevelThermostat(CoordinatorEntity[CarrierDataUpdateCoordinator], Clim
         )
 
     @property
-    def current_temperature(self) -> float | None:
+    def native_current_temperature(self) -> float | None:
         """Return the current room temperature."""
         zone = self._zone
         return None if zone is None else zone.temperature
@@ -162,7 +162,7 @@ class EntryLevelThermostat(CoordinatorEntity[CarrierDataUpdateCoordinator], Clim
         return HVACAction.IDLE
 
     @property
-    def target_temperature(self) -> float | None:
+    def native_target_temperature(self) -> float | None:
         """Return the single target set point for heat or cool mode."""
         zone = self._zone
         if zone is None:
@@ -174,7 +174,7 @@ class EntryLevelThermostat(CoordinatorEntity[CarrierDataUpdateCoordinator], Clim
         return None
 
     @property
-    def target_temperature_high(self) -> float | None:
+    def native_target_temperature_high(self) -> float | None:
         """Return the cool set point when in heat/cool mode."""
         zone = self._zone
         if zone is None or self.hvac_mode != HVACMode.HEAT_COOL:
@@ -182,7 +182,7 @@ class EntryLevelThermostat(CoordinatorEntity[CarrierDataUpdateCoordinator], Clim
         return zone.cool_set_point
 
     @property
-    def target_temperature_low(self) -> float | None:
+    def native_target_temperature_low(self) -> float | None:
         """Return the heat set point when in heat/cool mode."""
         zone = self._zone
         if zone is None or self.hvac_mode != HVACMode.HEAT_COOL:
