@@ -2,12 +2,19 @@
 
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, datetime, timedelta
+import logging
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import patch
 
-from carrier_api import CarrierApiAuthError, CarrierApiConnectionError, CarrierApiGraphqlError
+from carrier_api import (
+    ActivityTypes,
+    CarrierApiAuthError,
+    CarrierApiConnectionError,
+    CarrierApiGraphqlError,
+)
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed, HomeAssistantError
 from homeassistant.helpers.update_coordinator import UpdateFailed
@@ -1007,3 +1014,232 @@ def test_system_returns_matching_system_or_none() -> None:
 
     assert coordinator.system("ABC123") is system
     assert coordinator.system("missing") is None
+
+
+def _bare_coordinator(
+    carrier_api: FakeCarrierApiConnection | None = None,
+) -> CarrierDataUpdateCoordinator:
+    """Return a partially built coordinator holding one fake system.
+
+    Args:
+        carrier_api: Optional fake API connection to attach.
+
+    Returns:
+        CarrierDataUpdateCoordinator: Coordinator without Home Assistant wiring.
+    """
+    coordinator = CarrierDataUpdateCoordinator.__new__(CarrierDataUpdateCoordinator)
+    coordinator.systems = [build_carrier_system()]
+    coordinator.entry_level_systems = []
+    coordinator._intercept_guards = {}
+    coordinator.resiliency = ResiliencyState(
+        unauthorized_threshold=UNAUTHORIZED_RETRY_THRESHOLD,
+        transient_threshold=TRANSIENT_FAILURE_THRESHOLD,
+    )
+    if carrier_api is not None:
+        _set_coordinator_api_connection(coordinator, carrier_api)
+    return coordinator
+
+
+def test_post_write_guard_ignores_unknown_systems_and_zones() -> None:
+    """Open no guard for an unknown system, and only the mode guard for an unknown zone."""
+    coordinator = _bare_coordinator()
+
+    coordinator.begin_post_write_intercept("MISSING", "1")
+    assert coordinator._intercept_guards == {}
+
+    coordinator.begin_post_write_intercept("ABC123", "99")
+    assert list(coordinator._intercept_guards) == [("ABC123", None)]
+
+
+def test_reassert_skips_targets_that_disappeared() -> None:
+    """Skip guards whose system or zone is gone instead of failing."""
+    coordinator = _bare_coordinator()
+    coordinator.begin_post_write_intercept("ABC123", "1")
+    system = coordinator.systems[0]
+
+    system.status.zones.clear()
+    coordinator._reassert_control()
+
+    coordinator.systems.clear()
+    coordinator._reassert_control()
+
+    assert ("ABC123", "1") in coordinator._intercept_guards
+
+
+def test_reassert_restores_status_when_the_activity_has_no_config_entry() -> None:
+    """Restore the status zone even if the guarded activity is not in the zone config."""
+    coordinator = _bare_coordinator()
+    coordinator.begin_post_write_intercept("ABC123", "1")
+    guard = coordinator._intercept_guards[("ABC123", "1")]
+    guard["activity_type"] = ActivityTypes.WAKE
+    status_zone = coordinator.systems[0].status.zones[0]
+
+    coordinator._reassert_control()
+
+    assert status_zone.current_status_activity_type == ActivityTypes.WAKE
+    assert status_zone.heat_set_point == guard["heat_set_point"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("error", [asyncio.CancelledError(), KeyboardInterrupt()])
+async def test_update_data_and_writes_propagate_cancellation(error: BaseException) -> None:
+    """Never swallow cancellation or interpreter shutdown."""
+    coordinator = _bare_coordinator()
+    coordinator.data_flush = True
+
+    async def raise_error() -> None:
+        """Raise the parametrized error."""
+        raise error
+
+    with (
+        patch.object(coordinator, "_async_full_refresh", raise_error),
+        pytest.raises(type(error)),
+    ):
+        await coordinator._async_update_data()
+    with pytest.raises(type(error)):
+        await coordinator.async_perform_api_call("set mode", raise_error)
+
+
+@pytest.mark.asyncio
+async def test_full_refresh_requires_a_websocket_client(
+    carrier_api: FakeCarrierApiConnection,
+) -> None:
+    """Fail clearly when the Carrier client has no websocket to subscribe to."""
+    coordinator = _bare_coordinator(carrier_api)
+    coordinator._websocket_initialized = False
+    carrier_api.api_websocket = None
+
+    with pytest.raises(RuntimeError, match="websocket client is not initialized"):
+        await coordinator._async_full_refresh()
+
+
+@pytest.mark.asyncio
+async def test_debug_logging_dumps_redacted_systems(
+    carrier_api: FakeCarrierApiConnection,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Log each system, with serials redacted, when debug logging is enabled."""
+    coordinator = _bare_coordinator(carrier_api)
+    coordinator._websocket_initialized = True
+    caplog.set_level(logging.DEBUG, logger="custom_components.ha_carrier.coordinator")
+
+    await coordinator._async_full_refresh()
+    with patch.object(coordinator, "async_update_listeners", lambda: None):
+        await coordinator.updated_callback("{}")
+
+    assert "ABC123" not in caplog.text
+    assert "REDACTED" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_energy_refresh_reraises_non_auth_failures(
+    carrier_api: FakeCarrierApiConnection,
+) -> None:
+    """Let transient energy failures escape so the refresh reports them."""
+    coordinator = _bare_coordinator(carrier_api)
+
+    async def fake_retry(*_args: Any, **_kwargs: Any) -> dict[str, Any]:
+        """Raise a connection failure."""
+        raise CarrierApiConnectionError("offline")
+
+    with (
+        patch("custom_components.ha_carrier.coordinator.async_call_with_retry", fake_retry),
+        pytest.raises(CarrierApiConnectionError),
+    ):
+        await coordinator._async_energy_refresh()
+
+
+@pytest.mark.asyncio
+async def test_write_rejected_for_auth_reconciles_and_raises_translated_error() -> None:
+    """Reconcile after repeated 401s on a write, then raise a retry-later error."""
+    coordinator = _bare_coordinator()
+    reconciled: list[str] = []
+
+    async def fake_retry(*_args: Any, **_kwargs: Any) -> None:
+        """Raise an escalated unauthorized error."""
+        raise CarrierUnauthorizedError("unauthorized")
+
+    async def fake_reconcile(operation_name: str, error: BaseException | None = None) -> None:
+        """Record the reconciliation."""
+        reconciled.append(operation_name)
+
+    with (
+        patch("custom_components.ha_carrier.coordinator.async_call_with_retry", fake_retry),
+        patch.object(coordinator, "_async_reconcile_failed_write", fake_reconcile),
+        pytest.raises(HomeAssistantError) as raised,
+    ):
+        await coordinator.async_perform_api_call("set mode", lambda: None)
+
+    assert raised.value.translation_key == "write_rejected_repeatedly"
+    assert reconciled == ["set mode"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("error", "expect_flush"),
+    [
+        (None, False),
+        (CarrierApiGraphqlError("bad request"), False),
+        (CarrierApiConnectionError("timeout"), True),
+    ],
+)
+async def test_reconcile_failed_write_swallows_refresh_failures(
+    error: BaseException | None,
+    expect_flush: bool,
+) -> None:
+    """Only force a full read for transport or auth failures, and never raise."""
+    coordinator = _bare_coordinator()
+    coordinator.data_flush = False
+
+    async def failing_refresh() -> None:
+        """Fail the reconciliation refresh."""
+        raise UpdateFailed("still down")
+
+    with patch.object(coordinator, "async_refresh", failing_refresh):
+        await coordinator._async_reconcile_failed_write("set mode", error)
+
+    assert coordinator.data_flush is expect_flush
+
+
+@pytest.mark.asyncio
+async def test_entry_level_refresh_failure_is_non_fatal(
+    carrier_api: FakeCarrierApiConnection,
+) -> None:
+    """Keep the previous entry-level systems when their refresh fails."""
+    coordinator = _bare_coordinator(carrier_api)
+    previous = [SimpleNamespace(serial="EL1")]
+    coordinator.entry_level_systems = previous
+
+    async def failing_load() -> list[Any]:
+        """Fail the entry-level load."""
+        raise CarrierApiConnectionError("offline")
+
+    carrier_api.load_entry_level_data = failing_load
+    await coordinator._refresh_entry_level_systems()
+    assert coordinator.entry_level_systems is previous
+
+    async def cancelled_load() -> list[Any]:
+        """Cancel the entry-level load."""
+        raise asyncio.CancelledError
+
+    carrier_api.load_entry_level_data = cancelled_load
+    with pytest.raises(asyncio.CancelledError):
+        await coordinator._refresh_entry_level_systems()
+
+
+def test_entry_level_system_lookup_skips_other_serials() -> None:
+    """Find an entry-level system by serial among several."""
+    coordinator = _bare_coordinator()
+    wanted = SimpleNamespace(serial="EL2")
+    coordinator.entry_level_systems = [SimpleNamespace(serial="EL1"), wanted]
+
+    assert coordinator.entry_level_system("EL2") is wanted
+    assert coordinator.entry_level_system("EL3") is None
+
+
+def test_mapped_system_data_rejects_non_mapping_payloads() -> None:
+    """Raise if the carrier_api serializer stops returning a mapping."""
+    system = SimpleNamespace(as_dict=lambda: ["not", "a", "mapping"])
+
+    with pytest.raises(TypeError, match="non-mapping payload"):
+        CarrierDataUpdateCoordinator.mapped_system_data(system)

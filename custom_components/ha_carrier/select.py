@@ -23,6 +23,9 @@ from .entity import CarrierEntity
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 
+# Commands go to Carrier's cloud API, which rate limits; send one at a time.
+PARALLEL_UPDATES = 1
+
 
 async def async_setup_entry(
     hass: HomeAssistant,

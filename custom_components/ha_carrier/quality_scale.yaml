@@ -47,17 +47,17 @@ rules:
   entity-unavailable: done
   integration-owner: done
   log-when-unavailable:
-    status: todo
+    status: done
     comment: >-
-      _async_update_data logs every failed refresh with _LOGGER.exception; it should log
-      once when Carrier becomes unavailable and once when it recovers.
-  parallel-updates:
-    status: todo
-    comment: No platform sets PARALLEL_UPDATES.
+      Failed refreshes raise UpdateFailed and only debug-log, so DataUpdateCoordinator logs
+      the outage once and its recovery once; websocket data errors log once per streak.
+  parallel-updates: done
   reauthentication-flow: done
   test-coverage:
-    status: todo
-    comment: Coverage is about 86%; the rule requires above 95%.
+    status: done
+    comment: >-
+      Coverage (statements and branches) is above 95% for every module, and
+      [tool.coverage.report] fail_under = 95 keeps it there.
 
   # Gold
   devices: done

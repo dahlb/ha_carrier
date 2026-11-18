@@ -5,6 +5,7 @@ from __future__ import annotations
 import ast
 from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 from carrier_api import (
     CarrierApiAuthError,
@@ -16,6 +17,8 @@ from carrier_api import (
 import pytest
 
 from custom_components.ha_carrier.util import (
+    REDACTED,
+    async_get_carrier_identity_id,
     async_redact_data,
     is_retryable_error,
     is_transient_transport_error,
@@ -100,3 +103,31 @@ def test_async_redact_data_recursively_redacts_mappings_and_lists() -> None:
         "nested": [{"password": "**REDACTED**", "mode": "auto"}],
     }
     assert payload["username"] == "user"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "user_info",
+    [{}, [], {"user": {}}, {"user": "not-a-dict"}, {"user": {"identityId": ""}}],
+)
+async def test_identity_id_is_none_for_unexpected_user_info(user_info: Any) -> None:
+    """Return None instead of raising when Carrier's user info has an unexpected shape."""
+
+    class _Api:
+        """Minimal Carrier API stand-in."""
+
+        async def load_data(self) -> list[Any]:
+            """Pretend to load systems."""
+            return []
+
+        async def get_user_info(self) -> Any:
+            """Return the parametrized payload."""
+            return user_info
+
+    assert await async_get_carrier_identity_id(_Api()) is None
+
+
+def test_async_redact_data_passes_scalars_and_top_level_lists_through() -> None:
+    """Return scalars unchanged and redact inside a top-level list."""
+    assert async_redact_data("serial", {"serial"}) == "serial"
+    assert async_redact_data([{"serial": "ABC"}, 1], {"serial"}) == [{"serial": REDACTED}, 1]

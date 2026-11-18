@@ -5,11 +5,14 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any
 
+from carrier_api import TemperatureUnits
+from homeassistant.const import STATE_UNAVAILABLE
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
 import pytest
 
 from custom_components.ha_carrier.const import DOMAIN
+from custom_components.ha_carrier.sensor import CarrierSensor
 
 from .conftest import FakeCarrierApiConnection, build_carrier_system, entity_id_for_unique_id
 
@@ -293,3 +296,158 @@ async def test_modulating_furnace_registers_idu_var_sensor(
 
     assert state is not None
     assert state.state == expected_state
+
+
+def _refresh_entities(hass: HomeAssistant, entry: Any) -> None:
+    """Push the coordinator's current (mutated) data to every entity.
+
+    Args:
+        hass: Home Assistant instance.
+        entry: Loaded Carrier config entry.
+    """
+    entry.runtime_data.async_update_listeners()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("unique_id", "mutate"),
+    [
+        ("abc123_filter_remaining", lambda system: setattr(system.status, "filter_used", None)),
+        (
+            "abc123_humidifier_remaining",
+            lambda system: setattr(system.status, "humidity_level", None),
+        ),
+        ("abc123_uv_lamp_remaining", lambda system: setattr(system.status, "uv_lamp_level", None)),
+        (
+            "abc123_airflow",
+            lambda system: (
+                setattr(system.status.indoor_unit, "airflow_cfm", None),
+                setattr(system.status, "airflow_cfm", None),
+            ),
+        ),
+        (
+            "abc123_odu_status",
+            lambda system: setattr(system.status, "outdoor_unit_operational_status", None),
+        ),
+        (
+            "abc123_gas_usage_year_to_date",
+            lambda system: setattr(
+                system.energy, "value_for_period_metric", lambda period, metric: None
+            ),
+        ),
+    ],
+)
+async def test_sensors_go_unavailable_when_carrier_omits_their_value(
+    hass: HomeAssistant,
+    carrier_api: FakeCarrierApiConnection,
+    setup_integration: Callable[..., Any],
+    unique_id: str,
+    mutate: Callable[[Any], Any],
+) -> None:
+    """Mark a sensor unavailable instead of reporting a stale or bogus value."""
+    entry = await setup_integration()
+    entity_id = entity_id_for_unique_id(hass, "sensor", unique_id)
+    assert hass.states.get(entity_id).state != STATE_UNAVAILABLE
+
+    mutate(carrier_api.systems[0])
+    _refresh_entities(hass, entry)
+    await hass.async_block_till_done()
+
+    assert hass.states.get(entity_id).state == STATE_UNAVAILABLE
+
+
+@pytest.mark.asyncio
+async def test_propane_sensor_goes_unavailable_without_gas_usage(
+    hass: HomeAssistant,
+    carrier_api: FakeCarrierApiConnection,
+    setup_integration: Callable[..., Any],
+) -> None:
+    """Mark the propane sensor unavailable when Carrier omits year-to-date gas usage."""
+    system = carrier_api.systems[0]
+    system.config.fuel_type = "propane"
+    entry = await setup_integration()
+    entity_id = entity_id_for_unique_id(hass, "sensor", "abc123_propane_consumption_year_to_date")
+    assert hass.states.get(entity_id).state != STATE_UNAVAILABLE
+
+    system.energy.value_for_period_metric = lambda period, metric: None
+    _refresh_entities(hass, entry)
+    await hass.async_block_till_done()
+
+    assert hass.states.get(entity_id).state == STATE_UNAVAILABLE
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("gas_unit", "expected_state"),
+    [
+        # 300 kBTU reported; gjoule values are hundredths of a gigajoule.
+        ("gjoule", str(round(300 / 100 * 25.5, 2))),
+        ("unknown", STATE_UNAVAILABLE),
+    ],
+)
+async def test_gas_usage_sensor_converts_or_rejects_each_gas_unit(
+    hass: HomeAssistant,
+    carrier_api: FakeCarrierApiConnection,
+    setup_integration: Callable[..., Any],
+    gas_unit: str,
+    expected_state: str,
+) -> None:
+    """Convert gigajoules to cubic meters and refuse an unknown gas unit."""
+    carrier_api.systems[0].config.gas_unit = gas_unit
+    await setup_integration()
+
+    state = hass.states.get(
+        entity_id_for_unique_id(hass, "sensor", "abc123_gas_usage_year_to_date")
+    )
+
+    assert state is not None
+    if expected_state == STATE_UNAVAILABLE:
+        assert state.state == STATE_UNAVAILABLE
+    else:
+        assert float(state.state) == pytest.approx(float(expected_state))
+
+
+@pytest.mark.asyncio
+async def test_sensor_platform_skips_sensors_for_missing_equipment(
+    hass: HomeAssistant,
+    carrier_api: FakeCarrierApiConnection,
+    setup_integration: Callable[..., Any],
+) -> None:
+    """Skip sensors for missing equipment and read zone temperatures in Celsius."""
+    system = build_carrier_system(has_heat_pump=False)
+    system.config.uv_enabled = False
+    system.config.humidifier_enabled = False
+    system.config.fuel_type = None
+    system.status.temperature_unit = TemperatureUnits.CELSIUS
+    carrier_api.systems = [system]
+    await setup_integration()
+
+    registry = er.async_get(hass)
+    for unique_id in (
+        "abc123_odu_var",
+        "abc123_uv_lamp_remaining",
+        "abc123_humidifier_remaining",
+        "abc123_gas_usage_year_to_date",
+    ):
+        assert registry.async_get_entity_id("sensor", DOMAIN, unique_id) is None
+    zone_temperature = hass.states.get(
+        entity_id_for_unique_id(hass, "sensor", "abc123_zone_1_temperature")
+    )
+    # A Celsius thermostat reports its 70 degree reading as Celsius, not converted.
+    assert zone_temperature is not None
+    assert zone_temperature.state == "70.0"
+
+
+@pytest.mark.asyncio
+async def test_base_sensor_requires_a_serial_and_defaults_to_unavailable(
+    hass: HomeAssistant,
+    setup_integration: Callable[..., Any],
+) -> None:
+    """Reject a missing serial and stay unavailable until a subclass reads data."""
+    entry = await setup_integration()
+    coordinator = entry.runtime_data
+
+    with pytest.raises(ValueError, match="serial is required"):
+        CarrierSensor("Test", coordinator, None)
+
+    assert CarrierSensor("Test", coordinator, "ABC123").available is False

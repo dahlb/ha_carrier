@@ -22,6 +22,7 @@ from custom_components.ha_carrier import config_flow
 from custom_components.ha_carrier.const import (
     CONF_FULL_REFRESH_INTERVAL,
     CONF_INFINITE_HOLDS,
+    CONFIG_FLOW_VERSION,
     DEFAULT_FULL_REFRESH_INTERVAL_MINUTES,
     DOMAIN,
     ERROR_AUTH,
@@ -540,3 +541,89 @@ def test_every_flow_field_has_a_data_description(section: str, step: str) -> Non
     step_strings = translations[section]["step"][step]
 
     assert set(step_strings["data"]) == set(step_strings.get("data_description", {}))
+
+
+@pytest.mark.asyncio
+async def test_user_flow_reports_unknown_when_carrier_returns_no_identity(
+    hass: HomeAssistant,
+    patch_carrier_api: FakeCarrierApiConnection,
+) -> None:
+    """Show an unknown error when Carrier accepts the login but returns no identity."""
+    patch_carrier_api.identity_id = ""
+
+    form = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+    result = await hass.config_entries.flow.async_configure(
+        form["flow_id"], user_input={CONF_USERNAME: USERNAME, CONF_PASSWORD: PASSWORD}
+    )
+
+    assert result["type"] is FlowResultType.FORM
+    assert result["errors"] == {"base": ERROR_UNKNOWN}
+    assert patch_carrier_api.cleanup_calls == 1
+
+
+@pytest.mark.asyncio
+async def test_reconfigure_flow_shows_the_form_again_on_bad_credentials(
+    hass: HomeAssistant,
+    patch_carrier_api: FakeCarrierApiConnection,
+) -> None:
+    """Keep the reconfigure form open with an auth error when Carrier rejects the login."""
+    config_entry = MockConfigEntry(
+        domain=DOMAIN,
+        title=USERNAME,
+        unique_id=IDENTITY_ID,
+        data={CONF_USERNAME: USERNAME, CONF_PASSWORD: PASSWORD},
+        version=CONFIG_FLOW_VERSION,
+    )
+    config_entry.add_to_hass(hass)
+    patch_carrier_api.load_data_error = CarrierApiAuthError("unauthorized")
+
+    form = await hass.config_entries.flow.async_init(
+        DOMAIN,
+        context={"source": config_entries.SOURCE_RECONFIGURE, "entry_id": config_entry.entry_id},
+    )
+    result = await hass.config_entries.flow.async_configure(
+        form["flow_id"], user_input={CONF_USERNAME: USERNAME, CONF_PASSWORD: "wrong"}
+    )
+
+    assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "reconfigure"
+    assert result["errors"] == {"base": ERROR_AUTH}
+    assert config_entry.data[CONF_PASSWORD] == PASSWORD
+
+
+@pytest.mark.asyncio
+async def test_reauth_of_a_legacy_entry_aborts_when_the_identity_is_already_configured(
+    hass: HomeAssistant,
+    patch_carrier_api: FakeCarrierApiConnection,
+) -> None:
+    """Refuse to move a legacy entry onto an identity another entry already uses."""
+    legacy_entry = MockConfigEntry(
+        domain=DOMAIN,
+        title=USERNAME,
+        unique_id=USERNAME,
+        data={CONF_USERNAME: USERNAME, CONF_PASSWORD: "old"},
+        version=CONFIG_FLOW_VERSION,
+    )
+    legacy_entry.add_to_hass(hass)
+    MockConfigEntry(
+        domain=DOMAIN,
+        title="other@example.com",
+        unique_id=IDENTITY_ID,
+        data={CONF_USERNAME: "other@example.com", CONF_PASSWORD: PASSWORD},
+        version=CONFIG_FLOW_VERSION,
+    ).add_to_hass(hass)
+
+    form = await hass.config_entries.flow.async_init(
+        DOMAIN,
+        context={"source": config_entries.SOURCE_REAUTH, "entry_id": legacy_entry.entry_id},
+        data=legacy_entry.data,
+    )
+    result = await hass.config_entries.flow.async_configure(
+        form["flow_id"], user_input={CONF_PASSWORD: PASSWORD}
+    )
+
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "already_configured"
+    assert legacy_entry.unique_id == USERNAME

@@ -8,6 +8,8 @@ from typing import Any
 from homeassistant.core import HomeAssistant
 import pytest
 
+from custom_components.ha_carrier.binary_sensor import CarrierBinarySensor
+
 from .conftest import entity_id_for_unique_id
 
 
@@ -35,3 +37,17 @@ async def test_binary_sensor_platform_registers_expected_entities(
 
     assert state is not None
     assert state.state == expected_state
+
+
+@pytest.mark.asyncio
+async def test_base_binary_sensor_requires_a_serial_and_defaults_to_unavailable(
+    hass: HomeAssistant,
+    setup_integration: Callable[..., Any],
+) -> None:
+    """Reject a missing serial and stay unavailable until a subclass reads data."""
+    entry = await setup_integration()
+
+    with pytest.raises(ValueError, match="serial is required"):
+        CarrierBinarySensor("Test", entry.runtime_data, None)
+
+    assert CarrierBinarySensor("Test", entry.runtime_data, "ABC123").available is False

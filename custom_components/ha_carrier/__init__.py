@@ -221,12 +221,16 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntryCarrie
                         return
                 except WEBSOCKET_DATA_UPDATE_EXCEPTIONS as error:
                     delay = compute_backoff_delay(WEBSOCKET_RETRY_POLICY, attempt)
-                    _LOGGER.exception(
+                    # Log the stack trace once per failure streak; repeats until the
+                    # listener next succeeds only go to debug.
+                    _LOGGER.log(
+                        logging.ERROR if attempt == 0 else logging.DEBUG,
                         "websocket data update failed with %s; requesting refresh and "
                         "retrying in %.1f seconds (attempt %d)",
                         type(error).__name__,
                         delay,
                         attempt + 1,
+                        exc_info=error,
                     )
                     coordinator.data_flush = True
                     await coordinator.async_request_refresh()
@@ -253,14 +257,17 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntryCarrie
             websocket_task.cancel()
 
         config_entry.async_on_unload(cancel_websocket_task)
+    # Home Assistant logs a not-ready setup (and each background retry) and
+    # starts reauthentication itself, so these paths only debug-log the cause to
+    # avoid repeating a stack trace on every setup retry while Carrier is down.
     except ConfigEntryAuthFailed:
-        _LOGGER.exception("Carrier authentication failed during setup")
+        _LOGGER.debug("Carrier authentication failed during setup", exc_info=True)
         raise
     except CarrierUnauthorizedError as error:
-        _LOGGER.exception("Carrier unauthorized during setup")
+        _LOGGER.debug("Carrier unauthorized during setup", exc_info=error)
         raise ConfigEntryAuthFailed("Carrier API rejected credentials during setup.") from error
     except CarrierApiConnectionError as error:
-        _LOGGER.exception("Carrier connection error during setup")
+        _LOGGER.debug("Carrier connection error during setup", exc_info=error)
         raise ConfigEntryNotReady(error) from error
     except (
         asyncio.CancelledError,
@@ -270,7 +277,9 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntryCarrie
         raise
     except ConfigEntryNotReady as err:
         if is_unauthorized_error(err):
-            _LOGGER.exception("Carrier authentication failed during initial setup refresh")
+            _LOGGER.debug(
+                "Carrier authentication failed during initial setup refresh", exc_info=err
+            )
             raise ConfigEntryAuthFailed("Carrier API rejected credentials during setup.") from err
         _LOGGER.debug("Carrier setup is not ready; Home Assistant will retry", exc_info=err)
         raise
