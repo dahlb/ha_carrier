@@ -106,10 +106,15 @@ rules:
   # Platinum
   async-dependency: done
   inject-websession:
-    status: todo
+    status: done
     comment: >-
-      carrier_api accepts a client_session, but the integration does not pass Home
-      Assistant's shared aiohttp session.
+      util.async_create_api_connection passes Home Assistant's shared aiohttp session as
+      carrier_api's client_session, and the integration never calls cleanup() on it.
+      carrier_api uses that session for the websocket; its GraphQL requests still go
+      through gql's AIOHTTPTransport, which carrier_api does not yet let callers give a
+      session to.
   strict-typing:
-    status: todo
-    comment: mypy is not run in strict mode and still reports errors.
+    status: done
+    comment: >-
+      pyproject.toml sets strict = true for custom_components/ha_carrier, which type-checks
+      cleanly; the Lint workflow runs mypy on every push and pull request.

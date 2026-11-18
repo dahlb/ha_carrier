@@ -5,13 +5,13 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from carrier_api import ApiConnectionGraphql, CarrierApiError
+from carrier_api import CarrierApiError
 from homeassistant.config_entries import ConfigEntry, ConfigFlow, ConfigFlowResult, OptionsFlow
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME, UnitOfTime
-from homeassistant.core import callback
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import selector
 import homeassistant.helpers.config_validation as cv
-import voluptuous as vol
+import probatio
 
 from .const import (
     CONF_FULL_REFRESH_INTERVAL,
@@ -26,18 +26,28 @@ from .const import (
     MAX_FULL_REFRESH_INTERVAL_MINUTES,
     MIN_FULL_REFRESH_INTERVAL_MINUTES,
 )
-from .util import async_get_carrier_identity_id, is_transient_transport_error, is_unauthorized_error
+from .util import (
+    async_create_api_connection,
+    async_get_carrier_identity_id,
+    is_transient_transport_error,
+    is_unauthorized_error,
+)
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 
 
 async def _async_validate_credentials(
+    hass: HomeAssistant,
     username: str,
     password: str,
 ) -> tuple[dict[str, str], str | None]:
     """Validate Carrier credentials with a single API request.
 
+    The connection uses Home Assistant's shared aiohttp session, so it is not
+    cleaned up afterwards (that would close the shared session).
+
     Args:
+        hass: Home Assistant instance whose shared session is used.
         username: Carrier account username.
         password: Carrier account password.
 
@@ -45,10 +55,10 @@ async def _async_validate_credentials(
         tuple[dict[str, str], str | None]: Flow errors keyed by field name and
             the Carrier identity ID when validation succeeds.
     """
-    api_connection: ApiConnectionGraphql | None = None
     try:
-        api_connection = ApiConnectionGraphql(username=username, password=password)
-        identity_id = await async_get_carrier_identity_id(api_connection)
+        identity_id = await async_get_carrier_identity_id(
+            async_create_api_connection(hass, username, password)
+        )
     except CarrierApiError as error:
         if is_unauthorized_error(error):
             return {"base": ERROR_AUTH}, None
@@ -59,14 +69,6 @@ async def _async_validate_credentials(
             return {"base": ERROR_CANNOT_CONNECT}, None
         _LOGGER.exception("Unexpected error validating Carrier credentials")
         return {"base": ERROR_UNKNOWN}, None
-    finally:
-        if api_connection is not None:
-            try:
-                await api_connection.cleanup()
-            except CarrierApiError:
-                _LOGGER.exception(
-                    "Failed to clean up Carrier API connection after credential validation"
-                )
     if identity_id is None:
         _LOGGER.error("Carrier API did not return an identity ID for validated credentials")
         return {"base": ERROR_UNKNOWN}, None
@@ -117,7 +119,7 @@ class CarrierConfigFlow(ConfigFlow, domain=DOMAIN):
         username: str | None = None,
         *,
         require_password: bool,
-    ) -> vol.Schema:
+    ) -> probatio.Schema:
         """Build a Carrier credential form schema.
 
         Args:
@@ -125,22 +127,22 @@ class CarrierConfigFlow(ConfigFlow, domain=DOMAIN):
             require_password: Whether the password field must be submitted.
 
         Returns:
-            vol.Schema: Credential form schema for the requested flow.
+            probatio.Schema: Credential form schema for the requested flow.
         """
-        schema: dict[vol.Marker, type[str]] = {}
+        schema: dict[probatio.Marker, type[str]] = {}
         if username is None:
-            schema[vol.Required(CONF_USERNAME)] = str
+            schema[probatio.Required(CONF_USERNAME)] = str
         else:
-            schema[vol.Required(CONF_USERNAME, default=username)] = str
+            schema[probatio.Required(CONF_USERNAME, default=username)] = str
 
-        password_marker: vol.Marker
+        password_marker: probatio.Marker
         if require_password:
-            password_marker = vol.Required(CONF_PASSWORD)
+            password_marker = probatio.Required(probatio.Secret(CONF_PASSWORD))
         else:
-            password_marker = vol.Optional(CONF_PASSWORD)
+            password_marker = probatio.Optional(probatio.Secret(CONF_PASSWORD))
         schema[password_marker] = str
 
-        return vol.Schema(schema)
+        return probatio.Schema(schema)
 
     async def async_step_user(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         """Handle username/password input and validate Carrier credentials.
@@ -157,7 +159,7 @@ class CarrierConfigFlow(ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             username = user_input[CONF_USERNAME]
             password = user_input[CONF_PASSWORD]
-            errors, identity_id = await _async_validate_credentials(username, password)
+            errors, identity_id = await _async_validate_credentials(self.hass, username, password)
 
             if not errors:
                 if identity_id is None:
@@ -193,7 +195,7 @@ class CarrierConfigFlow(ConfigFlow, domain=DOMAIN):
             username = user_input[CONF_USERNAME]
             password = user_input.get(CONF_PASSWORD) or reconfigure_entry.data[CONF_PASSWORD]
 
-            errors, identity_id = await _async_validate_credentials(username, password)
+            errors, identity_id = await _async_validate_credentials(self.hass, username, password)
 
             if not errors:
                 if identity_id is None:
@@ -263,7 +265,7 @@ class CarrierConfigFlow(ConfigFlow, domain=DOMAIN):
             password = user_input.get(CONF_PASSWORD) or self._reauth_entry_data[CONF_PASSWORD]
             reauth_entry = self._get_reauth_entry()
 
-            errors, identity_id = await _async_validate_credentials(username, password)
+            errors, identity_id = await _async_validate_credentials(self.hass, username, password)
 
             if not errors:
                 if identity_id is None:
@@ -327,18 +329,18 @@ class CarrierOptionsFlow(OptionsFlow):
         Args:
             config_entry: Existing config entry whose options are being edited.
         """
-        self.schema = vol.Schema(
+        self.schema = probatio.Schema(
             {
-                vol.Required(
+                probatio.Required(
                     CONF_INFINITE_HOLDS,
                     default=config_entry.options.get(CONF_INFINITE_HOLDS, DEFAULT_INFINITE_HOLDS),
                 ): cv.boolean,
-                vol.Required(
+                probatio.Required(
                     CONF_FULL_REFRESH_INTERVAL,
                     default=config_entry.options.get(
                         CONF_FULL_REFRESH_INTERVAL, DEFAULT_FULL_REFRESH_INTERVAL_MINUTES
                     ),
-                ): vol.All(
+                ): probatio.All(
                     selector.NumberSelector(
                         selector.NumberSelectorConfig(
                             min=MIN_FULL_REFRESH_INTERVAL_MINUTES,
@@ -348,7 +350,7 @@ class CarrierOptionsFlow(OptionsFlow):
                             mode=selector.NumberSelectorMode.BOX,
                         )
                     ),
-                    vol.Coerce(int),
+                    probatio.Coerce(int),
                 ),
             }
         )

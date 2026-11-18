@@ -4,7 +4,7 @@ import asyncio
 from datetime import timedelta
 import logging
 
-from carrier_api import ApiConnectionGraphql, CarrierApiConnectionError
+from carrier_api import CarrierApiConnectionError
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 from homeassistant.core import HomeAssistant, callback
@@ -33,6 +33,7 @@ from .services import async_setup_services
 from .util import (
     WEBSOCKET_DATA_UPDATE_EXCEPTIONS,
     WEBSOCKET_RECOVERABLE_EXCEPTIONS,
+    async_create_api_connection,
     async_redact_data,
     is_unauthorized_error,
 )
@@ -148,7 +149,7 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntryCarrie
     password = config_entry.data[CONF_PASSWORD]
 
     try:
-        api_connection = ApiConnectionGraphql(username=username, password=password)
+        api_connection = async_create_api_connection(hass, username, password)
         coordinator = CarrierDataUpdateCoordinator(
             hass=hass,
             api_connection=api_connection,

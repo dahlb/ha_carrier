@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from functools import partial
 import logging
-from typing import TYPE_CHECKING, Any, ClassVar
+from typing import TYPE_CHECKING, Any
 
 from homeassistant.components.climate import (
     ClimateEntity,
@@ -15,7 +15,7 @@ from homeassistant.components.climate import (
 from homeassistant.components.climate.const import ATTR_TARGET_TEMP_HIGH, ATTR_TARGET_TEMP_LOW
 from homeassistant.const import ATTR_TEMPERATURE, PRECISION_WHOLE, UnitOfTemperature
 from homeassistant.exceptions import HomeAssistantError
-from homeassistant.helpers.entity import DeviceInfo
+from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util import slugify
 
@@ -65,12 +65,6 @@ class EntryLevelThermostat(CoordinatorEntity[CarrierDataUpdateCoordinator], Clim
     _attr_name = None
     _attr_native_temperature_unit = UnitOfTemperature.FAHRENHEIT
     _attr_target_temperature_step = PRECISION_WHOLE
-    _attr_hvac_modes: ClassVar[list[HVACMode]] = [
-        HVACMode.OFF,
-        HVACMode.COOL,
-        HVACMode.HEAT,
-        HVACMode.HEAT_COOL,
-    ]
     _attr_supported_features = (
         ClimateEntityFeature.TARGET_TEMPERATURE
         | ClimateEntityFeature.TARGET_TEMPERATURE_RANGE
@@ -88,6 +82,7 @@ class EntryLevelThermostat(CoordinatorEntity[CarrierDataUpdateCoordinator], Clim
             index: Zone index within the entry-level system.
         """
         super().__init__(coordinator, serial)
+        self._attr_hvac_modes = [HVACMode.OFF, HVACMode.COOL, HVACMode.HEAT, HVACMode.HEAT_COOL]
         self._serial = serial
         self._index = index
         self._attr_unique_id = slugify(f"{serial}_{index}_entry_level_thermostat")

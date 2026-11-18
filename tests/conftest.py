@@ -87,7 +87,7 @@ class FakeCarrierApiConnection:
         self.calls: list[tuple[str, dict[str, Any]]] = []
         self.load_data_error: BaseException | None = None
         self.cleanup_calls = 0
-        self.cleanup_error: BaseException | None = None
+        self.client_session: Any = None
 
     async def load_data(self) -> list[System]:
         """Return configured systems or raise a configured load error."""
@@ -109,10 +109,8 @@ class FakeCarrierApiConnection:
         return {"updateEntryLevelZone": {"success": True}}
 
     async def cleanup(self) -> None:
-        """Record credential-validation cleanup."""
+        """Record a cleanup call; the integration must never make one on the shared session."""
         self.cleanup_calls += 1
-        if self.cleanup_error is not None:
-            raise self.cleanup_error
 
     async def get_user_info(self) -> dict[str, Any]:
         """Return the fake Carrier account identity payload."""
@@ -608,17 +606,16 @@ def patch_carrier_api(
         FakeCarrierApiConnection: The patched fake API object.
     """
 
-    def build_connection(*, username: str, password: str) -> FakeCarrierApiConnection:
-        """Return the test fake while recording supplied credentials."""
+    def build_connection(
+        *, username: str, password: str, client_session: Any = None
+    ) -> FakeCarrierApiConnection:
+        """Return the test fake while recording credentials and the injected session."""
         carrier_api.username = username
         carrier_api.password = password
+        carrier_api.client_session = client_session
         return carrier_api
 
-    with (
-        patch("custom_components.ha_carrier.ApiConnectionGraphql", build_connection),
-        patch("custom_components.ha_carrier.config_flow.ApiConnectionGraphql", build_connection),
-        patch("custom_components.ha_carrier.migrate.ApiConnectionGraphql", build_connection),
-    ):
+    with patch("custom_components.ha_carrier.util.ApiConnectionGraphql", build_connection):
         yield carrier_api
 
 

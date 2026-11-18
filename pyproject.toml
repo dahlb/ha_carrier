@@ -47,16 +47,14 @@ dev = [
 [tool.mypy]
 python_version = "3.14"
 files = ["custom_components/ha_carrier"]
+# The Home Assistant quality scale's Platinum strict-typing rule.
+strict = true
 check_untyped_defs = true
 explicit_package_bases = true
 namespace_packages = true
 pretty = true
 show_error_codes = true
 warn_unused_configs = true
-
-[[tool.mypy.overrides]]
-module = ["carrier_api.*"]
-ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 module = ["pytest_homeassistant.*"]

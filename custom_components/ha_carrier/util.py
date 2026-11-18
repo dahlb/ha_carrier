@@ -15,12 +15,39 @@ from carrier_api import (
     CarrierApiTokenRefreshError,
     CarrierApiWebsocketError,
 )
-from homeassistant.core import callback
+from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .exceptions import CarrierUnauthorizedError
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 REDACTED = "**REDACTED**"
+
+
+def async_create_api_connection(
+    hass: HomeAssistant, username: str, password: str
+) -> ApiConnectionGraphql:
+    """Create a Carrier API connection on Home Assistant's shared aiohttp session.
+
+    Never call ``cleanup()`` on the returned connection: carrier_api closes
+    whatever session it holds, and this one is Home Assistant's shared session.
+    Home Assistant closes it at shutdown.
+
+    Args:
+        hass: Home Assistant instance whose shared session is injected.
+        username: Carrier account username.
+        password: Carrier account password.
+
+    Returns:
+        ApiConnectionGraphql: Connection using the shared session for token
+            refresh and the websocket.
+    """
+    return ApiConnectionGraphql(
+        username=username,
+        password=password,
+        client_session=async_get_clientsession(hass),
+    )
+
 
 TIMESTAMP_TYPES: tuple[str, ...] = ("all_data", "websocket", "energy")
 

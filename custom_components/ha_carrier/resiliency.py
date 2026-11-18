@@ -192,7 +192,7 @@ def compute_backoff_delay(policy: RetryPolicy, attempt: int) -> float:
     else:
         max_exponent = 0
     exponent = min(max(attempt, 0), max_exponent)
-    raw = policy.base_delay * (2**exponent)
+    raw = policy.base_delay * (2.0**exponent)
     capped = min(raw, policy.max_delay)
     capped = max(0.0, capped)
     if policy.jitter_fraction <= 0:

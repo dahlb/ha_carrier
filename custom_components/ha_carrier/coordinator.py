@@ -671,7 +671,8 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator[list[dict[str, Any]]]):
             self.entry_level_systems = await self.api_connection.load_entry_level_data()
         except asyncio.CancelledError, KeyboardInterrupt, SystemExit:
             raise
-        except (CarrierApiError, *RECOVERABLE_REFRESH_EXCEPTIONS) as error:
+        except RECOVERABLE_REFRESH_EXCEPTIONS as error:
+            # Includes CarrierApiError, so any Carrier-side failure is non-fatal.
             self.entry_level_systems_loaded = False
             _LOGGER.debug("Carrier entry-level refresh failed (non-fatal): %s", error)
         else:

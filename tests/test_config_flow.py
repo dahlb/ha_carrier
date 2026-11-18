@@ -15,6 +15,7 @@ from homeassistant.config_entries import ConfigEntry, ConfigEntryState
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType, InvalidData
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
 import pytest
 from pytest_homeassistant.common import MockConfigEntry
 
@@ -36,12 +37,14 @@ from .conftest import IDENTITY_ID, PASSWORD, USERNAME, FakeCarrierApiConnection
 
 
 async def _async_validate_without_identity(
+    hass: Any,
     username: str,
     password: str,
 ) -> tuple[dict[str, str], str | None]:
     """Return successful validation without a Carrier identity ID.
 
     Args:
+        hass: Home Assistant instance (unused).
         username: Submitted Carrier account username.
         password: Submitted Carrier account password.
 
@@ -93,7 +96,7 @@ async def test_user_flow_creates_entry_after_successful_validation(
     assert result["title"] == USERNAME
     assert result["data"] == {CONF_USERNAME: USERNAME, CONF_PASSWORD: PASSWORD}
     assert result["result"].unique_id == IDENTITY_ID
-    assert patch_carrier_api.cleanup_calls == 1
+    assert patch_carrier_api.cleanup_calls == 0
 
 
 @pytest.mark.asyncio
@@ -144,19 +147,12 @@ async def test_user_flow_maps_validation_errors(
 
 
 @pytest.mark.asyncio
-async def test_user_flow_still_creates_entry_when_cleanup_reports_carrier_error(
+async def test_user_flow_never_closes_the_shared_session(
     hass: HomeAssistant,
     patch_carrier_api: FakeCarrierApiConnection,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Do not fail a validated user flow only because API cleanup failed."""
-
-    async def cleanup() -> None:
-        """Raise the Carrier API cleanup failure."""
-        raise CarrierApiConnectionError("cleanup failed")
-
-    monkeypatch.setattr(patch_carrier_api, "cleanup", cleanup)
-
+    """Validate on HA's shared session and never call cleanup(), which would close it."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
         context={"source": config_entries.SOURCE_USER},
@@ -165,6 +161,8 @@ async def test_user_flow_still_creates_entry_when_cleanup_reports_carrier_error(
 
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert result["result"].unique_id == IDENTITY_ID
+    assert patch_carrier_api.client_session is async_get_clientsession(hass)
+    assert patch_carrier_api.cleanup_calls == 0
 
 
 @pytest.mark.asyncio
@@ -256,12 +254,14 @@ def test_reconfigure_updates_username_and_reuses_blank_password(
     updates: list[dict[str, Any]] = []
 
     async def async_validate_credentials(
+        hass: Any,
         username: str,
         password: str,
     ) -> tuple[dict[str, str], str | None]:
         """Return a validated identity for the submitted credentials.
 
         Args:
+            hass: Home Assistant instance (unused).
             username: Submitted Carrier account username.
             password: Submitted Carrier account password.
 
@@ -434,12 +434,14 @@ def test_reauth_rejects_credentials_for_different_unconfigured_identity(
     """Test reauth rejects credentials for a different unconfigured Carrier account."""
 
     async def async_validate_credentials(
+        hass: Any,
         username: str,
         password: str,
     ) -> tuple[dict[str, str], str | None]:
         """Return a validated identity that does not belong to the reauth entry.
 
         Args:
+            hass: Home Assistant instance (unused).
             username: Submitted Carrier account username.
             password: Submitted Carrier account password.
 
@@ -560,7 +562,7 @@ async def test_user_flow_reports_unknown_when_carrier_returns_no_identity(
 
     assert result["type"] is FlowResultType.FORM
     assert result["errors"] == {"base": ERROR_UNKNOWN}
-    assert patch_carrier_api.cleanup_calls == 1
+    assert patch_carrier_api.cleanup_calls == 0
 
 
 @pytest.mark.asyncio
