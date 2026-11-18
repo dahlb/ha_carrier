@@ -9,8 +9,8 @@ from homeassistant.components.climate import DOMAIN as CLIMATE_DOMAIN
 from homeassistant.const import ATTR_ENTITY_ID
 from homeassistant.core import HomeAssistant
 from homeassistant.setup import async_setup_component
+import probatio
 import pytest
-import voluptuous as vol
 
 from custom_components.ha_carrier.const import DOMAIN
 from custom_components.ha_carrier.services import (
@@ -79,7 +79,7 @@ async def test_set_activity_setpoint_rejects_unknown_activity(
     await setup_integration()
     entity_id = entity_id_for_unique_id(hass, CLIMATE_DOMAIN, "abc123_zone_1_thermostat")
 
-    with pytest.raises(vol.Invalid):
+    with pytest.raises(probatio.Invalid):
         await hass.services.async_call(
             DOMAIN,
             SERVICE_SET_ACTIVITY_SETPOINT,

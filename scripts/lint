@@ -10,6 +10,7 @@ fi
 status=0
 
 .venv/bin/prek run -a || status=$?
-.venv/bin/mypy . || status=$?
+# Type-check the integration (tool.mypy files) in strict mode.
+.venv/bin/mypy || status=$?
 
 exit "$status"

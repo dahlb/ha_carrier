@@ -13,6 +13,7 @@ from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
 from homeassistant.helpers import device_registry as dr, entity_registry as er
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
 import pytest
 from pytest_homeassistant.common import MockConfigEntry
 
@@ -553,3 +554,18 @@ async def test_user_can_delete_only_devices_carrier_no_longer_reports(
 
     assert await async_remove_config_entry_device(hass, config_entry, current) is False
     assert await async_remove_config_entry_device(hass, config_entry, gone) is True
+
+
+@pytest.mark.asyncio
+async def test_setup_uses_home_assistants_shared_session(
+    hass: HomeAssistant,
+    carrier_api: FakeCarrierApiConnection,
+    setup_integration: Callable[..., Any],
+) -> None:
+    """Inject HA's shared aiohttp session instead of opening (and leaking) a private one."""
+    config_entry = await setup_integration()
+
+    assert carrier_api.client_session is async_get_clientsession(hass)
+
+    assert await hass.config_entries.async_unload(config_entry.entry_id)
+    assert carrier_api.cleanup_calls == 0

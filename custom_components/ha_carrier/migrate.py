@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping
 import logging
 
-from carrier_api import ApiConnectionGraphql, CarrierApiError, EnergyUsageMetric, System
+from carrier_api import CarrierApiError, EnergyUsageMetric, System
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 from homeassistant.core import HomeAssistant
@@ -13,7 +13,7 @@ from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity_registry import EntityRegistry, RegistryEntry
 from homeassistant.util import slugify
 
-from .util import TIMESTAMP_TYPES, async_get_carrier_identity_id
+from .util import TIMESTAMP_TYPES, async_create_api_connection, async_get_carrier_identity_id
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 
@@ -573,12 +573,10 @@ async def migrate_1_to_2(hass: HomeAssistant, config_entry: ConfigEntry) -> bool
         bool: True when entity registry migration and config entry version
             update succeed.
     """
-    api_connection: ApiConnectionGraphql | None = None
     systems_loaded = False
     try:
-        api_connection = ApiConnectionGraphql(
-            username=config_entry.data[CONF_USERNAME],
-            password=config_entry.data[CONF_PASSWORD],
+        api_connection = async_create_api_connection(
+            hass, config_entry.data[CONF_USERNAME], config_entry.data[CONF_PASSWORD]
         )
         systems = await api_connection.load_data()
         systems_loaded = True
@@ -589,14 +587,6 @@ async def migrate_1_to_2(hass: HomeAssistant, config_entry: ConfigEntry) -> bool
             exc_info=True,
         )
         systems = []
-    finally:
-        if api_connection is not None:
-            try:
-                await api_connection.cleanup()
-            except CarrierApiError:
-                _LOGGER.exception(
-                    "Failed to clean up Carrier API connection after config entry migration."
-                )
 
     if systems_loaded and not systems:
         _LOGGER.warning(
@@ -651,13 +641,10 @@ async def migrate_2_to_3(hass: HomeAssistant, config_entry: ConfigEntry) -> bool
         _LOGGER.info("Carrier config entry migration to version 3 complete")
         return True
 
-    api_connection: ApiConnectionGraphql | None = None
     try:
-        api_connection = ApiConnectionGraphql(
-            username=username,
-            password=config_entry.data[CONF_PASSWORD],
+        identity_id = await async_get_carrier_identity_id(
+            async_create_api_connection(hass, username, config_entry.data[CONF_PASSWORD])
         )
-        identity_id = await async_get_carrier_identity_id(api_connection)
     except CarrierApiError as error:
         _LOGGER.warning(
             "Unable to load Carrier user identity for config entry migration; "
@@ -666,14 +653,6 @@ async def migrate_2_to_3(hass: HomeAssistant, config_entry: ConfigEntry) -> bool
             error,
         )
         return True
-    finally:
-        if api_connection is not None:
-            try:
-                await api_connection.cleanup()
-            except CarrierApiError:
-                _LOGGER.exception(
-                    "Failed to clean up Carrier API connection after config entry migration."
-                )
     if identity_id is None:
         _LOGGER.warning(
             "Carrier API did not return an identity ID for config entry migration; "

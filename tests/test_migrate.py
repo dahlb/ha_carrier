@@ -8,6 +8,7 @@ from carrier_api import CarrierApiConnectionError
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
 import pytest
 from pytest_homeassistant.common import MockConfigEntry
 
@@ -60,7 +61,7 @@ async def test_migration_updates_system_and_zone_unique_ids(
     assert config_entry.version == 2
     assert ent_reg.async_get_entity_id("sensor", DOMAIN, "abc123_outdoor_temperature")
     assert ent_reg.async_get_entity_id("climate", DOMAIN, "abc123_zone_1_thermostat")
-    assert patch_carrier_api.cleanup_calls == 1
+    assert patch_carrier_api.cleanup_calls == 0
 
 
 @pytest.mark.asyncio
@@ -108,7 +109,7 @@ async def test_migration_preserves_energy_and_propane_unique_ids(
         "abc123_heat_source",
     ):
         assert ent_reg.async_get_entity_id("sensor", DOMAIN, new_unique_id)
-    assert patch_carrier_api.cleanup_calls == 1
+    assert patch_carrier_api.cleanup_calls == 0
 
 
 @pytest.mark.asyncio
@@ -143,7 +144,7 @@ async def test_migration_defers_version_update_when_live_data_cannot_load(
 
     assert config_entry.version == 1
     assert ent_reg.async_get(entry.entity_id) is not None
-    assert patch_carrier_api.cleanup_calls == 1
+    assert patch_carrier_api.cleanup_calls == 0
 
 
 @pytest.mark.asyncio
@@ -164,7 +165,7 @@ async def test_migration_updates_config_entry_unique_id_to_identity_id(
 
     assert config_entry.version == 3
     assert config_entry.unique_id == IDENTITY_ID
-    assert patch_carrier_api.cleanup_calls == 1
+    assert patch_carrier_api.cleanup_calls == 0
 
 
 @pytest.mark.asyncio
@@ -193,7 +194,7 @@ async def test_migration_defers_identity_update_when_user_info_cannot_load(
 
     assert config_entry.version == 2
     assert config_entry.unique_id == USERNAME
-    assert patch_carrier_api.cleanup_calls == 1
+    assert patch_carrier_api.cleanup_calls == 0
 
 
 @pytest.mark.asyncio
@@ -442,7 +443,6 @@ async def test_migration_without_live_systems_keeps_stale_and_duplicate_entities
         patch_carrier_api.systems = []
     else:
         patch_carrier_api.load_data_error = CarrierApiConnectionError("offline")
-    patch_carrier_api.cleanup_error = CarrierApiConnectionError("cleanup failed")
     config_entry = _v1_entry(hass)
     ent_reg = _add_legacy_entities(
         hass, config_entry, [("sensor", "ABC123_Airflow"), ("sensor", "abc123_airflow")]
@@ -453,7 +453,7 @@ async def test_migration_without_live_systems_keeps_stale_and_duplicate_entities
     assert ent_reg.async_get_entity_id("sensor", DOMAIN, "ABC123_Airflow")
     assert ent_reg.async_get_entity_id("sensor", DOMAIN, "abc123_airflow")
     assert config_entry.version == (2 if systems_loaded else 1)
-    assert patch_carrier_api.cleanup_calls == 1
+    assert patch_carrier_api.cleanup_calls == 0
 
 
 @pytest.mark.asyncio
@@ -472,18 +472,19 @@ async def test_migration_to_v3_only_bumps_version_when_already_keyed_by_identity
 
 
 @pytest.mark.asyncio
-async def test_migration_to_v3_survives_cleanup_failure(
+async def test_migration_to_v3_never_closes_the_shared_session(
     hass: HomeAssistant,
     patch_carrier_api: FakeCarrierApiConnection,
 ) -> None:
-    """Finish the identity migration even if closing the API session fails."""
-    patch_carrier_api.cleanup_error = CarrierApiConnectionError("cleanup failed")
+    """Use Home Assistant's shared session and never close it during migration."""
     config_entry = _v1_entry(hass, version=2, unique_id=USERNAME)
 
     assert await migrate_2_to_3(hass, config_entry)
 
     assert config_entry.version == 3
     assert config_entry.unique_id == IDENTITY_ID
+    assert patch_carrier_api.client_session is async_get_clientsession(hass)
+    assert patch_carrier_api.cleanup_calls == 0
 
 
 @pytest.mark.parametrize(

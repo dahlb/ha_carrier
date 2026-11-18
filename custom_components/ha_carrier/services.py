@@ -9,7 +9,7 @@ from homeassistant.const import ATTR_TEMPERATURE
 from homeassistant.core import HomeAssistant, SupportsResponse, callback
 from homeassistant.helpers import config_validation as cv, service
 from homeassistant.helpers.typing import VolDictType
-import voluptuous as vol
+import probatio
 
 from .const import DOMAIN
 
@@ -32,27 +32,27 @@ PROGRAM_ACTIVITIES = [
 ]
 
 SET_ACTIVITY_SETPOINT_SCHEMA: VolDictType = {
-    vol.Optional(ATTR_TEMPERATURE): vol.Coerce(float),
-    vol.Optional(ATTR_TARGET_TEMP_LOW): vol.Coerce(float),
-    vol.Optional(ATTR_TARGET_TEMP_HIGH): vol.Coerce(float),
-    vol.Optional("activity"): vol.In(SETPOINT_ACTIVITIES),
+    probatio.Optional(ATTR_TEMPERATURE): probatio.Coerce(float),
+    probatio.Optional(ATTR_TARGET_TEMP_LOW): probatio.Coerce(float),
+    probatio.Optional(ATTR_TARGET_TEMP_HIGH): probatio.Coerce(float),
+    probatio.Optional("activity"): probatio.In(SETPOINT_ACTIVITIES),
 }
 SET_PROGRAM_DAY_SCHEMA: VolDictType = {
-    vol.Required("day_id"): cv.string,
-    vol.Required("periods"): vol.All(
+    probatio.Required("day_id"): cv.string,
+    probatio.Required("periods"): probatio.All(
         cv.ensure_list,
         [
-            vol.Schema(
+            probatio.Schema(
                 {
-                    vol.Required("id"): cv.string,
-                    vol.Required("activity"): vol.In(PROGRAM_ACTIVITIES),
-                    vol.Optional("time"): cv.string,
-                    vol.Optional("enabled"): vol.In(["on", "off"]),
+                    probatio.Required("id"): cv.string,
+                    probatio.Required("activity"): probatio.In(PROGRAM_ACTIVITIES),
+                    probatio.Optional("time"): cv.string,
+                    probatio.Optional("enabled"): probatio.In(["on", "off"]),
                 }
             )
         ],
     ),
-    vol.Optional("etag"): cv.string,
+    probatio.Optional("etag"): cv.string,
 }
 
 
