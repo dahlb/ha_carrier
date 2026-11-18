@@ -71,10 +71,13 @@ class CarrierUnitSensorDescription(SensorEntityDescription):
         value_fn: Returns the reading for a system, or None when Carrier has
             not reported it.
         outdoor_only: Create the sensor only for systems with an outdoor unit.
+        system_temperature_unit: The reading is in the system's configured
+            temperature unit (Fahrenheit or Celsius), which sets the native unit.
     """
 
     value_fn: Callable[[System], float | int | None]
     outdoor_only: bool = False
+    system_temperature_unit: bool = False
 
 
 def _unit_value(
@@ -121,9 +124,9 @@ def _blower_speed(system: System) -> float | int | None:
     return system.status.blower_rpm
 
 
-# Carrier reports outdoor-unit refrigerant readings in imperial units. They
-# arrive only in diagnostic-device-info websocket messages, so they stay
-# unavailable on systems that never send those; hence disabled by default.
+# Outdoor-unit refrigerant readings arrive only in diagnostic-device-info
+# websocket messages, so they stay unavailable on systems that never send those;
+# hence disabled by default. Temperatures follow the system's configured unit.
 UNIT_SENSORS: tuple[CarrierUnitSensorDescription, ...] = (
     CarrierUnitSensorDescription(
         key="blower_speed",
@@ -147,7 +150,7 @@ UNIT_SENSORS: tuple[CarrierUnitSensorDescription, ...] = (
         key="outdoor_coil_temperature",
         translation_key="outdoor_coil_temperature",
         device_class=SensorDeviceClass.TEMPERATURE,
-        native_unit_of_measurement=UnitOfTemperature.FAHRENHEIT,
+        system_temperature_unit=True,
         state_class=SensorStateClass.MEASUREMENT,
         entity_category=EntityCategory.DIAGNOSTIC,
         entity_registry_enabled_default=False,
@@ -158,7 +161,7 @@ UNIT_SENSORS: tuple[CarrierUnitSensorDescription, ...] = (
         key="discharge_temperature",
         translation_key="discharge_temperature",
         device_class=SensorDeviceClass.TEMPERATURE,
-        native_unit_of_measurement=UnitOfTemperature.FAHRENHEIT,
+        system_temperature_unit=True,
         state_class=SensorStateClass.MEASUREMENT,
         entity_category=EntityCategory.DIAGNOSTIC,
         entity_registry_enabled_default=False,
@@ -169,7 +172,7 @@ UNIT_SENSORS: tuple[CarrierUnitSensorDescription, ...] = (
         key="suction_temperature",
         translation_key="suction_temperature",
         device_class=SensorDeviceClass.TEMPERATURE,
-        native_unit_of_measurement=UnitOfTemperature.FAHRENHEIT,
+        system_temperature_unit=True,
         state_class=SensorStateClass.MEASUREMENT,
         entity_category=EntityCategory.DIAGNOSTIC,
         entity_registry_enabled_default=False,
@@ -189,10 +192,10 @@ UNIT_SENSORS: tuple[CarrierUnitSensorDescription, ...] = (
     ),
     CarrierUnitSensorDescription(
         # A temperature difference, not a temperature: no device class, so Home
-        # Assistant does not apply an absolute °F to °C conversion to it.
+        # Assistant does not apply an absolute °F/°C conversion to it.
         key="suction_superheat",
         translation_key="suction_superheat",
-        native_unit_of_measurement=UnitOfTemperature.FAHRENHEIT,
+        system_temperature_unit=True,
         state_class=SensorStateClass.MEASUREMENT,
         suggested_display_precision=1,
         entity_category=EntityCategory.DIAGNOSTIC,
@@ -1113,6 +1116,11 @@ class CarrierUnitSensor(CarrierSensor):
 
     def _update_entity_attrs(self) -> None:
         """Update the reading from coordinator data; unavailable until Carrier sends it."""
+        if self.entity_description.system_temperature_unit:
+            if self.carrier_system.status.temperature_unit == TemperatureUnits.FAHRENHEIT:
+                self._attr_native_unit_of_measurement = UnitOfTemperature.FAHRENHEIT
+            else:
+                self._attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
         self._attr_native_value = self.entity_description.value_fn(self.carrier_system)
         self._attr_available = self._attr_native_value is not None
 

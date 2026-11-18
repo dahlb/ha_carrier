@@ -9,7 +9,7 @@ from carrier_api import TemperatureUnits
 from homeassistant.const import STATE_UNAVAILABLE, EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
-from homeassistant.util.unit_system import US_CUSTOMARY_SYSTEM
+from homeassistant.util.unit_system import METRIC_SYSTEM, US_CUSTOMARY_SYSTEM
 import pytest
 
 from custom_components.ha_carrier.const import DOMAIN
@@ -516,13 +516,29 @@ async def _enable_and_reload(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("system_unit", "ha_units", "temperature_unit", "pressure"),
+    [
+        (TemperatureUnits.FAHRENHEIT, US_CUSTOMARY_SYSTEM, "°F", (193.0, "psi")),
+        # Suction pressure is always psi from Carrier; a metric HA shows it in kPa.
+        (TemperatureUnits.CELSIUS, METRIC_SYSTEM, "°C", (193.0 * 6.894757, "kPa")),
+    ],
+)
 async def test_outdoor_unit_diagnostic_sensors_are_disabled_until_enabled(
     hass: HomeAssistant,
     carrier_api: FakeCarrierApiConnection,
     setup_integration: Callable[..., Any],
+    system_unit: TemperatureUnits,
+    ha_units: Any,
+    temperature_unit: str,
+    pressure: tuple[float, str],
 ) -> None:
-    """Register outdoor readings disabled, then report them with units once enabled."""
-    hass.config.units = US_CUSTOMARY_SYSTEM
+    """Register outdoor readings disabled, then report them once enabled.
+
+    Temperatures are reported in the thermostat's configured unit.
+    """
+    hass.config.units = ha_units
+    carrier_api.systems[0].status.temperature_unit = system_unit
     outdoor_unit = carrier_api.systems[0].status.outdoor_unit
     for field, value in OUTDOOR_DIAGNOSTICS.items():
         setattr(outdoor_unit, field, value)
@@ -540,17 +556,22 @@ async def test_outdoor_unit_diagnostic_sensors_are_disabled_until_enabled(
 
     expected = {
         "abc123_outdoor_fan_speed": ("940", "rpm"),
-        "abc123_outdoor_coil_temperature": ("76.0", "°F"),
-        "abc123_discharge_temperature": ("140.0", "°F"),
-        "abc123_suction_temperature": ("78.0", "°F"),
-        "abc123_suction_pressure": ("193.0", "psi"),
-        "abc123_suction_superheat": ("4.65234375", "°F"),
+        "abc123_outdoor_coil_temperature": ("76.0", temperature_unit),
+        "abc123_discharge_temperature": ("140.0", temperature_unit),
+        "abc123_suction_temperature": ("78.0", temperature_unit),
+        "abc123_suction_superheat": ("4.65234375", temperature_unit),
         "abc123_line_voltage": ("246", "V"),
     }
     for unique_id, (value, unit) in expected.items():
         state = hass.states.get(entity_id_for_unique_id(hass, "sensor", unique_id))
         assert state is not None, unique_id
         assert (state.state, state.attributes["unit_of_measurement"]) == (value, unit), unique_id
+    suction_pressure = hass.states.get(
+        entity_id_for_unique_id(hass, "sensor", "abc123_suction_pressure")
+    )
+    assert suction_pressure is not None
+    assert float(suction_pressure.state) == pytest.approx(pressure[0], rel=1e-4)
+    assert suction_pressure.attributes["unit_of_measurement"] == pressure[1]
 
 
 @pytest.mark.asyncio
