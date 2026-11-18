@@ -8,9 +8,9 @@
 | custom\_components/ha\_carrier/binary\_sensor.py                     |       54 |        2 |        6 |        2 |     93% |37-\>43, 77, 93 |
 | custom\_components/ha\_carrier/carrier\_data\_update\_coordinator.py |      261 |       25 |       84 |       15 |     87% |233, 241-\>exit, 258, 289, 307, 318, 330-\>exit, 390, 460, 465-466, 510, 547-553, 572-\>578, 582-589, 623-624, 630, 665-668, 680-\>679, 682, 700, 720-721 |
 | custom\_components/ha\_carrier/carrier\_entity.py                    |       81 |        9 |       24 |        9 |     83% |70-77, 117, 132-\>131, 134-135, 149-\>148, 151-152, 192, 218-\>220 |
-| custom\_components/ha\_carrier/climate.py                            |      300 |       33 |      108 |       24 |     84% |85-\>87, 87-\>89, 89-\>92, 199, 223, 248, 258, 263, 289, 363-\>exit, 374-375, 405-414, 439, 479-\>482, 526, 531-532, 534-535, 538, 600, 604, 613-614, 616-617, 621, 719 |
+| custom\_components/ha\_carrier/climate.py                            |      300 |       31 |      106 |       23 |     85% |94-\>96, 96-\>98, 98-\>101, 222, 246, 271, 281, 286, 312, 386-\>exit, 425-434, 459, 499-\>502, 546, 551-552, 554-555, 558, 620, 624, 633-634, 636-637, 641, 739 |
 | custom\_components/ha\_carrier/config\_flow.py                       |      126 |        5 |       38 |        9 |     91% |63-\>70, 71-72, 157-\>174, 216, 224, 268-\>297, 283-\>288, 289 |
-| custom\_components/ha\_carrier/const.py                              |       37 |        0 |        0 |        0 |    100% |           |
+| custom\_components/ha\_carrier/const.py                              |       40 |        0 |        0 |        0 |    100% |           |
 | custom\_components/ha\_carrier/diagnostics.py                        |       32 |        0 |        8 |        2 |     95% |63-\>46, 80-\>87 |
 | custom\_components/ha\_carrier/entry\_level\_climate.py              |      126 |       17 |       36 |       17 |     79% |115, 146, 154, 157, 159, 161, 169, 174, 182, 190, 200, 203-\>208, 205, 209, 211, 237, 248-\>250, 254, 258 |
 | custom\_components/ha\_carrier/exceptions.py                         |        2 |        0 |        0 |        0 |    100% |           |
@@ -19,7 +19,7 @@
 | custom\_components/ha\_carrier/select.py                             |       51 |        6 |        8 |        4 |     83% |65, 81, 111, 127, 158-159 |
 | custom\_components/ha\_carrier/sensor.py                             |      296 |       28 |       58 |       16 |     87% |90-\>97, 104-\>110, 110-\>116, 137-\>154, 194, 211, 311-313, 321-327, 336-343, 374-380, 526, 582-583, 611-612, 640-641, 703-704, 769, 843-844 |
 | custom\_components/ha\_carrier/util.py                               |       70 |        5 |       34 |        5 |     90% |96, 100, 133, 136, 144 |
-| **TOTAL**                                                            | **1904** |  **188** |  **570** |  **139** | **86%** |           |
+| **TOTAL**                                                            | **1907** |  **186** |  **568** |  **138** | **86%** |           |
 
 
 ## Setup coverage badge
