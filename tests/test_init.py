@@ -12,19 +12,21 @@ from homeassistant.config_entries import ConfigEntryState
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
+from homeassistant.helpers import device_registry as dr, entity_registry as er
 import pytest
 from pytest_homeassistant.common import MockConfigEntry
 
 from custom_components.ha_carrier import (
     _async_await_websocket_task,
     async_migrate_entry,
+    async_remove_config_entry_device,
     async_setup_entry,
 )
 from custom_components.ha_carrier.const import CONFIG_FLOW_VERSION, DOMAIN
 from custom_components.ha_carrier.coordinator import CarrierDataUpdateCoordinator
 from custom_components.ha_carrier.exceptions import CarrierUnauthorizedError
 
-from .conftest import PASSWORD, USERNAME, FakeCarrierApiConnection
+from .conftest import PASSWORD, USERNAME, FakeCarrierApiConnection, build_carrier_system
 
 
 def _config_entry_not_ready_from(error: BaseException) -> ConfigEntryNotReady:
@@ -464,3 +466,90 @@ async def test_unload_without_a_websocket_task(
     config_entry.runtime_data.websocket_task = None
 
     assert await hass.config_entries.async_unload(config_entry.entry_id)
+
+
+async def _full_refresh(config_entry: Any) -> None:
+    """Run a full coordinator refresh, as the periodic reconcile would.
+
+    Args:
+        config_entry: Loaded Carrier config entry.
+    """
+    coordinator = config_entry.runtime_data
+    coordinator.data_flush = True
+    await coordinator.async_refresh()
+
+
+@pytest.mark.asyncio
+async def test_systems_removed_from_the_account_lose_their_device(
+    hass: HomeAssistant,
+    carrier_api: FakeCarrierApiConnection,
+    setup_integration: Callable[..., Any],
+) -> None:
+    """Remove a system's device and entities once Carrier stops returning it."""
+    carrier_api.systems.append(build_carrier_system(serial="DEF456", name="Cabin"))
+    config_entry = await setup_integration()
+    device_registry = dr.async_get(hass)
+    entity_registry = er.async_get(hass)
+    assert device_registry.async_get_device_by_identifier((DOMAIN, "ABC123"), config_entry.entry_id)
+
+    carrier_api.systems.pop(0)
+    await _full_refresh(config_entry)
+    await hass.async_block_till_done()
+
+    assert (
+        device_registry.async_get_device_by_identifier((DOMAIN, "ABC123"), config_entry.entry_id)
+        is None
+    )
+    assert (
+        entity_registry.async_get_entity_id("sensor", DOMAIN, "abc123_outdoor_temperature") is None
+    )
+    assert device_registry.async_get_device_by_identifier((DOMAIN, "DEF456"), config_entry.entry_id)
+    assert entity_registry.async_get_entity_id("sensor", DOMAIN, "def456_outdoor_temperature")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("cause", ["entry_level_load_failed", "account_empty"])
+async def test_stale_device_cleanup_skips_untrustworthy_refreshes(
+    hass: HomeAssistant,
+    carrier_api: FakeCarrierApiConnection,
+    setup_integration: Callable[..., Any],
+    cause: str,
+) -> None:
+    """Keep devices when the entry-level load failed or the account looks empty."""
+    config_entry = await setup_integration()
+    device_registry = dr.async_get(hass)
+
+    if cause == "entry_level_load_failed":
+        carrier_api.systems.clear()
+        carrier_api.systems.append(build_carrier_system(serial="DEF456"))
+
+        async def failing_load() -> list[Any]:
+            """Fail the entry-level load."""
+            raise CarrierApiConnectionError("offline")
+
+        carrier_api.load_entry_level_data = failing_load
+    else:
+        carrier_api.systems.clear()
+    await _full_refresh(config_entry)
+    await hass.async_block_till_done()
+
+    assert device_registry.async_get_device_by_identifier((DOMAIN, "ABC123"), config_entry.entry_id)
+
+
+@pytest.mark.asyncio
+async def test_user_can_delete_only_devices_carrier_no_longer_reports(
+    hass: HomeAssistant,
+    setup_integration: Callable[..., Any],
+) -> None:
+    """Allow deleting a device only once its system has left the account."""
+    config_entry = await setup_integration()
+    device_registry = dr.async_get(hass)
+    current = device_registry.async_get_device_by_identifier(
+        (DOMAIN, "ABC123"), config_entry.entry_id
+    )
+    gone = device_registry.async_get_or_create(
+        config_entry_id=config_entry.entry_id, identifiers={(DOMAIN, "GONE999")}
+    )
+
+    assert await async_remove_config_entry_device(hass, config_entry, current) is False
+    assert await async_remove_config_entry_device(hass, config_entry, gone) is True

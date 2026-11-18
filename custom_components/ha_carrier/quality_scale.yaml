@@ -69,50 +69,39 @@ rules:
     status: exempt
     comment: Cloud account integration; there is nothing on the local network to discover.
   docs-data-update: done
-  docs-examples:
-    status: todo
-    comment: README has no automation examples.
-  docs-known-limitations:
-    status: todo
-    comment: >-
-      README mentions the A-model live update limitation under Options; it needs a
-      dedicated known limitations section.
+  docs-examples: done
+  docs-known-limitations: done
   docs-supported-devices: done
   docs-supported-functions: done
   docs-troubleshooting: done
-  docs-use-cases:
-    status: todo
-    comment: README has no use case section.
+  docs-use-cases: done
   dynamic-devices:
-    status: todo
+    status: done
     comment: >-
-      Systems added to the account after setup are tracked by the coordinator but get no
-      entities until the integration is reloaded.
+      Platforms listen to the coordinator and add entities for systems that appear on a
+      full refresh (entity.async_add_entities_for_systems).
   entity-category: done
   entity-device-class: done
   entity-disabled-by-default:
-    status: todo
-    comment: >-
-      All entities are enabled by default; the diagnostic last updated timestamps are
-      candidates to disable.
+    status: done
+    comment: The diagnostic last updated timestamp sensors are disabled by default.
   entity-translations:
     status: done
     comment: >-
       Zone thermostats are named after the user's zone, so they have no translation key.
   exception-translations: done
-  icon-translations:
-    status: todo
-    comment: Icons are set with _attr_icon in code; move them to icons.json.
+  icon-translations: done
   reconfiguration-flow: done
   repair-issues:
     status: exempt
     comment: >-
       No user-fixable issues beyond credentials, which the reauthentication flow handles.
   stale-devices:
-    status: todo
+    status: done
     comment: >-
-      Systems removed from the account are dropped by the coordinator but their devices
-      stay; implement async_remove_config_entry_device or remove them automatically.
+      Devices for systems Carrier no longer reports are removed after a refresh (skipped
+      if the entry-level load failed or the account reports no systems), and
+      async_remove_config_entry_device lets users delete a gone device.
 
   # Platinum
   async-dependency: done

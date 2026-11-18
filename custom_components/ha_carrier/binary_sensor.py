@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 
+from carrier_api import System
 from homeassistant.components.binary_sensor import BinarySensorDeviceClass, BinarySensorEntity
 from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
@@ -11,7 +12,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import ConfigEntryCarrier
 from .coordinator import CarrierDataUpdateCoordinator
-from .entity import CarrierEntity, CarrierZoneEntity
+from .entity import CarrierEntity, CarrierZoneEntity, async_add_entities_for_systems
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 
@@ -33,27 +34,44 @@ async def async_setup_entry(
         async_add_entities: Callback used by Home Assistant to register entities.
     """
     coordinator = config_entry.runtime_data
+    async_add_entities_for_systems(
+        config_entry,
+        async_add_entities,
+        lambda carrier_system: _system_entities(coordinator, carrier_system),
+    )
+
+
+def _system_entities(
+    coordinator: CarrierDataUpdateCoordinator,
+    carrier_system: System,
+) -> list[BinarySensorEntity]:
+    """Build this platform's entities for one Carrier system.
+
+    Args:
+        coordinator: Coordinator that supplies Carrier system data.
+        carrier_system: Carrier system to build entities for.
+
+    Returns:
+        list[BinarySensorEntity]: Entities for the system.
+    """
     entities: list[BinarySensorEntity] = []
-    for carrier_system in coordinator.systems:
+    entities.append(
+        OnlineSensor(coordinator=coordinator, system_serial=carrier_system.profile.serial)
+    )
+    if carrier_system.config.humidifier_enabled:
         entities.append(
-            OnlineSensor(coordinator=coordinator, system_serial=carrier_system.profile.serial)
+            HumidifierSensor(coordinator=coordinator, system_serial=carrier_system.profile.serial)
         )
-        if carrier_system.config.humidifier_enabled:
-            entities.append(
-                HumidifierSensor(
-                    coordinator=coordinator, system_serial=carrier_system.profile.serial
-                )
-            )
-        entities.extend(
-            OccupancySensor(
-                coordinator=coordinator,
-                system_serial=carrier_system.profile.serial,
-                zone_api_id=zone.api_id,
-            )
-            for zone in carrier_system.config.zones
-            if zone.occupancy_enabled
+    entities.extend(
+        OccupancySensor(
+            coordinator=coordinator,
+            system_serial=carrier_system.profile.serial,
+            zone_api_id=zone.api_id,
         )
-    async_add_entities(entities)
+        for zone in carrier_system.config.zones
+        if zone.occupancy_enabled
+    )
+    return entities
 
 
 class CarrierBinarySensor(CarrierEntity, BinarySensorEntity):
@@ -146,7 +164,6 @@ class OnlineSensor(CarrierBinarySensor):
         """Update connectivity attrs from coordinator data."""
         self._attr_is_on = not self.carrier_system.status.is_disconnected
         self._attr_available = True
-        self._attr_icon = "mdi:wifi-check" if self._attr_is_on else "mdi:wifi-strength-outline"
 
 
 class OccupancySensor(CarrierZoneBinarySensor):
@@ -198,4 +215,3 @@ class HumidifierSensor(CarrierBinarySensor):
         """Update humidifier attrs from coordinator data."""
         self._attr_is_on = self.carrier_system.status.humidifier_on
         self._attr_available = self._attr_is_on is not None
-        self._attr_icon = "mdi:air-humidifier" if self._attr_is_on else "mdi:air-humidifier-off"

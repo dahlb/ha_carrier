@@ -7,7 +7,14 @@ import logging
 import math
 from typing import Any
 
-from carrier_api import ActivityTypes, ConfigZoneActivity, FanModes, SystemModes, TemperatureUnits
+from carrier_api import (
+    ActivityTypes,
+    ConfigZoneActivity,
+    FanModes,
+    System,
+    SystemModes,
+    TemperatureUnits,
+)
 from homeassistant.components.climate import (
     ClimateEntity,
     ClimateEntityFeature,
@@ -38,7 +45,7 @@ from .const import (
     PROGRAM_READBACK_DELAY_S,
 )
 from .coordinator import CarrierDataUpdateCoordinator
-from .entity import CarrierZoneEntity
+from .entity import CarrierZoneEntity, async_add_entities_for_systems
 from .entry_level_climate import build_entry_level_entities
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
@@ -69,36 +76,57 @@ async def async_setup_entry(
     _LOGGER.debug("setting up climate entry")
     infinite_hold = config_entry.options.get(CONF_INFINITE_HOLDS, DEFAULT_INFINITE_HOLDS)
     coordinator = config_entry.runtime_data
+    async_add_entities_for_systems(
+        config_entry,
+        async_add_entities,
+        lambda carrier_system: _system_entities(coordinator, carrier_system, infinite_hold),
+        lambda system: build_entry_level_entities(coordinator, system),
+    )
+
+
+def _system_entities(
+    coordinator: CarrierDataUpdateCoordinator,
+    carrier_system: System,
+    infinite_hold: bool,
+) -> list[Thermostat]:
+    """Build a zone thermostat for every zone of one Carrier system.
+
+    Args:
+        coordinator: Coordinator that supplies Carrier system data.
+        carrier_system: Carrier system to build entities for.
+        infinite_hold: Whether manual holds should be open-ended.
+
+    Returns:
+        list[Thermostat]: Entities for the system.
+    """
     entities: list[Thermostat] = []
-    for carrier_system in coordinator.systems:
-        support_flags = BASE_SUPPORT_FLAGS
-        supported_hvac_capabilities = carrier_system.supported_hvac_capabilities()
-        hvac_modes: list[HVACMode] = [
-            HVACMode.OFF,
-        ]
-        if supported_hvac_capabilities["fan"]:
-            support_flags |= ClimateEntityFeature.FAN_MODE
-            hvac_modes.append(HVACMode.FAN_ONLY)
-        if supported_hvac_capabilities["cool"]:
-            hvac_modes.append(HVACMode.COOL)
-        if supported_hvac_capabilities["heat"]:
-            hvac_modes.append(HVACMode.HEAT)
-        if supported_hvac_capabilities["cool"] and supported_hvac_capabilities["heat"]:
-            support_flags |= ClimateEntityFeature.TARGET_TEMPERATURE_RANGE
-            hvac_modes.append(HVACMode.HEAT_COOL)
-        entities.extend(
-            Thermostat(
-                coordinator=coordinator,
-                system_serial=carrier_system.profile.serial,
-                infinite_hold=infinite_hold,
-                zone_api_id=zone.api_id,
-                support_flags=support_flags,
-                hvac_modes=hvac_modes,
-            )
-            for zone in carrier_system.config.zones
+    support_flags = BASE_SUPPORT_FLAGS
+    supported_hvac_capabilities = carrier_system.supported_hvac_capabilities()
+    hvac_modes: list[HVACMode] = [
+        HVACMode.OFF,
+    ]
+    if supported_hvac_capabilities["fan"]:
+        support_flags |= ClimateEntityFeature.FAN_MODE
+        hvac_modes.append(HVACMode.FAN_ONLY)
+    if supported_hvac_capabilities["cool"]:
+        hvac_modes.append(HVACMode.COOL)
+    if supported_hvac_capabilities["heat"]:
+        hvac_modes.append(HVACMode.HEAT)
+    if supported_hvac_capabilities["cool"] and supported_hvac_capabilities["heat"]:
+        support_flags |= ClimateEntityFeature.TARGET_TEMPERATURE_RANGE
+        hvac_modes.append(HVACMode.HEAT_COOL)
+    entities.extend(
+        Thermostat(
+            coordinator=coordinator,
+            system_serial=carrier_system.profile.serial,
+            infinite_hold=infinite_hold,
+            zone_api_id=zone.api_id,
+            support_flags=support_flags,
+            hvac_modes=hvac_modes,
         )
-    async_add_entities(entities)
-    async_add_entities(build_entry_level_entities(coordinator))
+        for zone in carrier_system.config.zones
+    )
+    return entities
 
 
 def normalize_humidity_target(humidity: float) -> int:

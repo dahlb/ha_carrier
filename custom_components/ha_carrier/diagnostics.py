@@ -57,8 +57,8 @@ async def async_get_config_entry_diagnostics(
 
         device_registry = dr.async_get(hass)
         entity_registry = er.async_get(hass)
-        hass_device = device_registry.async_get_device(
-            identifiers={(DOMAIN, str(carrier_system.profile.serial))}
+        hass_device = device_registry.async_get_device_by_identifier(
+            (DOMAIN, str(carrier_system.profile.serial)), config_entry.entry_id
         )
         if hass_device is not None:
             system_data["device"] = {
