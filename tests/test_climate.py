@@ -6,13 +6,14 @@ from collections.abc import Callable
 from datetime import timedelta
 from typing import Any
 
-from carrier_api import ActivityTypes, FanModes
+from carrier_api import ActivityTypes, FanModes, SystemModes, TemperatureUnits
 from freezegun.api import FrozenDateTimeFactory
 from homeassistant.components.climate import (
     ATTR_HVAC_MODE,
     ATTR_PRESET_MODE,
     DOMAIN as CLIMATE_DOMAIN,
     SERVICE_SET_FAN_MODE,
+    ClimateEntityFeature,
     HVACMode,
 )
 from homeassistant.components.climate.const import (
@@ -25,9 +26,9 @@ from homeassistant.components.climate.const import (
     SERVICE_SET_PRESET_MODE,
     SERVICE_SET_TEMPERATURE,
 )
-from homeassistant.const import ATTR_ENTITY_ID
+from homeassistant.const import ATTR_ENTITY_ID, ATTR_TEMPERATURE
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import HomeAssistantError
+from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.util.unit_system import US_CUSTOMARY_SYSTEM
 import pytest
 from pytest_homeassistant.common import async_fire_time_changed
@@ -35,7 +36,12 @@ from pytest_homeassistant.common import async_fire_time_changed
 from custom_components.ha_carrier.climate import normalize_humidity_target
 from custom_components.ha_carrier.const import FAN_AUTO, PROGRAM_READBACK_DELAY_S
 
-from .conftest import FakeCarrierApiConnection, build_carrier_system, entity_id_for_unique_id
+from .conftest import (
+    FakeCarrierApiConnection,
+    build_carrier_system,
+    entity_for_unique_id,
+    entity_id_for_unique_id,
+)
 
 
 @pytest.mark.asyncio
@@ -572,3 +578,342 @@ async def test_set_humidity_sends_nearest_carrier_step(
     assert state.attributes["humidity"] == expected
     assert state.attributes["min_humidity"] == 0
     assert state.attributes["max_humidity"] == 45
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("hvac_mode", "expected_mode"),
+    [
+        (HVACMode.COOL, SystemModes.COOL),
+        (HVACMode.HEAT, SystemModes.HEAT),
+        (HVACMode.OFF, SystemModes.OFF),
+        (HVACMode.HEAT_COOL, SystemModes.AUTO),
+        (HVACMode.FAN_ONLY, SystemModes.FAN_ONLY),
+    ],
+)
+async def test_set_hvac_mode_sends_the_matching_carrier_mode(
+    hass: HomeAssistant,
+    carrier_api: FakeCarrierApiConnection,
+    setup_integration: Callable[..., Any],
+    hvac_mode: HVACMode,
+    expected_mode: SystemModes,
+) -> None:
+    """Translate each Home Assistant HVAC mode to its Carrier system mode."""
+    carrier_api.systems = [build_carrier_system(fan_enabled=True)]
+    await setup_integration()
+    entity_id = entity_id_for_unique_id(hass, CLIMATE_DOMAIN, ZONE_1)
+
+    await hass.services.async_call(
+        CLIMATE_DOMAIN,
+        SERVICE_SET_HVAC_MODE,
+        {ATTR_ENTITY_ID: entity_id, ATTR_HVAC_MODE: hvac_mode},
+        blocking=True,
+    )
+
+    assert carrier_api.calls[-1] == (
+        "set_config_mode",
+        {"system_serial": "ABC123", "mode": expected_mode},
+    )
+    state = hass.states.get(entity_id)
+    assert state is not None
+    assert state.state == hvac_mode
+
+
+@pytest.mark.asyncio
+async def test_set_hvac_mode_rejects_an_unknown_mode(
+    hass: HomeAssistant,
+    setup_integration: Callable[..., Any],
+) -> None:
+    """Raise for a mode Carrier has no equivalent for."""
+    await setup_integration()
+    entity = entity_for_unique_id(hass, CLIMATE_DOMAIN, ZONE_1)
+
+    with pytest.raises(ValueError, match="unsupported mode"):
+        await entity.async_set_hvac_mode("dry")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("capabilities", "expected_modes", "has_range"),
+    [
+        (
+            {"fan": False, "cool": True, "heat": False},
+            [HVACMode.OFF, HVACMode.COOL],
+            False,
+        ),
+        (
+            {"fan": False, "cool": False, "heat": True},
+            [HVACMode.OFF, HVACMode.HEAT],
+            False,
+        ),
+    ],
+)
+async def test_climate_offers_only_the_modes_the_system_supports(
+    hass: HomeAssistant,
+    carrier_api: FakeCarrierApiConnection,
+    setup_integration: Callable[..., Any],
+    capabilities: dict[str, bool],
+    expected_modes: list[HVACMode],
+    has_range: bool,
+) -> None:
+    """Hide cooling, heating and fan modes the equipment cannot run."""
+    system = build_carrier_system()
+    system.config.mode = "off"
+    system.supported_hvac_capabilities = lambda: capabilities  # type: ignore[method-assign]
+    carrier_api.systems = [system]
+    await setup_integration()
+
+    state = hass.states.get(entity_id_for_unique_id(hass, CLIMATE_DOMAIN, ZONE_1))
+
+    assert state is not None
+    assert state.attributes["hvac_modes"] == expected_modes
+    assert bool(state.attributes["supported_features"] & ClimateEntityFeature.FAN_MODE) is False
+    assert (
+        bool(state.attributes["supported_features"] & ClimateEntityFeature.TARGET_TEMPERATURE_RANGE)
+        is has_range
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("carrier_mode", "conditioning", "fan", "expected_action"),
+    [
+        ("fanonly", "idle", FanModes.OFF, "idle"),
+        ("auto", "dehumidify", FanModes.OFF, "idle"),
+    ],
+)
+async def test_climate_reports_idle_when_the_fan_is_off(
+    hass: HomeAssistant,
+    carrier_api: FakeCarrierApiConnection,
+    setup_integration: Callable[..., Any],
+    carrier_mode: str,
+    conditioning: str,
+    fan: FanModes,
+    expected_action: str,
+) -> None:
+    """Report idle rather than fan when the blower is off."""
+    system = carrier_api.systems[0]
+    system.config.mode = carrier_mode
+    system.status.zones[0].conditioning = conditioning
+    system.status.zones[0].fan = fan
+    await setup_integration()
+
+    state = hass.states.get(entity_id_for_unique_id(hass, CLIMATE_DOMAIN, ZONE_1))
+
+    assert state is not None
+    assert state.attributes["hvac_action"] == expected_action
+
+
+@pytest.mark.asyncio
+async def test_climate_uses_celsius_and_hides_humidity_without_a_humidifier(
+    hass: HomeAssistant,
+    carrier_api: FakeCarrierApiConnection,
+    setup_integration: Callable[..., Any],
+) -> None:
+    """Use half-degree steps in Celsius and drop humidity control without a humidifier."""
+    system = carrier_api.systems[0]
+    system.status.temperature_unit = TemperatureUnits.CELSIUS
+    system.config.humidifier_enabled = False
+    await setup_integration()
+    entity = entity_for_unique_id(hass, CLIMATE_DOMAIN, ZONE_1)
+
+    assert entity.target_temperature_step == 0.5
+    assert entity.target_humidity is None
+    assert not entity.supported_features & ClimateEntityFeature.TARGET_HUMIDITY
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("carrier_mode", "data", "expected_heat", "expected_cool"),
+    [
+        ("cool", {ATTR_TEMPERATURE: 72}, "69", "72"),
+        ("heat", {ATTR_TEMPERATURE: 66}, "66", "75"),
+    ],
+)
+async def test_set_temperature_keeps_the_other_set_point_in_single_modes(
+    hass: HomeAssistant,
+    carrier_api: FakeCarrierApiConnection,
+    setup_integration: Callable[..., Any],
+    carrier_mode: str,
+    data: dict[str, Any],
+    expected_heat: str,
+    expected_cool: str,
+) -> None:
+    """Change only the active set point and keep the manual activity's other one."""
+    hass.config.units = US_CUSTOMARY_SYSTEM
+    carrier_api.systems[0].config.mode = carrier_mode
+    await setup_integration(options={"infinite_holds": False})
+    entity_id = entity_id_for_unique_id(hass, CLIMATE_DOMAIN, ZONE_1)
+
+    await hass.services.async_call(
+        CLIMATE_DOMAIN,
+        SERVICE_SET_TEMPERATURE,
+        {ATTR_ENTITY_ID: entity_id, **data},
+        blocking=True,
+    )
+
+    manual = next(call for call in carrier_api.calls if call[0] == "set_config_manual_activity")
+    assert (float(manual[1]["heat_set_point"]), float(manual[1]["cool_set_point"])) == (
+        float(expected_heat),
+        float(expected_cool),
+    )
+    hold = next(call for call in carrier_api.calls if call[0] == "set_config_hold")
+    # With infinite holds off the hold ends at the next scheduled activity.
+    assert hold[1]["hold_until"] is not None
+
+
+@pytest.mark.asyncio
+async def test_set_temperature_validates_set_points_and_manual_activity(
+    hass: HomeAssistant,
+    carrier_api: FakeCarrierApiConnection,
+    setup_integration: Callable[..., Any],
+) -> None:
+    """Reject a heat/cool request without both set points, and a zone without MANUAL."""
+    await setup_integration()
+    entity = entity_for_unique_id(hass, CLIMATE_DOMAIN, ZONE_1)
+
+    with pytest.raises(ServiceValidationError) as missing:
+        await entity.async_set_temperature(**{ATTR_TEMPERATURE: 70})
+    assert missing.value.translation_key == "set_points_unresolved"
+
+    carrier_api.systems[0].config.zones[0].activities[:] = [
+        activity
+        for activity in carrier_api.systems[0].config.zones[0].activities
+        if activity.type != ActivityTypes.MANUAL
+    ]
+    with pytest.raises(HomeAssistantError) as no_manual:
+        await entity.async_set_temperature(**{ATTR_TARGET_TEMP_LOW: 68, ATTR_TARGET_TEMP_HIGH: 74})
+    assert no_manual.value.translation_key == "manual_activity_unavailable"
+
+
+@pytest.mark.asyncio
+async def test_set_preset_mode_without_a_matching_activity_keeps_set_points(
+    hass: HomeAssistant,
+    carrier_api: FakeCarrierApiConnection,
+    setup_integration: Callable[..., Any],
+) -> None:
+    """Hold an activity the zone has no set points for without touching set points."""
+    await setup_integration()
+    entity = entity_for_unique_id(hass, CLIMATE_DOMAIN, ZONE_1)
+    status_zone = carrier_api.systems[0].status.zones[0]
+    before = (status_zone.heat_set_point, status_zone.cool_set_point)
+
+    await entity.async_set_preset_mode("wake")
+
+    assert carrier_api.calls[-1][0] == "set_config_hold"
+    assert carrier_api.calls[-1][1]["activity_type"] == ActivityTypes.WAKE
+    assert (status_zone.heat_set_point, status_zone.cool_set_point) == before
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("carrier_mode", "data", "expected_heat", "expected_cool"),
+    [
+        ("cool", {ATTR_TEMPERATURE: 73}, "68", "73"),
+        ("heat", {ATTR_TEMPERATURE: 67}, "67", "74"),
+    ],
+)
+async def test_set_activity_setpoint_keeps_the_other_set_point_in_single_modes(
+    hass: HomeAssistant,
+    carrier_api: FakeCarrierApiConnection,
+    setup_integration: Callable[..., Any],
+    carrier_mode: str,
+    data: dict[str, Any],
+    expected_heat: str,
+    expected_cool: str,
+) -> None:
+    """Edit only the active set point of the current activity in heat or cool mode."""
+    hass.config.units = US_CUSTOMARY_SYSTEM
+    carrier_api.systems[0].config.mode = carrier_mode
+    await setup_integration()
+    entity_id = entity_id_for_unique_id(hass, CLIMATE_DOMAIN, ZONE_1)
+
+    await hass.services.async_call(
+        "ha_carrier",
+        "set_activity_setpoint",
+        {ATTR_ENTITY_ID: entity_id, **data},
+        blocking=True,
+    )
+
+    write = carrier_api.calls[-1]
+    assert write[0] == "set_config_activity"
+    assert (float(write[1]["heat_set_point"]), float(write[1]["cool_set_point"])) == (
+        float(expected_heat),
+        float(expected_cool),
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("data", "clear_activities", "error", "translation_key"),
+    [
+        (
+            {ATTR_TEMPERATURE: 70},
+            False,
+            ServiceValidationError,
+            "activity_setpoint_missing_temperature",
+        ),
+        (
+            {ATTR_TEMPERATURE: 70, "activity": "wake"},
+            False,
+            ServiceValidationError,
+            "activity_not_configured",
+        ),
+        ({ATTR_TEMPERATURE: 70}, True, HomeAssistantError, "current_activity_unavailable"),
+    ],
+)
+async def test_set_activity_setpoint_rejects_unresolvable_requests(
+    hass: HomeAssistant,
+    carrier_api: FakeCarrierApiConnection,
+    setup_integration: Callable[..., Any],
+    data: dict[str, Any],
+    clear_activities: bool,
+    error: type[HomeAssistantError],
+    translation_key: str,
+) -> None:
+    """Raise a translated error when the activity or set points cannot be resolved."""
+    await setup_integration()
+    if clear_activities:
+        carrier_api.systems[0].config.zones[0].activities.clear()
+    entity = entity_for_unique_id(hass, CLIMATE_DOMAIN, ZONE_1)
+
+    with pytest.raises(error) as raised:
+        await entity.async_set_activity_setpoint(**data)
+
+    assert raised.value.translation_key == translation_key
+
+
+@pytest.mark.asyncio
+async def test_set_program_day_requires_a_known_etag(
+    hass: HomeAssistant,
+    carrier_api: FakeCarrierApiConnection,
+    setup_integration: Callable[..., Any],
+) -> None:
+    """Refuse to write a program day before any etag is known."""
+    await setup_integration()
+    system = carrier_api.systems[0]
+    program = system.config.zones[0].program_json
+    program.pop("etag", None)
+    for day in program["day"]:
+        day.pop("etag", None)
+    system.config.etag = None
+    entity = entity_for_unique_id(hass, CLIMATE_DOMAIN, ZONE_1)
+
+    with pytest.raises(HomeAssistantError) as raised:
+        await entity.async_set_program_day(day_id="0", periods=NEW_PERIODS)
+
+    assert raised.value.translation_key == "program_etag_unknown"
+
+
+@pytest.mark.asyncio
+async def test_required_zone_api_id_raises_without_a_zone(
+    hass: HomeAssistant,
+    setup_integration: Callable[..., Any],
+) -> None:
+    """Fail clearly if a climate entity somehow lost its zone binding."""
+    await setup_integration()
+    entity = entity_for_unique_id(hass, CLIMATE_DOMAIN, ZONE_1)
+    entity.zone_api_id = None
+
+    with pytest.raises(ValueError, match="No zone api id defined"):
+        _ = entity._required_zone_api_id

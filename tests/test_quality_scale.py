@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib
 from pathlib import Path
 from typing import Any
 
@@ -106,3 +107,18 @@ def test_quality_scale_rule_matches_hassfest_schema(rule: str) -> None:
     assert value["status"] in {"todo", "done", "exempt"}
     assert isinstance(value["comment"], str)
     assert value["comment"].strip()
+
+
+@pytest.mark.parametrize(
+    ("platform", "expected"),
+    [("binary_sensor", 0), ("sensor", 0), ("climate", 1), ("select", 1)],
+)
+def test_every_platform_sets_parallel_updates(platform: str, expected: int) -> None:
+    """Set PARALLEL_UPDATES on every platform, as the parallel-updates rule requires.
+
+    Read-only platforms use 0 because the coordinator fetches data centrally;
+    platforms that send commands to Carrier's rate-limited cloud API use 1.
+    """
+    module = importlib.import_module(f"custom_components.ha_carrier.{platform}")
+
+    assert expected == module.PARALLEL_UPDATES

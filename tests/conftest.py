@@ -14,6 +14,8 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers.entity import Entity
+from homeassistant.helpers.entity_component import DATA_INSTANCES
 import pytest
 from pytest_homeassistant.common import MockConfigEntry
 
@@ -33,6 +35,7 @@ class FakeCarrierWebsocket:
         self.callbacks: list[Callable[[str], Any]] = []
         self.listener_errors: list[BaseException] = []
         self.listener_calls = 0
+        self.listener_returns = 0
 
     def callback_add(self, callback: Callable[[str], Any]) -> None:
         """Store a websocket callback registered by the coordinator.
@@ -43,10 +46,13 @@ class FakeCarrierWebsocket:
         self.callbacks.append(callback)
 
     async def listener(self) -> None:
-        """Block until Home Assistant cancels the websocket task."""
+        """Raise queued errors, return early when asked, else block until cancelled."""
         self.listener_calls += 1
         if self.listener_errors:
             raise self.listener_errors.pop(0)
+        if self.listener_returns:
+            self.listener_returns -= 1
+            return
         await asyncio.Event().wait()
 
 
@@ -81,6 +87,7 @@ class FakeCarrierApiConnection:
         self.calls: list[tuple[str, dict[str, Any]]] = []
         self.load_data_error: BaseException | None = None
         self.cleanup_calls = 0
+        self.cleanup_error: BaseException | None = None
 
     async def load_data(self) -> list[System]:
         """Return configured systems or raise a configured load error."""
@@ -104,6 +111,8 @@ class FakeCarrierApiConnection:
     async def cleanup(self) -> None:
         """Record credential-validation cleanup."""
         self.cleanup_calls += 1
+        if self.cleanup_error is not None:
+            raise self.cleanup_error
 
     async def get_user_info(self) -> dict[str, Any]:
         """Return the fake Carrier account identity payload."""
@@ -531,6 +540,30 @@ def entity_id_for_unique_id(hass: HomeAssistant, domain: str, unique_id: str) ->
     entity_id = er.async_get(hass).async_get_entity_id(domain, DOMAIN, unique_id)
     assert entity_id is not None
     return entity_id
+
+
+def entity_for_unique_id(hass: HomeAssistant, domain: str, unique_id: str) -> Entity:
+    """Return the live entity object registered for an integration unique ID.
+
+    Lets tests call entity methods directly when Home Assistant's service
+    layer would reject the input before it reaches the integration.
+
+    Args:
+        hass: Home Assistant instance.
+        domain: Entity platform domain.
+        unique_id: Integration unique ID to resolve.
+
+    Returns:
+        Entity: The loaded entity object.
+
+    Raises:
+        AssertionError: Raised when the entity is not loaded.
+    """
+    entity = hass.data[DATA_INSTANCES][domain].get_entity(
+        entity_id_for_unique_id(hass, domain, unique_id)
+    )
+    assert entity is not None
+    return entity
 
 
 @pytest.fixture(autouse=True, scope="session")

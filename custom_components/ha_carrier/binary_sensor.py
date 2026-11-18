@@ -15,6 +15,10 @@ from .entity import CarrierEntity, CarrierZoneEntity
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 
+# Read-only platform: the coordinator fetches data centrally, so entity updates
+# never call Carrier and need no limit.
+PARALLEL_UPDATES = 0
+
 
 async def async_setup_entry(
     hass: HomeAssistant,

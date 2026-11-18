@@ -43,6 +43,9 @@ from .entry_level_climate import build_entry_level_entities
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 
+# Commands go to Carrier's cloud API, which rate limits; send one at a time.
+PARALLEL_UPDATES = 1
+
 BASE_SUPPORT_FLAGS: ClimateEntityFeature = (
     ClimateEntityFeature.TURN_ON
     | ClimateEntityFeature.TURN_OFF

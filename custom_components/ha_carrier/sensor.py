@@ -25,6 +25,10 @@ from .util import TIMESTAMP_TYPES
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 
+# Read-only platform: the coordinator fetches data centrally, so entity updates
+# never call Carrier and need no limit.
+PARALLEL_UPDATES = 0
+
 
 def _unit_status_attributes(unit: StatusUnit | None) -> dict[str, object]:
     """Return Home Assistant attributes for mapped Carrier unit status details.
