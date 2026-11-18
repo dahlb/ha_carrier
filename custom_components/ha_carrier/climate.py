@@ -21,16 +21,12 @@ from homeassistant.const import (
     PRECISION_WHOLE,
     UnitOfTemperature,
 )
-from homeassistant.core import CALLBACK_TYPE, HomeAssistant, ServiceResponse, SupportsResponse
+from homeassistant.core import CALLBACK_TYPE, HomeAssistant, ServiceResponse
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
-from homeassistant.helpers import config_validation as cv, entity_platform
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.event import async_call_later
-import voluptuous as vol
 
 from . import ConfigEntryCarrier
-from .carrier_data_update_coordinator import CarrierDataUpdateCoordinator
-from .carrier_entity import CarrierZoneEntity
 from .const import (
     CONF_INFINITE_HOLDS,
     DEFAULT_INFINITE_HOLDS,
@@ -41,23 +37,11 @@ from .const import (
     MIN_HUMIDITY,
     PROGRAM_READBACK_DELAY_S,
 )
+from .coordinator import CarrierDataUpdateCoordinator
+from .entity import CarrierZoneEntity
 from .entry_level_climate import build_entry_level_entities
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
-
-SETPOINT_ACTIVITIES = [
-    ActivityTypes.HOME.value,
-    ActivityTypes.AWAY.value,
-    ActivityTypes.SLEEP.value,
-    ActivityTypes.WAKE.value,
-    ActivityTypes.MANUAL.value,
-]
-PROGRAM_ACTIVITIES = [
-    ActivityTypes.HOME.value,
-    ActivityTypes.AWAY.value,
-    ActivityTypes.SLEEP.value,
-    ActivityTypes.WAKE.value,
-]
 
 BASE_SUPPORT_FLAGS: ClimateEntityFeature = (
     ClimateEntityFeature.TURN_ON
@@ -112,49 +96,6 @@ async def async_setup_entry(
         )
     async_add_entities(entities)
     async_add_entities(build_entry_level_entities(coordinator))
-
-    # Schedule-friendly services. Home Assistant's set_temperature always places a MANUAL
-    # hold; set_activity_setpoint instead edits an activity's set points in place, so an
-    # independent hold from the thermostat or app still wins and an HA outage leaves the
-    # thermostat on its own schedule at the last value written.
-    platform = entity_platform.async_get_current_platform()
-    platform.async_register_entity_service(
-        "set_activity_setpoint",
-        {
-            vol.Optional(ATTR_TEMPERATURE): vol.Coerce(float),
-            vol.Optional(ATTR_TARGET_TEMP_LOW): vol.Coerce(float),
-            vol.Optional(ATTR_TARGET_TEMP_HIGH): vol.Coerce(float),
-            vol.Optional("activity"): vol.In(SETPOINT_ACTIVITIES),
-        },
-        "async_set_activity_setpoint",
-    )
-    platform.async_register_entity_service(
-        "get_schedule",
-        None,
-        "async_get_schedule",
-        supports_response=SupportsResponse.ONLY,
-    )
-    platform.async_register_entity_service(
-        "set_program_day",
-        {
-            vol.Required("day_id"): cv.string,
-            vol.Required("periods"): vol.All(
-                cv.ensure_list,
-                [
-                    vol.Schema(
-                        {
-                            vol.Required("id"): cv.string,
-                            vol.Required("activity"): vol.In(PROGRAM_ACTIVITIES),
-                            vol.Optional("time"): cv.string,
-                            vol.Optional("enabled"): vol.In(["on", "off"]),
-                        }
-                    )
-                ],
-            ),
-            vol.Optional("etag"): cv.string,
-        },
-        "async_set_program_day",
-    )
 
 
 def normalize_humidity_target(humidity: float) -> int:

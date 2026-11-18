@@ -10,8 +10,8 @@ from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
 from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers.typing import ConfigType
 
-from .carrier_data_update_coordinator import CarrierDataUpdateCoordinator
 from .const import (
     CONF_FULL_REFRESH_INTERVAL,
     CONFIG_FLOW_VERSION,
@@ -25,9 +25,11 @@ from .const import (
     WEBSOCKET_RETRY_INITIAL_DELAY_SECONDS,
     WEBSOCKET_RETRY_MAX_DELAY_SECONDS,
 )
+from .coordinator import CarrierDataUpdateCoordinator
 from .exceptions import CarrierUnauthorizedError
 from .migrate import migrate_1_to_2, migrate_2_to_3
 from .resiliency import RetryPolicy, compute_backoff_delay
+from .services import async_setup_services
 from .util import (
     WEBSOCKET_DATA_UPDATE_EXCEPTIONS,
     WEBSOCKET_RECOVERABLE_EXCEPTIONS,
@@ -55,6 +57,21 @@ type ConfigEntryCarrier = ConfigEntry[CarrierDataUpdateCoordinator]
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
+
+
+async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
+    """Set up integration-wide resources that do not depend on a config entry.
+
+    Args:
+        hass: Home Assistant instance.
+        config: Home Assistant configuration (unused; the integration is
+            configured through config entries only).
+
+    Returns:
+        bool: True once the integration's service actions are registered.
+    """
+    async_setup_services(hass)
+    return True
 
 
 async def _async_wait_for_coordinator_recovery(

@@ -13,10 +13,6 @@ from homeassistant.exceptions import ConfigEntryAuthFailed, HomeAssistantError
 from homeassistant.helpers.update_coordinator import UpdateFailed
 import pytest
 
-from custom_components.ha_carrier.carrier_data_update_coordinator import (
-    CarrierDataUpdateCoordinator,
-    poll_interval_for,
-)
 from custom_components.ha_carrier.const import (
     DEFAULT_FULL_REFRESH_INTERVAL_MINUTES,
     DEFAULT_UPDATE_INTERVAL_MINUTES,
@@ -24,6 +20,7 @@ from custom_components.ha_carrier.const import (
     TRANSIENT_FAILURE_THRESHOLD,
     UNAUTHORIZED_RETRY_THRESHOLD,
 )
+from custom_components.ha_carrier.coordinator import CarrierDataUpdateCoordinator, poll_interval_for
 from custom_components.ha_carrier.exceptions import CarrierUnauthorizedError
 from custom_components.ha_carrier.resiliency import ResiliencyState
 
@@ -85,7 +82,7 @@ async def test_energy_refresh_uses_cycle_scoped_success_reset(
         return {"infinityEnergy": carrier_api.systems[0].energy.raw}
 
     with patch(
-        "custom_components.ha_carrier.carrier_data_update_coordinator.async_call_with_retry",
+        "custom_components.ha_carrier.coordinator.async_call_with_retry",
         fake_retry,
     ):
         await coordinator._async_energy_refresh()
@@ -319,7 +316,7 @@ async def test_energy_refresh_records_one_unauthorized_per_cycle(
         raise CarrierApiAuthError("unauthorized")
 
     with patch(
-        "custom_components.ha_carrier.carrier_data_update_coordinator.async_call_with_retry",
+        "custom_components.ha_carrier.coordinator.async_call_with_retry",
         fake_retry,
     ):
         await coordinator._async_energy_refresh()
@@ -955,7 +952,7 @@ async def test_energy_refresh_escalates_after_threshold(
 
     with (
         patch(
-            "custom_components.ha_carrier.carrier_data_update_coordinator.async_call_with_retry",
+            "custom_components.ha_carrier.coordinator.async_call_with_retry",
             fake_retry,
         ),
         pytest.raises(CarrierUnauthorizedError),

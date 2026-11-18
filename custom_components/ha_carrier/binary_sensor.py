@@ -10,8 +10,8 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import ConfigEntryCarrier
-from .carrier_data_update_coordinator import CarrierDataUpdateCoordinator
-from .carrier_entity import CarrierEntity, CarrierZoneEntity
+from .coordinator import CarrierDataUpdateCoordinator
+from .entity import CarrierEntity, CarrierZoneEntity
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 

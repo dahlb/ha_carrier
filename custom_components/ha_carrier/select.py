@@ -12,14 +12,14 @@ from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import ConfigEntryCarrier
-from .carrier_data_update_coordinator import CarrierDataUpdateCoordinator
-from .carrier_entity import CarrierEntity
 from .const import (
     DOMAIN,
     HEAT_SOURCE_IDU_ONLY_LABEL,
     HEAT_SOURCE_ODU_ONLY_LABEL,
     HEAT_SOURCE_SYSTEM_LABEL,
 )
+from .coordinator import CarrierDataUpdateCoordinator
+from .entity import CarrierEntity
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 

@@ -7,6 +7,10 @@
         "data": {
           "username": "Username",
           "password": "Password"
+        },
+        "data_description": {
+          "username": "The email or username you use to sign in to the Carrier Infinity / Côr mobile app.",
+          "password": "The password for that Carrier account."
         }
       },
       "reauth_confirm": {
@@ -15,6 +19,10 @@
         "data": {
           "username": "Username",
           "password": "Password"
+        },
+        "data_description": {
+          "username": "The email or username you use to sign in to the Carrier Infinity / Côr mobile app.",
+          "password": "The new password for that Carrier account. Leave blank to keep the saved password."
         }
       },
       "reconfigure": {
@@ -23,6 +31,10 @@
         "data": {
           "username": "Username",
           "password": "Password"
+        },
+        "data_description": {
+          "username": "The email or username you use to sign in to the Carrier Infinity / Côr mobile app.",
+          "password": "The new password for that Carrier account. Leave blank to keep the saved password."
         }
       }
     },
@@ -46,6 +58,7 @@
           "full_refresh_interval": "Full refresh interval"
         },
         "data_description": {
+          "infinite_holds": "When on, temperature and preset changes from Home Assistant hold until you choose the Resume preset. When off, they last until the thermostat's next scheduled activity.",
           "full_refresh_interval": "How often to fetch the complete system state from Carrier. Leave it at the default if your thermostat gets live updates. Lower it if your system's status only changes after a reload."
         }
       }

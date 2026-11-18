@@ -21,6 +21,7 @@ Initially tested on **SYSTXCCWIC01-B** (firmware 4.31). Other Infinity / Evoluti
 - [Installation](#installation)
 - [Configuration](#configuration)
 - [Troubleshooting](#troubleshooting)
+- [Removal](#removal)
 - [Support](#support)
 
 ## Features
@@ -146,6 +147,16 @@ If something isn't working as expected:
 - **"Invalid authentication"** — double-check your username and password in the Carrier mobile app. If the mobile app works but Home Assistant doesn't, open an issue with diagnostics.
 - **Entities show as unavailable** — check the **Online** binary sensor for the system. If it reports offline, the thermostat has lost its connection to Carrier's cloud (often a router or internet issue at the thermostat's location).
 - **Slow updates** — most state changes arrive within a few seconds via websocket; energy data is refreshed every 30 minutes, or more often if you lower the full refresh interval. If changes only show up after you reload the integration, your system is probably not receiving live updates; lower the **Full refresh interval** option (see [Options](#options)).
+
+## Removal
+
+This integration follows the standard Home Assistant removal process; no extra steps are needed.
+
+1. Go to **Settings → Devices & Services → Carrier Infinity**.
+2. Click the three-dot menu next to your Carrier account and choose **Delete**. This removes its devices and entities and stops all requests to Carrier's cloud.
+3. *(Optional)* If you installed through HACS and will not use the integration again, open **HACS**, find **Carrier Infinity Thermostat**, choose **Remove**, then restart Home Assistant. For a manual install, delete `config/custom_components/ha_carrier` and restart.
+
+Removing the integration does not change anything on your thermostat or in your Carrier account. Holds or set points made from Home Assistant stay in place until you change them in the Carrier app or on the thermostat.
 
 ## Support
 

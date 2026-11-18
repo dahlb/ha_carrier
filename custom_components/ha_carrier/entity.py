@@ -8,8 +8,8 @@ from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util import slugify
 
-from .carrier_data_update_coordinator import CarrierDataUpdateCoordinator
 from .const import DOMAIN
+from .coordinator import CarrierDataUpdateCoordinator
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 

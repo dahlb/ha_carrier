@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Coroutine
+import json
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
@@ -519,3 +521,22 @@ async def _async_unload_loaded_entry(
     if config_entry.state is ConfigEntryState.LOADED:
         assert await hass.config_entries.async_unload(config_entry.entry_id)
         await hass.async_block_till_done()
+
+
+@pytest.mark.parametrize(
+    ("section", "step"),
+    [
+        ("config", "user"),
+        ("config", "reauth_confirm"),
+        ("config", "reconfigure"),
+        ("options", "init"),
+    ],
+)
+def test_every_flow_field_has_a_data_description(section: str, step: str) -> None:
+    """Describe every config and options flow field, as the config-flow rule requires."""
+    translations = json.loads(
+        (Path(config_flow.__file__).parent / "translations" / "en.json").read_text(encoding="utf-8")
+    )
+    step_strings = translations[section]["step"][step]
+
+    assert set(step_strings["data"]) == set(step_strings.get("data_description", {}))
