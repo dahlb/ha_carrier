@@ -5,7 +5,7 @@
 | Name                                                    |    Stmts |     Miss |   Branch |   BrPart |   Cover |   Missing |
 |-------------------------------------------------------- | -------: | -------: | -------: | -------: | ------: | --------: |
 | custom\_components/ha\_carrier/\_\_init\_\_.py          |      160 |        2 |       32 |        2 |     98% |  194, 423 |
-| custom\_components/ha\_carrier/binary\_sensor.py        |       58 |        0 |        4 |        0 |    100% |           |
+| custom\_components/ha\_carrier/binary\_sensor.py        |       71 |        0 |        6 |        0 |    100% |           |
 | custom\_components/ha\_carrier/climate.py               |      293 |        0 |      104 |        0 |    100% |           |
 | custom\_components/ha\_carrier/config\_flow.py          |      119 |        1 |       36 |        2 |     98% |218, 270-\>299 |
 | custom\_components/ha\_carrier/const.py                 |       40 |        0 |        0 |        0 |    100% |           |
@@ -17,10 +17,10 @@
 | custom\_components/ha\_carrier/migrate.py               |      221 |        1 |      108 |        8 |     97% |221, 270-\>279, 344-\>351, 415-\>418, 420-\>422, 422-\>425, 437-\>452, 463-\>452 |
 | custom\_components/ha\_carrier/resiliency.py            |      104 |        0 |       30 |        0 |    100% |           |
 | custom\_components/ha\_carrier/select.py                |       51 |        0 |        8 |        0 |    100% |           |
-| custom\_components/ha\_carrier/sensor.py                |      313 |        0 |       56 |        0 |    100% |           |
+| custom\_components/ha\_carrier/sensor.py                |      359 |        0 |       60 |        0 |    100% |           |
 | custom\_components/ha\_carrier/services.py              |       22 |        0 |        0 |        0 |    100% |           |
 | custom\_components/ha\_carrier/util.py                  |       73 |        0 |       34 |        0 |    100% |           |
-| **TOTAL**                                               | **1992** |    **6** |  **578** |   **14** | **99%** |           |
+| **TOTAL**                                               | **2051** |    **6** |  **584** |   **14** | **99%** |           |
 
 
 ## Setup coverage badge

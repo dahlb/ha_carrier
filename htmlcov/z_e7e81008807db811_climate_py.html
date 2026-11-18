@@ -67,7 +67,7 @@
             <a id="nextFileLink" class="nav" href="z_e7e81008807db811_config_flow_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.17.3">coverage.py v7.17.3</a>,
-            created at 2026-11-18 15:25 +0000
+            created at 2026-11-18 15:38 +0000
         </p>
         <aside class="hidden">
             <button type="button" class="button_next_chunk" data-shortcut="j"></button>
@@ -385,11 +385,11 @@
     <p class="run"><span class="n"><a id="t301" href="#t301">301</a></span><span class="t">        <span class="nam">hold_activity_name</span> <span class="op">=</span> <span class="op">(</span>&nbsp;</span><span class="r"></span></p>
     <p class="run run2"><span class="n"><a id="t302" href="#t302">302</a></span><span class="t">            <span class="nam">self</span><span class="op">.</span><span class="nam">_config_zone</span><span class="op">.</span><span class="nam">hold_activity</span><span class="op">.</span><span class="nam">value</span> <span class="key">if</span> <span class="nam">self</span><span class="op">.</span><span class="nam">_config_zone</span><span class="op">.</span><span class="nam">hold_activity</span> <span class="key">else</span> <span class="key">None</span>&nbsp;</span><span class="r"></span></p>
     <p class="run run2"><span class="n"><a id="t303" href="#t303">303</a></span><span class="t">        <span class="op">)</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t304" href="#t304">304</a></span><span class="t">        <span class="nam">self</span><span class="op">.</span><span class="nam">_attr_extra_state_attributes</span> <span class="op">=</span> <span class="op">{</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run run2"><span class="n"><a id="t305" href="#t305">305</a></span><span class="t">            <span class="str">&quot;conditioning&quot;</span><span class="op">:</span> <span class="nam">self</span><span class="op">.</span><span class="nam">_status_zone</span><span class="op">.</span><span class="nam">conditioning</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run run2"><span class="n"><a id="t306" href="#t306">306</a></span><span class="t">            <span class="str">&quot;status_mode&quot;</span><span class="op">:</span> <span class="nam">self</span><span class="op">.</span><span class="nam">carrier_system</span><span class="op">.</span><span class="nam">status</span><span class="op">.</span><span class="nam">mode</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run run2"><span class="n"><a id="t307" href="#t307">307</a></span><span class="t">            <span class="str">&quot;blower_rpm&quot;</span><span class="op">:</span> <span class="nam">self</span><span class="op">.</span><span class="nam">carrier_system</span><span class="op">.</span><span class="nam">status</span><span class="op">.</span><span class="nam">blower_rpm</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run run2"><span class="n"><a id="t308" href="#t308">308</a></span><span class="t">            <span class="str">&quot;damper_position&quot;</span><span class="op">:</span> <span class="nam">self</span><span class="op">.</span><span class="nam">_status_zone</span><span class="op">.</span><span class="nam">damper_position</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t304" href="#t304">304</a></span><span class="t">        <span class="com"># Readings that change on their own (conditioning, blower speed, damper</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t305" href="#t305">305</a></span><span class="t">        <span class="com"># position) are sensors so they can be graphed; these attributes describe</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t306" href="#t306">306</a></span><span class="t">        <span class="com"># the thermostat&#x27;s own schedule and hold state.</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t307" href="#t307">307</a></span><span class="t">        <span class="nam">self</span><span class="op">.</span><span class="nam">_attr_extra_state_attributes</span> <span class="op">=</span> <span class="op">{</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run run2"><span class="n"><a id="t308" href="#t308">308</a></span><span class="t">            <span class="str">&quot;status_mode&quot;</span><span class="op">:</span> <span class="nam">self</span><span class="op">.</span><span class="nam">carrier_system</span><span class="op">.</span><span class="nam">status</span><span class="op">.</span><span class="nam">mode</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
     <p class="run run2"><span class="n"><a id="t309" href="#t309">309</a></span><span class="t">            <span class="str">&quot;hold_activity&quot;</span><span class="op">:</span> <span class="nam">hold_activity_name</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
     <p class="run run2"><span class="n"><a id="t310" href="#t310">310</a></span><span class="t">            <span class="str">&quot;hold_until&quot;</span><span class="op">:</span> <span class="nam">self</span><span class="op">.</span><span class="nam">_config_zone</span><span class="op">.</span><span class="nam">hold_until</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
     <p class="run run2"><span class="n"><a id="t311" href="#t311">311</a></span><span class="t">            <span class="str">&quot;next_activity_time&quot;</span><span class="op">:</span> <span class="nam">self</span><span class="op">.</span><span class="nam">_config_zone</span><span class="op">.</span><span class="nam">next_activity_time</span><span class="op">(</span><span class="op">)</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
@@ -861,7 +861,7 @@
             <a class="nav" href="z_e7e81008807db811_config_flow_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.17.3">coverage.py v7.17.3</a>,
-            created at 2026-11-18 15:25 +0000
+            created at 2026-11-18 15:38 +0000
         </p>
     </div>
 </footer>
