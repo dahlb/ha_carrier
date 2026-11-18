@@ -9,6 +9,7 @@ from carrier_api import TemperatureUnits
 from homeassistant.const import STATE_UNAVAILABLE, EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
+from homeassistant.util.unit_system import METRIC_SYSTEM, US_CUSTOMARY_SYSTEM
 import pytest
 
 from custom_components.ha_carrier.const import DOMAIN
@@ -130,32 +131,32 @@ async def test_sensor_platform_registers_propane_and_lifecycle_sensors(
 
 
 @pytest.mark.asyncio
-async def test_unit_status_sensors_use_carrier_api_status_unit_helpers(
+async def test_unit_status_sensors_report_state_and_split_readings_into_sensors(
     hass: HomeAssistant,
     carrier_api: FakeCarrierApiConnection,
     setup_integration: Callable[..., Any],
 ) -> None:
-    """Populate unit status attributes from mapped Carrier API status unit data."""
+    """Report unit status as state only; unit readings are their own sensors."""
     carrier_api.systems = [build_carrier_system()]
 
     await setup_integration()
 
-    expected_attributes: dict[str, dict[str, object]] = {
-        "abc123_odu_status": {"operational_status": "idle"},
-        "abc123_idu_status": {
-            "airflow_cfm": 1200,
-            "blower_rpm": 500,
-            "operational_status": "idle",
-            "static_pressure": 0.2,
-        },
-    }
-    for unique_id, attributes in expected_attributes.items():
-        entity_id = entity_id_for_unique_id(hass, "sensor", unique_id)
-        state = hass.states.get(entity_id)
+    for unique_id in ("abc123_odu_status", "abc123_idu_status"):
+        state = hass.states.get(entity_id_for_unique_id(hass, "sensor", unique_id))
 
         assert state is not None
         assert state.state == "idle"
-        assert {key: state.attributes[key] for key in attributes} == attributes
+        assert not {
+            "airflow_cfm",
+            "blower_rpm",
+            "operational_status",
+            "static_pressure",
+            "line_voltage",
+        } & set(state.attributes)
+    blower = hass.states.get(entity_id_for_unique_id(hass, "sensor", "abc123_blower_speed"))
+    assert blower is not None
+    assert blower.state == "500"
+    assert blower.attributes["unit_of_measurement"] == "rpm"
 
     expected_states = {
         "abc123_airflow": AIRFLOW_METRIC_STATE,
@@ -471,3 +472,180 @@ async def test_last_updated_sensors_are_disabled_by_default(
     assert entry.disabled_by is er.RegistryEntryDisabler.INTEGRATION
     assert entry.entity_category is EntityCategory.DIAGNOSTIC
     assert hass.states.get(entry.entity_id) is None
+
+
+# Readings from carrier_api's diagnostic-device-info fixture.
+OUTDOOR_DIAGNOSTICS: dict[str, Any] = {
+    "blower_rpm": 940,
+    "outdoor_coil_temperature": 76.0,
+    "discharge_temperature": 140.0,
+    "suction_temperature": 78.0,
+    "suction_pressure": 193.0,
+    "suction_superheat": 4.65234375,
+    "line_voltage": 246,
+    "lockout_active": False,
+}
+OUTDOOR_SENSOR_IDS = (
+    "abc123_outdoor_fan_speed",
+    "abc123_outdoor_coil_temperature",
+    "abc123_discharge_temperature",
+    "abc123_suction_temperature",
+    "abc123_suction_pressure",
+    "abc123_suction_superheat",
+    "abc123_line_voltage",
+)
+
+
+async def _enable_and_reload(
+    hass: HomeAssistant, entry: Any, entities: list[tuple[str, str]]
+) -> None:
+    """Enable disabled-by-default entities and reload so they are added.
+
+    Args:
+        hass: Home Assistant instance.
+        entry: Loaded Carrier config entry.
+        entities: ``(domain, unique_id)`` pairs to enable.
+    """
+    registry = er.async_get(hass)
+    for domain, unique_id in entities:
+        registry.async_update_entity(
+            entity_id_for_unique_id(hass, domain, unique_id), disabled_by=None
+        )
+    assert await hass.config_entries.async_reload(entry.entry_id)
+    await hass.async_block_till_done()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("system_unit", "ha_units", "temperature_unit", "pressure"),
+    [
+        (TemperatureUnits.FAHRENHEIT, US_CUSTOMARY_SYSTEM, "°F", (193.0, "psi")),
+        # Suction pressure is always psi from Carrier; a metric HA shows it in kPa.
+        (TemperatureUnits.CELSIUS, METRIC_SYSTEM, "°C", (193.0 * 6.894757, "kPa")),
+    ],
+)
+async def test_outdoor_unit_diagnostic_sensors_are_disabled_until_enabled(
+    hass: HomeAssistant,
+    carrier_api: FakeCarrierApiConnection,
+    setup_integration: Callable[..., Any],
+    system_unit: TemperatureUnits,
+    ha_units: Any,
+    temperature_unit: str,
+    pressure: tuple[float, str],
+) -> None:
+    """Register outdoor readings disabled, then report them once enabled.
+
+    Temperatures are reported in the thermostat's configured unit.
+    """
+    hass.config.units = ha_units
+    carrier_api.systems[0].status.temperature_unit = system_unit
+    outdoor_unit = carrier_api.systems[0].status.outdoor_unit
+    for field, value in OUTDOOR_DIAGNOSTICS.items():
+        setattr(outdoor_unit, field, value)
+    entry = await setup_integration()
+    registry = er.async_get(hass)
+    for unique_id in OUTDOOR_SENSOR_IDS:
+        registry_entry = registry.async_get(entity_id_for_unique_id(hass, "sensor", unique_id))
+        assert registry_entry is not None
+        assert registry_entry.disabled_by is er.RegistryEntryDisabler.INTEGRATION
+        assert registry_entry.entity_category is EntityCategory.DIAGNOSTIC
+
+    await _enable_and_reload(
+        hass, entry, [("sensor", unique_id) for unique_id in OUTDOOR_SENSOR_IDS]
+    )
+
+    expected = {
+        "abc123_outdoor_fan_speed": ("940", "rpm"),
+        "abc123_outdoor_coil_temperature": ("76.0", temperature_unit),
+        "abc123_discharge_temperature": ("140.0", temperature_unit),
+        "abc123_suction_temperature": ("78.0", temperature_unit),
+        "abc123_suction_superheat": ("4.65234375", temperature_unit),
+        "abc123_line_voltage": ("246", "V"),
+    }
+    for unique_id, (value, unit) in expected.items():
+        state = hass.states.get(entity_id_for_unique_id(hass, "sensor", unique_id))
+        assert state is not None, unique_id
+        assert (state.state, state.attributes["unit_of_measurement"]) == (value, unit), unique_id
+    suction_pressure = hass.states.get(
+        entity_id_for_unique_id(hass, "sensor", "abc123_suction_pressure")
+    )
+    assert suction_pressure is not None
+    assert float(suction_pressure.state) == pytest.approx(pressure[0], rel=1e-4)
+    assert suction_pressure.attributes["unit_of_measurement"] == pressure[1]
+
+
+@pytest.mark.asyncio
+async def test_unit_readings_stay_unavailable_until_carrier_reports_them(
+    hass: HomeAssistant,
+    carrier_api: FakeCarrierApiConnection,
+    setup_integration: Callable[..., Any],
+) -> None:
+    """Show an enabled outdoor reading as unavailable before any diagnostic message."""
+    entry = await setup_integration()
+    await _enable_and_reload(hass, entry, [("sensor", "abc123_line_voltage")])
+
+    state = hass.states.get(entity_id_for_unique_id(hass, "sensor", "abc123_line_voltage"))
+
+    assert state is not None
+    assert state.state == STATE_UNAVAILABLE
+
+
+@pytest.mark.asyncio
+async def test_systems_without_an_outdoor_unit_get_no_outdoor_entities(
+    hass: HomeAssistant,
+    carrier_api: FakeCarrierApiConnection,
+    setup_integration: Callable[..., Any],
+) -> None:
+    """Skip outdoor readings and the lockout sensor for furnace-only systems."""
+    carrier_api.systems[0].profile.outdoor_unit_type = "none"
+    await setup_integration()
+    registry = er.async_get(hass)
+
+    for unique_id in OUTDOOR_SENSOR_IDS:
+        assert registry.async_get_entity_id("sensor", DOMAIN, unique_id) is None
+    assert (
+        registry.async_get_entity_id("binary_sensor", DOMAIN, "abc123_outdoor_unit_lockout") is None
+    )
+    assert registry.async_get_entity_id("sensor", DOMAIN, "abc123_blower_speed")
+
+
+@pytest.mark.asyncio
+async def test_blower_speed_falls_back_to_the_system_status_field(
+    hass: HomeAssistant,
+    carrier_api: FakeCarrierApiConnection,
+    setup_integration: Callable[..., Any],
+) -> None:
+    """Read blower speed from the top-level status when the indoor unit lacks it."""
+    carrier_api.systems[0].status.indoor_unit = None
+    await setup_integration()
+
+    state = hass.states.get(entity_id_for_unique_id(hass, "sensor", "abc123_blower_speed"))
+
+    assert state is not None
+    assert state.state == "500"
+
+
+@pytest.mark.asyncio
+async def test_zone_damper_and_conditioning_sensors(
+    hass: HomeAssistant,
+    setup_integration: Callable[..., Any],
+) -> None:
+    """Expose damper position enabled and the raw conditioning value disabled by default."""
+    entry = await setup_integration()
+
+    damper = hass.states.get(
+        entity_id_for_unique_id(hass, "sensor", "abc123_zone_1_damper_position")
+    )
+    assert damper is not None
+    assert damper.state == "50"
+    assert damper.attributes["friendly_name"] == "Home Living Room Damper Position"
+    conditioning_id = entity_id_for_unique_id(hass, "sensor", "abc123_zone_1_conditioning")
+    registry_entry = er.async_get(hass).async_get(conditioning_id)
+    assert registry_entry is not None
+    assert registry_entry.disabled_by is er.RegistryEntryDisabler.INTEGRATION
+
+    await _enable_and_reload(hass, entry, [("sensor", "abc123_zone_1_conditioning")])
+
+    conditioning = hass.states.get(conditioning_id)
+    assert conditioning is not None
+    assert conditioning.state == "idle"

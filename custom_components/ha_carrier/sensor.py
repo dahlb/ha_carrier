@@ -2,13 +2,22 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
+from dataclasses import dataclass
 import logging
 
 from carrier_api import EnergyPeriod, EnergyUsageMetric, StatusUnit, System, TemperatureUnits
-from homeassistant.components.sensor import SensorDeviceClass, SensorEntity, SensorStateClass
+from homeassistant.components.sensor import (
+    SensorDeviceClass,
+    SensorEntity,
+    SensorEntityDescription,
+    SensorStateClass,
+)
 from homeassistant.const import (
     PERCENTAGE,
+    REVOLUTIONS_PER_MINUTE,
     EntityCategory,
+    UnitOfElectricPotential,
     UnitOfEnergy,
     UnitOfPressure,
     UnitOfTemperature,
@@ -30,19 +39,182 @@ _LOGGER: logging.Logger = logging.getLogger(__name__)
 PARALLEL_UPDATES = 0
 
 
-def _unit_status_attributes(unit: StatusUnit | None) -> dict[str, object]:
-    """Return Home Assistant attributes for mapped Carrier unit status details.
+def _outdoor_unit(system: System) -> StatusUnit | None:
+    """Return the system's mapped outdoor unit status, if Carrier reported one.
 
     Args:
-        unit: Mapped Carrier API indoor or outdoor unit status.
+        system: Carrier system.
 
     Returns:
-        Dictionary of available unit attributes, or an empty dictionary when no
-        mapped unit status exists.
+        StatusUnit | None: Outdoor unit status.
     """
-    if unit is None:
-        return {}
-    return unit.as_dict()
+    return system.status.outdoor_unit
+
+
+def _has_outdoor_unit(system: System) -> bool:
+    """Return whether the system's profile lists an outdoor unit.
+
+    Args:
+        system: Carrier system.
+
+    Returns:
+        bool: True for heat pumps and air conditioners.
+    """
+    return system.profile.outdoor_unit_type not in (None, "", "none")
+
+
+@dataclass(frozen=True, kw_only=True)
+class CarrierUnitSensorDescription(SensorEntityDescription):
+    """Describes a numeric reading from a Carrier indoor or outdoor unit.
+
+    Attributes:
+        value_fn: Returns the reading for a system, or None when Carrier has
+            not reported it.
+        outdoor_only: Create the sensor only for systems with an outdoor unit.
+        system_temperature_unit: The reading is in the system's configured
+            temperature unit (Fahrenheit or Celsius), which sets the native unit.
+    """
+
+    value_fn: Callable[[System], float | int | None]
+    outdoor_only: bool = False
+    system_temperature_unit: bool = False
+
+
+def _unit_value(
+    unit_fn: Callable[[System], StatusUnit | None],
+    field: Callable[[StatusUnit], float | int | None],
+) -> Callable[[System], float | int | None]:
+    """Build a value function that reads one field from a unit, if present.
+
+    Args:
+        unit_fn: Returns the indoor or outdoor unit for a system.
+        field: Reads the value from the unit.
+
+    Returns:
+        Callable[[System], float | int | None]: The value function.
+    """
+
+    def _value(system: System) -> float | int | None:
+        """Return the unit field, or None when the unit is missing.
+
+        Args:
+            system: Carrier system.
+
+        Returns:
+            float | int | None: The reading.
+        """
+        unit = unit_fn(system)
+        return None if unit is None else field(unit)
+
+    return _value
+
+
+def _blower_speed(system: System) -> float | int | None:
+    """Return the indoor blower speed, falling back to the top-level status field.
+
+    Args:
+        system: Carrier system.
+
+    Returns:
+        float | int | None: Blower speed in rpm.
+    """
+    indoor_unit = system.status.indoor_unit
+    if indoor_unit is not None and indoor_unit.blower_rpm is not None:
+        return indoor_unit.blower_rpm
+    return system.status.blower_rpm
+
+
+# Outdoor-unit refrigerant readings arrive only in diagnostic-device-info
+# websocket messages, so they stay unavailable on systems that never send those;
+# hence disabled by default. Temperatures follow the system's configured unit.
+UNIT_SENSORS: tuple[CarrierUnitSensorDescription, ...] = (
+    CarrierUnitSensorDescription(
+        key="blower_speed",
+        translation_key="blower_speed",
+        native_unit_of_measurement=REVOLUTIONS_PER_MINUTE,
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=_blower_speed,
+    ),
+    CarrierUnitSensorDescription(
+        key="outdoor_fan_speed",
+        translation_key="outdoor_fan_speed",
+        native_unit_of_measurement=REVOLUTIONS_PER_MINUTE,
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        outdoor_only=True,
+        value_fn=_unit_value(_outdoor_unit, lambda unit: unit.blower_rpm),
+    ),
+    CarrierUnitSensorDescription(
+        key="outdoor_coil_temperature",
+        translation_key="outdoor_coil_temperature",
+        device_class=SensorDeviceClass.TEMPERATURE,
+        system_temperature_unit=True,
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        outdoor_only=True,
+        value_fn=_unit_value(_outdoor_unit, lambda unit: unit.outdoor_coil_temperature),
+    ),
+    CarrierUnitSensorDescription(
+        key="discharge_temperature",
+        translation_key="discharge_temperature",
+        device_class=SensorDeviceClass.TEMPERATURE,
+        system_temperature_unit=True,
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        outdoor_only=True,
+        value_fn=_unit_value(_outdoor_unit, lambda unit: unit.discharge_temperature),
+    ),
+    CarrierUnitSensorDescription(
+        key="suction_temperature",
+        translation_key="suction_temperature",
+        device_class=SensorDeviceClass.TEMPERATURE,
+        system_temperature_unit=True,
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        outdoor_only=True,
+        value_fn=_unit_value(_outdoor_unit, lambda unit: unit.suction_temperature),
+    ),
+    CarrierUnitSensorDescription(
+        key="suction_pressure",
+        translation_key="suction_pressure",
+        device_class=SensorDeviceClass.PRESSURE,
+        native_unit_of_measurement=UnitOfPressure.PSI,
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        outdoor_only=True,
+        value_fn=_unit_value(_outdoor_unit, lambda unit: unit.suction_pressure),
+    ),
+    CarrierUnitSensorDescription(
+        # A temperature difference, not a temperature: no device class, so Home
+        # Assistant does not apply an absolute °F/°C conversion to it.
+        key="suction_superheat",
+        translation_key="suction_superheat",
+        system_temperature_unit=True,
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=1,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        outdoor_only=True,
+        value_fn=_unit_value(_outdoor_unit, lambda unit: unit.suction_superheat),
+    ),
+    CarrierUnitSensorDescription(
+        key="line_voltage",
+        translation_key="line_voltage",
+        device_class=SensorDeviceClass.VOLTAGE,
+        native_unit_of_measurement=UnitOfElectricPotential.VOLT,
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        outdoor_only=True,
+        value_fn=_unit_value(_outdoor_unit, lambda unit: unit.line_voltage),
+    ),
+)
 
 
 async def async_setup_entry(
@@ -172,6 +344,11 @@ def _system_entities(
                     coordinator=coordinator, system_serial=carrier_system.profile.serial
                 )
             )
+    entities.extend(
+        CarrierUnitSensor(coordinator, carrier_system.profile.serial, description)
+        for description in UNIT_SENSORS
+        if not description.outdoor_only or _has_outdoor_unit(carrier_system)
+    )
     for zone in carrier_system.config.zones:
         entities.extend(
             [
@@ -181,6 +358,16 @@ def _system_entities(
                     zone_api_id=zone.api_id,
                 ),
                 ZoneHumiditySensor(
+                    coordinator=coordinator,
+                    system_serial=carrier_system.profile.serial,
+                    zone_api_id=zone.api_id,
+                ),
+                ZoneDamperPositionSensor(
+                    coordinator=coordinator,
+                    system_serial=carrier_system.profile.serial,
+                    zone_api_id=zone.api_id,
+                ),
+                ZoneConditioningSensor(
                     coordinator=coordinator,
                     system_serial=carrier_system.profile.serial,
                     zone_api_id=zone.api_id,
@@ -780,7 +967,7 @@ class StaticPressureSensor(CarrierSensor):
 
 
 class OutdoorUnitOperationalStatusSensor(CarrierSensor):
-    """Sensor for outdoor unit operational status and mapped unit details."""
+    """Sensor for the outdoor unit's operational status."""
 
     _attr_translation_key = "odu_status"
 
@@ -799,7 +986,6 @@ class OutdoorUnitOperationalStatusSensor(CarrierSensor):
 
     def _update_entity_attrs(self) -> None:
         """Update outdoor operational status attrs from coordinator data."""
-        outdoor_unit = self.carrier_system.status.outdoor_unit
         value = self.carrier_system.status.outdoor_unit_operational_status
         if value is None:
             self._attr_available = False
@@ -809,11 +995,10 @@ class OutdoorUnitOperationalStatusSensor(CarrierSensor):
         else:
             self._attr_native_value = value
             self._attr_available = True
-        self._attr_extra_state_attributes = _unit_status_attributes(outdoor_unit)
 
 
 class IndoorUnitOperationalStatusSensor(CarrierSensor):
-    """Sensor for indoor unit operational status and mapped unit details."""
+    """Sensor for the indoor unit's operational status."""
 
     _attr_translation_key = "idu_status"
 
@@ -832,10 +1017,8 @@ class IndoorUnitOperationalStatusSensor(CarrierSensor):
 
     def _update_entity_attrs(self) -> None:
         """Update indoor operational status attrs from coordinator data."""
-        indoor_unit = self.carrier_system.status.indoor_unit
         self._attr_native_value = self.carrier_system.status.indoor_unit_operational_status
         self._attr_available = self._attr_native_value is not None
-        self._attr_extra_state_attributes = _unit_status_attributes(indoor_unit)
 
 
 class OutdoorUnitVarSensor(CarrierSensor):
@@ -903,3 +1086,108 @@ class IndoorUnitVarSensor(OutdoorUnitVarSensor):
             Carrier's operational status for the indoor unit.
         """
         return self.carrier_system.status.indoor_unit_operational_status
+
+
+class CarrierUnitSensor(CarrierSensor):
+    """Numeric reading from a Carrier indoor or outdoor unit, defined by a description."""
+
+    entity_description: CarrierUnitSensorDescription
+
+    def __init__(
+        self,
+        coordinator: CarrierDataUpdateCoordinator,
+        system_serial: str,
+        description: CarrierUnitSensorDescription,
+    ) -> None:
+        """Initialize a unit reading sensor.
+
+        Args:
+            coordinator: Coordinator that provides system telemetry.
+            system_serial: Carrier system serial for this entity.
+            description: Which reading to expose and how.
+        """
+        self.entity_description = description
+        super().__init__(
+            entity_name=description.key,
+            coordinator=coordinator,
+            system_serial=system_serial,
+            unique_id_suffix=description.key,
+        )
+
+    def _update_entity_attrs(self) -> None:
+        """Update the reading from coordinator data; unavailable until Carrier sends it."""
+        if self.entity_description.system_temperature_unit:
+            if self.carrier_system.status.temperature_unit == TemperatureUnits.FAHRENHEIT:
+                self._attr_native_unit_of_measurement = UnitOfTemperature.FAHRENHEIT
+            else:
+                self._attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
+        self._attr_native_value = self.entity_description.value_fn(self.carrier_system)
+        self._attr_available = self._attr_native_value is not None
+
+
+class ZoneDamperPositionSensor(CarrierZoneSensor):
+    """Sensor for how far open a zone's damper is."""
+
+    _attr_translation_key = "zone_damper_position"
+    _attr_native_unit_of_measurement = PERCENTAGE
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    def __init__(
+        self, coordinator: CarrierDataUpdateCoordinator, system_serial: str, zone_api_id: str
+    ) -> None:
+        """Initialize a zone damper position sensor.
+
+        Args:
+            coordinator: Coordinator that provides system and zone data.
+            system_serial: Carrier system serial tied to the zone.
+            zone_api_id: Carrier API identifier for the represented zone.
+        """
+        super().__init__(
+            entity_name="Damper Position",
+            coordinator=coordinator,
+            system_serial=system_serial,
+            zone_api_id=zone_api_id,
+            unique_id_suffix="damper_position",
+        )
+
+    def _update_entity_attrs(self) -> None:
+        """Update damper position attrs from coordinator data."""
+        self._attr_native_value = self._status_zone.damper_position
+        self._attr_available = self._attr_native_value is not None
+
+
+class ZoneConditioningSensor(CarrierZoneSensor):
+    """Sensor for the raw conditioning state Carrier reports for a zone.
+
+    The climate entity's HVAC action already summarizes this, so the sensor is
+    disabled by default; it keeps Carrier's finer-grained value (for example
+    ``active_heat`` versus ``idle``) available for history and automations.
+    """
+
+    _attr_translation_key = "zone_conditioning"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_entity_registry_enabled_default = False
+
+    def __init__(
+        self, coordinator: CarrierDataUpdateCoordinator, system_serial: str, zone_api_id: str
+    ) -> None:
+        """Initialize a zone conditioning sensor.
+
+        Args:
+            coordinator: Coordinator that provides system and zone data.
+            system_serial: Carrier system serial tied to the zone.
+            zone_api_id: Carrier API identifier for the represented zone.
+        """
+        super().__init__(
+            entity_name="Conditioning",
+            coordinator=coordinator,
+            system_serial=system_serial,
+            zone_api_id=zone_api_id,
+            unique_id_suffix="conditioning",
+        )
+
+    def _update_entity_attrs(self) -> None:
+        """Update conditioning attrs from coordinator data."""
+        self._attr_native_value = self._status_zone.conditioning
+        self._attr_available = self._attr_native_value is not None

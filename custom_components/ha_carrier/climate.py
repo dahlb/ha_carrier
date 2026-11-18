@@ -301,11 +301,11 @@ class CarrierClimate(CarrierZoneEntity, ClimateEntity):
         hold_activity_name = (
             self._config_zone.hold_activity.value if self._config_zone.hold_activity else None
         )
+        # Readings that change on their own (conditioning, blower speed, damper
+        # position) are sensors so they can be graphed; these attributes describe
+        # the thermostat's own schedule and hold state.
         self._attr_extra_state_attributes = {
-            "conditioning": self._status_zone.conditioning,
             "status_mode": self.carrier_system.status.mode,
-            "blower_rpm": self.carrier_system.status.blower_rpm,
-            "damper_position": self._status_zone.damper_position,
             "hold_activity": hold_activity_name,
             "hold_until": self._config_zone.hold_until,
             "next_activity_time": self._config_zone.next_activity_time(),
