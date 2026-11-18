@@ -197,7 +197,9 @@ class EntryLevelThermostat(CoordinatorEntity[CarrierDataUpdateCoordinator], Clim
         """
         zone = self._zone
         if zone is None:
-            raise HomeAssistantError("Entry-level zone unavailable, try again later")
+            raise HomeAssistantError(
+                translation_domain=DOMAIN, translation_key="entry_level_zone_unavailable"
+            )
         cool_set_point = zone.cool_set_point
         heat_set_point = zone.heat_set_point
         if (temperature := kwargs.get(ATTR_TEMPERATURE)) is not None:

@@ -551,7 +551,7 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator[list[dict[str, Any]]]):
         # refresh so one recovered write outage does not force credentials
         # invalid.
         raise HomeAssistantError(
-            "Carrier rejected repeated write attempts. Try again shortly."
+            translation_domain=DOMAIN, translation_key="write_rejected_repeatedly"
         ) from error
 
     async def _async_reconcile_failed_write(
@@ -631,12 +631,12 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator[list[dict[str, Any]]]):
         except RECOVERABLE_WRITE_COMMUNICATION_EXCEPTIONS as error:
             await self._async_reconcile_failed_write(operation_name, error)
             raise HomeAssistantError(
-                "Failed to communicate with Carrier service — operation could not be completed."
+                translation_domain=DOMAIN, translation_key="communication_error"
             ) from error
         except CarrierApiError as error:
             await self._async_reconcile_failed_write(operation_name, error)
             raise HomeAssistantError(
-                "Carrier rejected the request. Check the requested setting and try again."
+                translation_domain=DOMAIN, translation_key="request_rejected"
             ) from error
 
     def system(self, system_serial: str) -> System | None:

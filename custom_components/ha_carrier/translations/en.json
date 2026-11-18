@@ -50,5 +50,169 @@
         }
       }
     }
+  },
+  "entity": {
+    "binary_sensor": {
+      "online": {
+        "name": "Online"
+      },
+      "occupancy": {
+        "name": "{zone_name} Occupancy"
+      },
+      "humidifier_running": {
+        "name": "Humidifier Running"
+      }
+    },
+    "select": {
+      "heat_source": {
+        "name": "Heat Source"
+      }
+    },
+    "sensor": {
+      "zone_temperature": {
+        "name": "{zone_name} Temperature"
+      },
+      "zone_humidity": {
+        "name": "{zone_name} Humidity"
+      },
+      "outdoor_temperature": {
+        "name": "Outdoor Temperature"
+      },
+      "filter_remaining": {
+        "name": "Filter Remaining"
+      },
+      "humidifier_remaining": {
+        "name": "Humidifier Remaining"
+      },
+      "uv_lamp_remaining": {
+        "name": "UV Lamp Remaining"
+      },
+      "airflow": {
+        "name": "Airflow"
+      },
+      "static_pressure": {
+        "name": "Static Pressure"
+      },
+      "odu_status": {
+        "name": "ODU Status"
+      },
+      "idu_status": {
+        "name": "IDU Status"
+      },
+      "odu_var": {
+        "name": "ODU Var"
+      },
+      "idu_var": {
+        "name": "IDU Var"
+      },
+      "energy_year_to_date": {
+        "name": "{metric} Energy Year to Date"
+      },
+      "energy_yesterday": {
+        "name": "{metric} Energy Yesterday"
+      },
+      "energy_last_month": {
+        "name": "{metric} Energy Last Month"
+      },
+      "fuel_usage_year_to_date": {
+        "name": "{fuel_type} Usage Year to Date"
+      },
+      "propane_consumption_year_to_date": {
+        "name": "Propane Consumption Year to Date"
+      },
+      "all_data_last_updated": {
+        "name": "All Data Last Updated"
+      },
+      "websocket_last_updated": {
+        "name": "Websocket Last Updated"
+      },
+      "energy_last_updated": {
+        "name": "Energy Last Updated"
+      }
+    }
+  },
+  "exceptions": {
+    "write_rejected_repeatedly": {
+      "message": "Carrier rejected repeated write attempts. Try again shortly."
+    },
+    "communication_error": {
+      "message": "Failed to communicate with Carrier service — operation could not be completed."
+    },
+    "request_rejected": {
+      "message": "Carrier rejected the request. Check the requested setting and try again."
+    },
+    "current_activity_unavailable": {
+      "message": "Current activity unavailable, try again later"
+    },
+    "manual_activity_unavailable": {
+      "message": "Manual activity unavailable, try again later"
+    },
+    "set_points_unresolved": {
+      "message": "Both heat and cool set points must be resolved before applying a manual hold"
+    },
+    "activity_not_configured": {
+      "message": "Activity {activity} is not configured for this zone"
+    },
+    "activity_setpoint_missing_temperature": {
+      "message": "set_activity_setpoint needs 'temperature' in heat/cool mode, or both 'target_temp_low' and 'target_temp_high' in heat_cool mode"
+    },
+    "program_day_not_found": {
+      "message": "Day {day_id} is not in this zone's program"
+    },
+    "program_etag_unknown": {
+      "message": "No program etag known yet, try again after a refresh"
+    },
+    "entry_level_zone_unavailable": {
+      "message": "Entry-level zone unavailable, try again later"
+    },
+    "unsupported_heat_source": {
+      "message": "Unsupported heat source option: {option}"
+    }
+  },
+  "services": {
+    "set_activity_setpoint": {
+      "name": "Set activity setpoint (no hold)",
+      "description": "Edit the CURRENT activity's comfort set point in place WITHOUT creating a manual hold. Unlike the built-in temperature set (which forces a hold and suspends the schedule), this edits whatever activity the zone is currently following, so a human can still place an independent hold that takes precedence, and an HA outage leaves the thermostat on its own schedule at the last value written.",
+      "fields": {
+        "temperature": {
+          "name": "Temperature",
+          "description": "Single set point, for heat or cool mode."
+        },
+        "target_temp_low": {
+          "name": "Heat set point",
+          "description": "Heat set point, for heat_cool (auto) mode."
+        },
+        "target_temp_high": {
+          "name": "Cool set point",
+          "description": "Cool set point, for heat_cool (auto) mode."
+        },
+        "activity": {
+          "name": "Activity",
+          "description": "Activity whose set points to edit. Omit to edit the activity the zone is following now."
+        }
+      }
+    },
+    "get_schedule": {
+      "name": "Get schedule",
+      "description": "Return the zone's program (each day's periods, keyed by Carrier day id, with the day's etag) and each activity's set points and fan mode, from the latest refresh."
+    },
+    "set_program_day": {
+      "name": "Set program day",
+      "description": "Replace one day of the zone's program. The Carrier replaces the whole day, so send every period of the day, enabled or not, as get_schedule returns them. The zone keeps running its own schedule; no hold is created.",
+      "fields": {
+        "day_id": {
+          "name": "Day",
+          "description": "Carrier day id as get_schedule returns it (\"0\" to \"6\")."
+        },
+        "periods": {
+          "name": "Periods",
+          "description": "The day's periods, each with id and activity (home, away, sleep or wake) and optionally time (HH:MM) and enabled (on or off)."
+        },
+        "etag": {
+          "name": "Etag",
+          "description": "Etag to send. Omit to send the day's etag from the latest refresh."
+        }
+      }
+    }
   }
 }
