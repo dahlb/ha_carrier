@@ -51,6 +51,8 @@ The integration adds a Home Assistant device per Carrier system, with entities f
 
 - Temperature
 - Humidity
+- Damper position (%, *diagnostic*)
+- Conditioning state as Carrier reports it (*diagnostic; disabled by default*)
 
 #### Per system:
 
@@ -60,8 +62,10 @@ The integration adds a Home Assistant device per Carrier system, with entities f
 - UV lamp life remaining (%, *when installed*)
 - Airflow (CFM)
 - Static pressure
-- Outdoor unit (ODU) status, with detailed diagnostics
-- Indoor unit (IDU) status, with detailed diagnostics
+- Outdoor unit (ODU) status
+- Indoor unit (IDU) status
+- Blower speed (rpm, *diagnostic*)
+- Outdoor unit readings: fan speed, coil / discharge / suction temperature, suction pressure, suction superheat and line voltage (*diagnostic; disabled by default*, on systems with an outdoor unit — Carrier only reports these in diagnostic websocket messages, so they can stay unavailable on some systems)
 - Variable-capacity ODU output (%, on variable-capacity heat pumps and AC units)
 - Modulating furnace (IDU) output (%, on modulating furnaces)
 - Energy usage per source (heat pump, electric heat, gas, fan, cooling, reheat, loop pump): yesterday, last month, and year-to-date — wired up for Home Assistant's Energy dashboard
@@ -73,6 +77,9 @@ The integration adds a Home Assistant device per Carrier system, with entities f
 - System online / offline
 - Humidifier currently running *(when installed)*
 - Zone occupancy *(when occupancy sensing is enabled on the thermostat)*
+- Outdoor unit lockout (*diagnostic; disabled by default*, on systems with an outdoor unit)
+
+> **Upgrading from 2.36.0 or earlier:** the climate entity's `conditioning`, `blower_rpm` and `damper_position` attributes, and the ODU / IDU status sensors' unit-detail attributes, are now the sensors above. Update any templates or automations that read those attributes.
 
 ### Controls
 

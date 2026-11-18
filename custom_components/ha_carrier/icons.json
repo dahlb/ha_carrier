@@ -12,6 +12,12 @@
         "state": {
           "on": "mdi:air-humidifier"
         }
+      },
+      "outdoor_unit_lockout": {
+        "default": "mdi:lock-open-outline",
+        "state": {
+          "on": "mdi:lock-alert"
+        }
       }
     },
     "select": {
@@ -46,6 +52,36 @@
       },
       "idu_var": {
         "default": "mdi:percent-box"
+      },
+      "blower_speed": {
+        "default": "mdi:fan"
+      },
+      "outdoor_fan_speed": {
+        "default": "mdi:fan"
+      },
+      "outdoor_coil_temperature": {
+        "default": "mdi:coolant-temperature"
+      },
+      "discharge_temperature": {
+        "default": "mdi:thermometer-high"
+      },
+      "suction_temperature": {
+        "default": "mdi:thermometer-low"
+      },
+      "suction_pressure": {
+        "default": "mdi:gauge"
+      },
+      "suction_superheat": {
+        "default": "mdi:thermometer-plus"
+      },
+      "line_voltage": {
+        "default": "mdi:flash"
+      },
+      "zone_damper_position": {
+        "default": "mdi:valve"
+      },
+      "zone_conditioning": {
+        "default": "mdi:hvac"
       }
     }
   },

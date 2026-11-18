@@ -71,6 +71,12 @@ def _system_entities(
         for zone in carrier_system.config.zones
         if zone.occupancy_enabled
     )
+    if carrier_system.profile.outdoor_unit_type not in (None, "", "none"):
+        entities.append(
+            OutdoorUnitLockoutSensor(
+                coordinator=coordinator, system_serial=carrier_system.profile.serial
+            )
+        )
     return entities
 
 
@@ -214,4 +220,38 @@ class HumidifierSensor(CarrierBinarySensor):
     def _update_entity_attrs(self) -> None:
         """Update humidifier attrs from coordinator data."""
         self._attr_is_on = self.carrier_system.status.humidifier_on
+        self._attr_available = self._attr_is_on is not None
+
+
+class OutdoorUnitLockoutSensor(CarrierBinarySensor):
+    """Problem sensor that is on while the outdoor unit is locked out.
+
+    Carrier reports lockouts only in diagnostic-device-info websocket messages,
+    so the sensor stays unavailable on systems that never send those and is
+    disabled by default.
+    """
+
+    _attr_translation_key = "outdoor_unit_lockout"
+    _attr_device_class = BinarySensorDeviceClass.PROBLEM
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_entity_registry_enabled_default = False
+
+    def __init__(self, coordinator: CarrierDataUpdateCoordinator, system_serial: str) -> None:
+        """Initialize an outdoor unit lockout sensor for one Carrier system.
+
+        Args:
+            coordinator: Coordinator that provides system state.
+            system_serial: Unique Carrier system serial number.
+        """
+        super().__init__(
+            "Outdoor Unit Lockout",
+            coordinator,
+            system_serial,
+            unique_id_suffix="outdoor_unit_lockout",
+        )
+
+    def _update_entity_attrs(self) -> None:
+        """Update lockout attrs from coordinator data."""
+        outdoor_unit = self.carrier_system.status.outdoor_unit
+        self._attr_is_on = None if outdoor_unit is None else outdoor_unit.lockout_active
         self._attr_available = self._attr_is_on is not None

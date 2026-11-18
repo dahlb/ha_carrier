@@ -74,6 +74,9 @@
       },
       "humidifier_running": {
         "name": "Humidifier Running"
+      },
+      "outdoor_unit_lockout": {
+        "name": "Outdoor Unit Lockout"
       }
     },
     "select": {
@@ -141,6 +144,36 @@
       },
       "energy_last_updated": {
         "name": "Energy Last Updated"
+      },
+      "blower_speed": {
+        "name": "Blower Speed"
+      },
+      "outdoor_fan_speed": {
+        "name": "Outdoor Fan Speed"
+      },
+      "outdoor_coil_temperature": {
+        "name": "Outdoor Coil Temperature"
+      },
+      "discharge_temperature": {
+        "name": "Discharge Temperature"
+      },
+      "suction_temperature": {
+        "name": "Suction Temperature"
+      },
+      "suction_pressure": {
+        "name": "Suction Pressure"
+      },
+      "suction_superheat": {
+        "name": "Suction Superheat"
+      },
+      "line_voltage": {
+        "name": "Line Voltage"
+      },
+      "zone_damper_position": {
+        "name": "{zone_name} Damper Position"
+      },
+      "zone_conditioning": {
+        "name": "{zone_name} Conditioning"
       }
     }
   },

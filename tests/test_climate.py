@@ -917,3 +917,20 @@ async def test_required_zone_api_id_raises_without_a_zone(
 
     with pytest.raises(ValueError, match="No zone api id defined"):
         _ = entity._required_zone_api_id
+
+
+@pytest.mark.asyncio
+async def test_climate_no_longer_carries_sensor_readings_as_attributes(
+    hass: HomeAssistant,
+    setup_integration: Callable[..., Any],
+) -> None:
+    """Keep schedule and hold attributes, but leave readings to their own sensors."""
+    await setup_integration()
+
+    state = hass.states.get(entity_id_for_unique_id(hass, CLIMATE_DOMAIN, ZONE_1))
+
+    assert state is not None
+    assert not {"conditioning", "blower_rpm", "damper_position"} & set(state.attributes)
+    assert {"status_mode", "hold_activity", "hold_until", "next_activity_time"} <= set(
+        state.attributes
+    )
