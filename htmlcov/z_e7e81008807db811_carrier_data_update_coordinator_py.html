@@ -67,7 +67,7 @@
             <a id="nextFileLink" class="nav" href="z_e7e81008807db811_carrier_entity_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.17.3">coverage.py v7.17.3</a>,
-            created at 2026-11-18 12:27 +0000
+            created at 2026-11-18 12:39 +0000
         </p>
         <aside class="hidden">
             <button type="button" class="button_next_chunk" data-shortcut="j"></button>
@@ -635,7 +635,7 @@
     <p class="pln"><span class="n"><a id="t551" href="#t551">551</a></span><span class="t">        <span class="com"># refresh so one recovered write outage does not force credentials</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t552" href="#t552">552</a></span><span class="t">        <span class="com"># invalid.</span>&nbsp;</span><span class="r"></span></p>
     <p class="mis show_mis"><span class="n"><a id="t553" href="#t553">553</a></span><span class="t">        <span class="key">raise</span> <span class="nam">HomeAssistantError</span><span class="op">(</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis mis2 show_mis"><span class="n"><a id="t554" href="#t554">554</a></span><span class="t">            <span class="str">&quot;Carrier rejected repeated write attempts. Try again shortly.&quot;</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis mis2 show_mis"><span class="n"><a id="t554" href="#t554">554</a></span><span class="t">            <span class="nam">translation_domain</span><span class="op">=</span><span class="nam">DOMAIN</span><span class="op">,</span> <span class="nam">translation_key</span><span class="op">=</span><span class="str">&quot;write_rejected_repeatedly&quot;</span>&nbsp;</span><span class="r"></span></p>
     <p class="mis mis2 show_mis"><span class="n"><a id="t555" href="#t555">555</a></span><span class="t">        <span class="op">)</span> <span class="key">from</span> <span class="nam">error</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t556" href="#t556">556</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t557" href="#t557">557</a></span><span class="t">    <span class="key">async</span> <span class="key">def</span> <span class="nam">_async_reconcile_failed_write</span><span class="op">(</span>&nbsp;</span><span class="r"></span></p>
@@ -715,12 +715,12 @@
     <p class="run"><span class="n"><a id="t631" href="#t631">631</a></span><span class="t">        <span class="key">except</span> <span class="nam">RECOVERABLE_WRITE_COMMUNICATION_EXCEPTIONS</span> <span class="key">as</span> <span class="nam">error</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t632" href="#t632">632</a></span><span class="t">            <span class="key">await</span> <span class="nam">self</span><span class="op">.</span><span class="nam">_async_reconcile_failed_write</span><span class="op">(</span><span class="nam">operation_name</span><span class="op">,</span> <span class="nam">error</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t633" href="#t633">633</a></span><span class="t">            <span class="key">raise</span> <span class="nam">HomeAssistantError</span><span class="op">(</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run run2"><span class="n"><a id="t634" href="#t634">634</a></span><span class="t">                <span class="str">&quot;Failed to communicate with Carrier service &#8212; operation could not be completed.&quot;</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run run2"><span class="n"><a id="t634" href="#t634">634</a></span><span class="t">                <span class="nam">translation_domain</span><span class="op">=</span><span class="nam">DOMAIN</span><span class="op">,</span> <span class="nam">translation_key</span><span class="op">=</span><span class="str">&quot;communication_error&quot;</span>&nbsp;</span><span class="r"></span></p>
     <p class="run run2"><span class="n"><a id="t635" href="#t635">635</a></span><span class="t">            <span class="op">)</span> <span class="key">from</span> <span class="nam">error</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t636" href="#t636">636</a></span><span class="t">        <span class="key">except</span> <span class="nam">CarrierApiError</span> <span class="key">as</span> <span class="nam">error</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t637" href="#t637">637</a></span><span class="t">            <span class="key">await</span> <span class="nam">self</span><span class="op">.</span><span class="nam">_async_reconcile_failed_write</span><span class="op">(</span><span class="nam">operation_name</span><span class="op">,</span> <span class="nam">error</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t638" href="#t638">638</a></span><span class="t">            <span class="key">raise</span> <span class="nam">HomeAssistantError</span><span class="op">(</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run run2"><span class="n"><a id="t639" href="#t639">639</a></span><span class="t">                <span class="str">&quot;Carrier rejected the request. Check the requested setting and try again.&quot;</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run run2"><span class="n"><a id="t639" href="#t639">639</a></span><span class="t">                <span class="nam">translation_domain</span><span class="op">=</span><span class="nam">DOMAIN</span><span class="op">,</span> <span class="nam">translation_key</span><span class="op">=</span><span class="str">&quot;request_rejected&quot;</span>&nbsp;</span><span class="r"></span></p>
     <p class="run run2"><span class="n"><a id="t640" href="#t640">640</a></span><span class="t">            <span class="op">)</span> <span class="key">from</span> <span class="nam">error</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t641" href="#t641">641</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t642" href="#t642">642</a></span><span class="t">    <span class="key">def</span> <span class="nam">system</span><span class="op">(</span><span class="nam">self</span><span class="op">,</span> <span class="nam">system_serial</span><span class="op">:</span> <span class="nam">str</span><span class="op">)</span> <span class="op">-&gt;</span> <span class="nam">System</span> <span class="op">|</span> <span class="key">None</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
@@ -822,7 +822,7 @@
             <a class="nav" href="z_e7e81008807db811_carrier_entity_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.17.3">coverage.py v7.17.3</a>,
-            created at 2026-11-18 12:27 +0000
+            created at 2026-11-18 12:39 +0000
         </p>
     </div>
 </footer>
