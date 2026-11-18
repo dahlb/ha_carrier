@@ -20,6 +20,7 @@ from custom_components.ha_carrier.carrier_data_update_coordinator import (
 from custom_components.ha_carrier.const import (
     DEFAULT_FULL_REFRESH_INTERVAL_MINUTES,
     DEFAULT_UPDATE_INTERVAL_MINUTES,
+    DOMAIN,
     TRANSIENT_FAILURE_THRESHOLD,
     UNAUTHORIZED_RETRY_THRESHOLD,
 )
@@ -180,9 +181,12 @@ async def test_recoverable_write_communication_error_reconciles_and_raises_ha_er
             "_async_reconcile_failed_write",
             fake_reconcile,
         ),
-        pytest.raises(HomeAssistantError, match="Failed to communicate"),
+        pytest.raises(HomeAssistantError) as raised,
     ):
         await coordinator.async_perform_api_call("set mode", request)
+
+    assert raised.value.translation_domain == DOMAIN
+    assert raised.value.translation_key == "communication_error"
 
     assert reconciled is True
 
@@ -215,9 +219,12 @@ async def test_carrier_api_write_rejection_reconciles_and_raises_ha_error() -> N
             "_async_reconcile_failed_write",
             fake_reconcile,
         ),
-        pytest.raises(HomeAssistantError, match="Carrier rejected the request"),
+        pytest.raises(HomeAssistantError) as raised,
     ):
         await coordinator.async_perform_api_call("set mode", request)
+
+    assert raised.value.translation_domain == DOMAIN
+    assert raised.value.translation_key == "request_rejected"
 
     assert reconciled is True
 

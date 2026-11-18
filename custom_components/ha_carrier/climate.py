@@ -21,7 +21,7 @@ from homeassistant.const import (
     UnitOfTemperature,
 )
 from homeassistant.core import CALLBACK_TYPE, HomeAssistant, ServiceResponse, SupportsResponse
-from homeassistant.exceptions import HomeAssistantError
+from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers import config_validation as cv, entity_platform
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.event import async_call_later
@@ -30,7 +30,13 @@ import voluptuous as vol
 from . import ConfigEntryCarrier
 from .carrier_data_update_coordinator import CarrierDataUpdateCoordinator
 from .carrier_entity import CarrierZoneEntity
-from .const import CONF_INFINITE_HOLDS, DEFAULT_INFINITE_HOLDS, FAN_AUTO, PROGRAM_READBACK_DELAY_S
+from .const import (
+    CONF_INFINITE_HOLDS,
+    DEFAULT_INFINITE_HOLDS,
+    DOMAIN,
+    FAN_AUTO,
+    PROGRAM_READBACK_DELAY_S,
+)
 from .entry_level_climate import build_entry_level_entities
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
@@ -494,7 +500,9 @@ class Thermostat(CarrierClimate):
         selected_fan_mode = FanModes.OFF if fan_mode == FAN_AUTO else FanModes(fan_mode)
         current_activity = self._current_activity()
         if current_activity is None:
-            raise HomeAssistantError("Current activity unavailable, try again later")
+            raise HomeAssistantError(
+                translation_domain=DOMAIN, translation_key="current_activity_unavailable"
+            )
         await self.coordinator.async_perform_api_call(
             "set fan mode",
             partial(
@@ -516,6 +524,8 @@ class Thermostat(CarrierClimate):
 
         Raises:
             HomeAssistantError: Raised when the manual activity profile cannot be resolved.
+            ServiceValidationError: Raised when the heat and cool set points
+                cannot both be resolved from the request.
         """
         _LOGGER.debug("set_temperature; kwargs: %s", kwargs)
         heat_set_point = kwargs.get(ATTR_TARGET_TEMP_LOW)
@@ -523,7 +533,9 @@ class Thermostat(CarrierClimate):
         temperature = kwargs.get(ATTR_TEMPERATURE)
         manual_activity = self._config_zone.find_activity(ActivityTypes.MANUAL)
         if manual_activity is None:
-            raise HomeAssistantError("Manual activity unavailable, try again later")
+            raise HomeAssistantError(
+                translation_domain=DOMAIN, translation_key="manual_activity_unavailable"
+            )
 
         hold_until_sent = self._hold_until
 
@@ -535,8 +547,8 @@ class Thermostat(CarrierClimate):
             cool_set_point = manual_activity.cool_set_point
 
         if heat_set_point is None or cool_set_point is None:
-            raise HomeAssistantError(
-                "Both heat and cool set points must be resolved before applying a manual hold"
+            raise ServiceValidationError(
+                translation_domain=DOMAIN, translation_key="set_points_unresolved"
             )
 
         fan_mode = manual_activity.fan
@@ -590,18 +602,26 @@ class Thermostat(CarrierClimate):
         the last value written.
 
         Raises:
-            HomeAssistantError: when the current activity or a required set point can't be resolved.
+            HomeAssistantError: When the current activity can't be resolved.
+            ServiceValidationError: When the requested activity is not
+                configured or a required set point is missing.
         """
         current_activity = self._current_activity()
         requested = kwargs.get("activity")
         if requested is None:
             current = current_activity
             if current is None:
-                raise HomeAssistantError("Current activity unavailable, try again later")
+                raise HomeAssistantError(
+                    translation_domain=DOMAIN, translation_key="current_activity_unavailable"
+                )
         else:
             current = self._config_zone.find_activity(ActivityTypes(requested))
             if current is None:
-                raise HomeAssistantError(f"Activity {requested} is not configured for this zone")
+                raise ServiceValidationError(
+                    translation_domain=DOMAIN,
+                    translation_key="activity_not_configured",
+                    translation_placeholders={"activity": str(requested)},
+                )
         is_current_activity = current_activity is not None and current.type == current_activity.type
 
         heat_set_point = kwargs.get(ATTR_TARGET_TEMP_LOW)
@@ -618,9 +638,8 @@ class Thermostat(CarrierClimate):
         # HEAT_COOL / AUTO: use the provided target_temp_low / target_temp_high as-is.
 
         if heat_set_point is None or cool_set_point is None:
-            raise HomeAssistantError(
-                "set_activity_setpoint needs 'temperature' in heat/cool mode, or both "
-                "'target_temp_low' and 'target_temp_high' in heat_cool mode"
+            raise ServiceValidationError(
+                translation_domain=DOMAIN, translation_key="activity_setpoint_missing_temperature"
             )
 
         _LOGGER.debug(
@@ -702,8 +721,9 @@ class Thermostat(CarrierClimate):
             etag: Optional etag to send instead of the day's.
 
         Raises:
-            HomeAssistantError: When the day is not in the zone's program, no
-                etag is known, or the Carrier refuses the write.
+            ServiceValidationError: When the day is not in the zone's program.
+            HomeAssistantError: When no etag is known or the Carrier refuses
+                the write.
         """
         program = self._config_zone.program_json or {}
         day = next(
@@ -711,12 +731,18 @@ class Thermostat(CarrierClimate):
             None,
         )
         if day is None:
-            raise HomeAssistantError(f"Day {day_id} is not in this zone's program")
+            raise ServiceValidationError(
+                translation_domain=DOMAIN,
+                translation_key="program_day_not_found",
+                translation_placeholders={"day_id": day_id},
+            )
         send_etag = (
             etag or day.get("etag") or program.get("etag") or self.carrier_system.config.etag
         )
         if not send_etag:
-            raise HomeAssistantError("No program etag known yet, try again after a refresh")
+            raise HomeAssistantError(
+                translation_domain=DOMAIN, translation_key="program_etag_unknown"
+            )
         _LOGGER.debug(
             "set_program_day; zone=%s day=%s periods=%s", self.zone_api_id, day_id, periods
         )

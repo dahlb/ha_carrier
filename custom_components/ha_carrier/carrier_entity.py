@@ -29,15 +29,22 @@ class CarrierEntity(CoordinatorEntity[CarrierDataUpdateCoordinator]):
     ) -> None:
         """Initialize shared entity identity and coordinator context.
 
+        Entities that define ``_attr_translation_key`` get their display name
+        from the integration's translations; ``entity_name`` is then only the
+        English seed for the unique ID, which keeps existing unique IDs stable.
+
         Args:
-            entity_name: Friendly suffix used in entity name and unique ID.
+            entity_name: English entity name, used as the display name when the
+                entity has no translation key and as the unique ID suffix when
+                ``unique_id_suffix`` is not given.
             coordinator: Coordinator that supplies Carrier system data.
             system_serial: Carrier system serial used as coordinator context.
             unique_id_suffix: Optional stable suffix used for the entity unique ID.
         """
         super().__init__(coordinator, system_serial)
         self._system_serial = system_serial
-        self._attr_name = entity_name
+        if self.translation_key is None:
+            self._attr_name = entity_name
         unique_id_raw = f"{system_serial}_{unique_id_suffix or entity_name}"
         self._attr_unique_id = slugify(unique_id_raw)
         self._attr_device_info = DeviceInfo(
@@ -214,6 +221,7 @@ class CarrierZoneEntity(CarrierEntity):
         """
         self.zone_api_id = zone_api_id
         self.zone_name = self.resolve_zone_name(coordinator, system_serial, zone_api_id)
+        self._attr_translation_placeholders = {"zone_name": self.zone_name}
         zone_unique_id_suffix = f"zone_{zone_api_id}"
         if unique_id_suffix is not None:
             zone_unique_id_suffix = f"{zone_unique_id_suffix}_{unique_id_suffix}"

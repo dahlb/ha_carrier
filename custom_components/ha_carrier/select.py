@@ -8,13 +8,18 @@ import logging
 from carrier_api.const import HeatSourceTypes
 from homeassistant.components.select import SelectEntity
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import HomeAssistantError
+from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import ConfigEntryCarrier
 from .carrier_data_update_coordinator import CarrierDataUpdateCoordinator
 from .carrier_entity import CarrierEntity
-from .const import HEAT_SOURCE_IDU_ONLY_LABEL, HEAT_SOURCE_ODU_ONLY_LABEL, HEAT_SOURCE_SYSTEM_LABEL
+from .const import (
+    DOMAIN,
+    HEAT_SOURCE_IDU_ONLY_LABEL,
+    HEAT_SOURCE_ODU_ONLY_LABEL,
+    HEAT_SOURCE_SYSTEM_LABEL,
+)
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 
@@ -84,6 +89,7 @@ class CarrierSelect(CarrierEntity, SelectEntity):
 class HeatSourceSelect(CarrierSelect):
     """Select entity that controls which unit provides primary heating."""
 
+    _attr_translation_key = "heat_source"
     _attr_icon = "mdi:heat-pump"
     _attr_options: list[str]
 
@@ -145,7 +151,8 @@ class HeatSourceSelect(CarrierSelect):
             option: Selected Home Assistant option label.
 
         Raises:
-            HomeAssistantError: Raised when the selected option is not a known heat source label.
+            ServiceValidationError: Raised when the selected option is not a known
+                heat source label.
         """
         heat_source_map: dict[str, HeatSourceTypes] = {
             self._idu_only_label(
@@ -156,7 +163,11 @@ class HeatSourceSelect(CarrierSelect):
         }
         if option not in heat_source_map:
             _LOGGER.error("Unsupported heat source option selected: %s", option)
-            raise HomeAssistantError(f"Unsupported heat source option: {option}")
+            raise ServiceValidationError(
+                translation_domain=DOMAIN,
+                translation_key="unsupported_heat_source",
+                translation_placeholders={"option": option},
+            )
 
         new_heat_source = heat_source_map[option]
         _LOGGER.debug("Selected heat source: %s", new_heat_source)

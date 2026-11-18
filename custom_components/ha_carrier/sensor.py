@@ -243,6 +243,7 @@ class CarrierZoneSensor(CarrierZoneEntity, CarrierSensor):
 class ZoneHumiditySensor(CarrierZoneSensor):
     """Sensor entity that reports current humidity for a specific zone."""
 
+    _attr_translation_key = "zone_humidity"
     _attr_device_class = SensorDeviceClass.HUMIDITY
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_native_unit_of_measurement = PERCENTAGE
@@ -274,6 +275,7 @@ class ZoneHumiditySensor(CarrierZoneSensor):
 class GasMeasurementSensor(CarrierSensor):
     """Yearly gas usage sensor with fuel-specific unit conversion."""
 
+    _attr_translation_key = "fuel_usage_year_to_date"
     _attr_device_class = SensorDeviceClass.GAS
     _attr_state_class = SensorStateClass.TOTAL_INCREASING
 
@@ -295,6 +297,7 @@ class GasMeasurementSensor(CarrierSensor):
         """
         self.metric = EnergyUsageMetric.GAS
         self.fuel_type = fuel_type
+        self._attr_translation_placeholders = {"fuel_type": fuel_type.capitalize()}
         super().__init__(
             entity_name=f"{self.fuel_type.capitalize()} Usage Year to Date",
             coordinator=coordinator,
@@ -348,6 +351,7 @@ class GasMeasurementSensor(CarrierSensor):
 class PropaneMeasurementSensor(CarrierSensor):
     """Yearly propane usage sensor expressed in gallons."""
 
+    _attr_translation_key = "propane_consumption_year_to_date"
     _attr_device_class = SensorDeviceClass.VOLUME
     _attr_state_class = SensorStateClass.TOTAL_INCREASING
     _attr_native_unit_of_measurement = UnitOfVolume.GALLONS
@@ -387,6 +391,7 @@ class PropaneMeasurementSensor(CarrierSensor):
 class YearlyEnergyMeasurementSensor(CarrierSensor):
     """Yearly electrical energy consumption sensor for a Carrier metric."""
 
+    _attr_translation_key = "energy_year_to_date"
     _attr_device_class = SensorDeviceClass.ENERGY
     _attr_state_class = SensorStateClass.TOTAL_INCREASING
     _attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
@@ -406,6 +411,7 @@ class YearlyEnergyMeasurementSensor(CarrierSensor):
             metric: Carrier API energy metric to expose.
         """
         self.metric = metric
+        self._attr_translation_placeholders = {"metric": metric.label}
         super().__init__(
             entity_name=f"{metric.label} Energy Year to Date",
             coordinator=coordinator,
@@ -423,6 +429,7 @@ class YearlyEnergyMeasurementSensor(CarrierSensor):
 class DailyEnergyMeasurementSensor(CarrierSensor):
     """Sensor for yesterday's energy usage by Carrier metric."""
 
+    _attr_translation_key = "energy_yesterday"
     _attr_device_class = SensorDeviceClass.ENERGY
     _attr_state_class = SensorStateClass.TOTAL
     _attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
@@ -442,6 +449,7 @@ class DailyEnergyMeasurementSensor(CarrierSensor):
             metric: Carrier API energy metric to expose.
         """
         self.metric = metric
+        self._attr_translation_placeholders = {"metric": metric.label}
         super().__init__(
             entity_name=f"{metric.label} Energy Yesterday",
             coordinator=coordinator,
@@ -459,6 +467,7 @@ class DailyEnergyMeasurementSensor(CarrierSensor):
 class MonthlyEnergyMeasurementSensor(CarrierSensor):
     """Sensor for last month's energy usage by Carrier metric."""
 
+    _attr_translation_key = "energy_last_month"
     _attr_device_class = SensorDeviceClass.ENERGY
     _attr_state_class = SensorStateClass.TOTAL
     _attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
@@ -478,6 +487,7 @@ class MonthlyEnergyMeasurementSensor(CarrierSensor):
             metric: Carrier API energy metric to expose.
         """
         self.metric = metric
+        self._attr_translation_placeholders = {"metric": metric.label}
         super().__init__(
             entity_name=f"{metric.label} Energy Last Month",
             coordinator=coordinator,
@@ -497,6 +507,7 @@ class MonthlyEnergyMeasurementSensor(CarrierSensor):
 class ZoneTemperatureSensor(CarrierZoneSensor):
     """Sensor entity that reports current temperature for a specific zone."""
 
+    _attr_translation_key = "zone_temperature"
     _attr_device_class = SensorDeviceClass.TEMPERATURE
     _attr_state_class = SensorStateClass.MEASUREMENT
 
@@ -531,6 +542,7 @@ class ZoneTemperatureSensor(CarrierZoneSensor):
 class OutdoorTemperatureSensor(CarrierSensor):
     """Sensor entity that reports outdoor ambient temperature."""
 
+    _attr_translation_key = "outdoor_temperature"
     _attr_device_class = SensorDeviceClass.TEMPERATURE
     _attr_state_class = SensorStateClass.MEASUREMENT
     # Outdoor temperature seems to always send as Fahrenheit regardless
@@ -559,6 +571,7 @@ class OutdoorTemperatureSensor(CarrierSensor):
 class FilterUsedSensor(CarrierSensor):
     """Filter life sensor represented as a percentage."""
 
+    _attr_translation_key = "filter_remaining"
     _attr_native_unit_of_measurement = PERCENTAGE
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_icon = "mdi:air-filter"
@@ -588,6 +601,7 @@ class FilterUsedSensor(CarrierSensor):
 class HumidifierRemainingSensor(CarrierSensor):
     """Humidifier level sensor represented as a remaining percentage."""
 
+    _attr_translation_key = "humidifier_remaining"
     _attr_native_unit_of_measurement = PERCENTAGE
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_icon = "mdi:air-filter"
@@ -617,6 +631,7 @@ class HumidifierRemainingSensor(CarrierSensor):
 class UVLampRemainingSensor(CarrierSensor):
     """UV lamp life sensor represented as a remaining percentage."""
 
+    _attr_translation_key = "uv_lamp_remaining"
     _attr_native_unit_of_measurement = PERCENTAGE
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_icon = "mdi:lightbulb-fluorescent-tube-outline"
@@ -660,6 +675,7 @@ class TimestampSensor(CarrierSensor):
             timestamp_type: Timestamp suffix such as "all_data", "websocket", or "energy".
         """
         self.timestamp_type = timestamp_type
+        self._attr_translation_key = f"{timestamp_type}_last_updated"
         super().__init__(
             entity_name=f"{timestamp_type.replace('_', ' ').title()} Last Updated",
             coordinator=coordinator,
@@ -675,6 +691,7 @@ class TimestampSensor(CarrierSensor):
 class AirflowSensor(CarrierSensor):
     """Sensor entity that reports indoor airflow in CFM."""
 
+    _attr_translation_key = "airflow"
     _attr_device_class = SensorDeviceClass.VOLUME_FLOW_RATE
     _attr_native_unit_of_measurement = UnitOfVolumeFlowRate.CUBIC_FEET_PER_MINUTE
     _attr_state_class = SensorStateClass.MEASUREMENT
@@ -709,6 +726,7 @@ class AirflowSensor(CarrierSensor):
 class StaticPressureSensor(CarrierSensor):
     """Sensor entity that reports system static pressure."""
 
+    _attr_translation_key = "static_pressure"
     _attr_device_class = SensorDeviceClass.PRESSURE
     _attr_native_unit_of_measurement = UnitOfPressure.INH2O
     # Home Assistant's unit systems would otherwise convert this to psi or kPa,
@@ -746,6 +764,7 @@ class StaticPressureSensor(CarrierSensor):
 class OutdoorUnitOperationalStatusSensor(CarrierSensor):
     """Sensor for outdoor unit operational status and mapped unit details."""
 
+    _attr_translation_key = "odu_status"
     _attr_icon = "mdi:hvac"
 
     def __init__(self, coordinator: CarrierDataUpdateCoordinator, system_serial: str) -> None:
@@ -779,6 +798,7 @@ class OutdoorUnitOperationalStatusSensor(CarrierSensor):
 class IndoorUnitOperationalStatusSensor(CarrierSensor):
     """Sensor for indoor unit operational status and mapped unit details."""
 
+    _attr_translation_key = "idu_status"
     _attr_icon = "mdi:hvac"
 
     def __init__(self, coordinator: CarrierDataUpdateCoordinator, system_serial: str) -> None:
@@ -805,6 +825,7 @@ class IndoorUnitOperationalStatusSensor(CarrierSensor):
 class OutdoorUnitVarSensor(CarrierSensor):
     """Sensor for variable-capacity outdoor unit percentage output."""
 
+    _attr_translation_key = "odu_var"
     _attr_icon = "mdi:percent-box"
     _entity_name = "ODU Var"
     _attr_native_unit_of_measurement = PERCENTAGE
@@ -855,6 +876,8 @@ class OutdoorUnitVarSensor(CarrierSensor):
 
 class IndoorUnitVarSensor(OutdoorUnitVarSensor):
     """Sensor for modulating furnace percentage output."""
+
+    _attr_translation_key = "idu_var"
 
     _entity_name = "IDU Var"
 

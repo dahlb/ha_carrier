@@ -125,6 +125,7 @@ class CarrierZoneBinarySensor(CarrierZoneEntity, CarrierBinarySensor):
 class OnlineSensor(CarrierBinarySensor):
     """Binary sensor that reports whether the Carrier system is reachable."""
 
+    _attr_translation_key = "online"
     _attr_entity_category = EntityCategory.DIAGNOSTIC
     _attr_device_class = BinarySensorDeviceClass.CONNECTIVITY
 
@@ -147,6 +148,7 @@ class OnlineSensor(CarrierBinarySensor):
 class OccupancySensor(CarrierZoneBinarySensor):
     """Binary sensor that mirrors occupancy detection for a Carrier zone."""
 
+    _attr_translation_key = "occupancy"
     _attr_device_class = BinarySensorDeviceClass.OCCUPANCY
 
     def __init__(
@@ -176,6 +178,7 @@ class OccupancySensor(CarrierZoneBinarySensor):
 class HumidifierSensor(CarrierBinarySensor):
     """Binary sensor that indicates whether humidification is active."""
 
+    _attr_translation_key = "humidifier_running"
     _attr_device_class = BinarySensorDeviceClass.RUNNING
 
     def __init__(self, coordinator: CarrierDataUpdateCoordinator, system_serial: str) -> None:
