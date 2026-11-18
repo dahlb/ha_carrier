@@ -4,23 +4,23 @@
 
 | Name                                                    |    Stmts |     Miss |   Branch |   BrPart |   Cover |   Missing |
 |-------------------------------------------------------- | -------: | -------: | -------: | -------: | ------: | --------: |
-| custom\_components/ha\_carrier/\_\_init\_\_.py          |      160 |        2 |       32 |        2 |     98% |  193, 422 |
+| custom\_components/ha\_carrier/\_\_init\_\_.py          |      160 |        2 |       32 |        2 |     98% |  194, 423 |
 | custom\_components/ha\_carrier/binary\_sensor.py        |       58 |        0 |        4 |        0 |    100% |           |
 | custom\_components/ha\_carrier/climate.py               |      293 |        0 |      104 |        0 |    100% |           |
-| custom\_components/ha\_carrier/config\_flow.py          |      126 |        1 |       38 |        3 |     98% |63-\>70, 216, 268-\>297 |
+| custom\_components/ha\_carrier/config\_flow.py          |      119 |        1 |       36 |        2 |     98% |218, 270-\>299 |
 | custom\_components/ha\_carrier/const.py                 |       40 |        0 |        0 |        0 |    100% |           |
 | custom\_components/ha\_carrier/coordinator.py           |      264 |        1 |       84 |        0 |     99% |       630 |
 | custom\_components/ha\_carrier/diagnostics.py           |       32 |        0 |        8 |        1 |     98% |   63-\>46 |
-| custom\_components/ha\_carrier/entity.py                |      113 |        1 |       38 |        1 |     99% |        65 |
+| custom\_components/ha\_carrier/entity.py                |      114 |        1 |       38 |        1 |     99% |        66 |
 | custom\_components/ha\_carrier/entry\_level\_climate.py |      126 |        0 |       36 |        0 |    100% |           |
 | custom\_components/ha\_carrier/exceptions.py            |        2 |        0 |        0 |        0 |    100% |           |
-| custom\_components/ha\_carrier/migrate.py               |      234 |        1 |      112 |       10 |     97% |221, 270-\>279, 344-\>351, 415-\>418, 420-\>422, 422-\>425, 437-\>452, 463-\>452, 593-\>601, 670-\>677 |
+| custom\_components/ha\_carrier/migrate.py               |      221 |        1 |      108 |        8 |     97% |221, 270-\>279, 344-\>351, 415-\>418, 420-\>422, 422-\>425, 437-\>452, 463-\>452 |
 | custom\_components/ha\_carrier/resiliency.py            |      104 |        0 |       30 |        0 |    100% |           |
 | custom\_components/ha\_carrier/select.py                |       51 |        0 |        8 |        0 |    100% |           |
 | custom\_components/ha\_carrier/sensor.py                |      313 |        0 |       56 |        0 |    100% |           |
 | custom\_components/ha\_carrier/services.py              |       22 |        0 |        0 |        0 |    100% |           |
-| custom\_components/ha\_carrier/util.py                  |       70 |        0 |       34 |        0 |    100% |           |
-| **TOTAL**                                               | **2008** |    **6** |  **584** |   **17** | **99%** |           |
+| custom\_components/ha\_carrier/util.py                  |       73 |        0 |       34 |        0 |    100% |           |
+| **TOTAL**                                               | **1992** |    **6** |  **578** |   **14** | **99%** |           |
 
 
 ## Setup coverage badge
