@@ -77,6 +77,7 @@ The integration adds a Home Assistant device per Carrier system, with entities f
 - System online / offline
 - Humidifier currently running *(when installed)*
 - Zone occupancy *(when occupancy sensing is enabled on the thermostat)*
+- Indoor unit (furnace / fan coil) lockout (*diagnostic; disabled by default*)
 - Outdoor unit lockout (*diagnostic; disabled by default*, on systems with an outdoor unit)
 
 > **Upgrading from 2.36.0 or earlier:** the climate entity's `conditioning`, `blower_rpm` and `damper_position` attributes, and the ODU / IDU status sensors' unit-detail attributes, are now the sensors above. Update any templates or automations that read those attributes.

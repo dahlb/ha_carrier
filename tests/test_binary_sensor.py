@@ -10,6 +10,7 @@ from homeassistant.helpers import entity_registry as er
 import pytest
 
 from custom_components.ha_carrier.binary_sensor import CarrierBinarySensor
+from custom_components.ha_carrier.const import DOMAIN
 
 from .conftest import FakeCarrierApiConnection, entity_id_for_unique_id
 
@@ -82,3 +83,69 @@ async def test_outdoor_unit_lockout_sensor(
     assert state is not None
     assert state.state == expected
     assert state.attributes["device_class"] == "problem"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("lockout", "expected"), [(True, "on"), (False, "off"), (None, "unavailable")]
+)
+async def test_indoor_unit_lockout_sensor(
+    hass: HomeAssistant,
+    carrier_api: FakeCarrierApiConnection,
+    setup_integration: Callable[..., Any],
+    lockout: bool | None,
+    expected: str,
+) -> None:
+    """Report a furnace or fan coil lockout as a problem, once enabled."""
+    carrier_api.systems[0].status.indoor_unit.lockout_active = lockout
+    entry = await setup_integration()
+    registry = er.async_get(hass)
+    entity_id = entity_id_for_unique_id(hass, "binary_sensor", "abc123_indoor_unit_lockout")
+    registry_entry = registry.async_get(entity_id)
+    assert registry_entry is not None
+    assert registry_entry.disabled_by is er.RegistryEntryDisabler.INTEGRATION
+
+    registry.async_update_entity(entity_id, disabled_by=None)
+    assert await hass.config_entries.async_reload(entry.entry_id)
+    await hass.async_block_till_done()
+
+    state = hass.states.get(entity_id)
+    assert state is not None
+    assert state.state == expected
+    assert state.attributes["device_class"] == "problem"
+
+
+@pytest.mark.asyncio
+async def test_indoor_unit_lockout_sensor_without_indoor_unit_status(
+    hass: HomeAssistant,
+    carrier_api: FakeCarrierApiConnection,
+    setup_integration: Callable[..., Any],
+) -> None:
+    """Stay unavailable when the status payload has no indoor unit."""
+    carrier_api.systems[0].status.indoor_unit = None
+    entry = await setup_integration()
+    registry = er.async_get(hass)
+    entity_id = entity_id_for_unique_id(hass, "binary_sensor", "abc123_indoor_unit_lockout")
+    registry.async_update_entity(entity_id, disabled_by=None)
+    assert await hass.config_entries.async_reload(entry.entry_id)
+    await hass.async_block_till_done()
+
+    state = hass.states.get(entity_id)
+    assert state is not None
+    assert state.state == "unavailable"
+
+
+@pytest.mark.asyncio
+async def test_systems_without_an_indoor_unit_get_no_indoor_lockout_sensor(
+    hass: HomeAssistant,
+    carrier_api: FakeCarrierApiConnection,
+    setup_integration: Callable[..., Any],
+) -> None:
+    """Skip the indoor lockout sensor when the profile reports no indoor unit."""
+    carrier_api.systems[0].profile.indoor_unit_type = "none"
+    await setup_integration()
+    registry = er.async_get(hass)
+
+    assert (
+        registry.async_get_entity_id("binary_sensor", DOMAIN, "abc123_indoor_unit_lockout") is None
+    )

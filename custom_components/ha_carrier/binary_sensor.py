@@ -71,6 +71,12 @@ def _system_entities(
         for zone in carrier_system.config.zones
         if zone.occupancy_enabled
     )
+    if carrier_system.profile.indoor_unit_type not in (None, "", "none"):
+        entities.append(
+            IndoorUnitLockoutSensor(
+                coordinator=coordinator, system_serial=carrier_system.profile.serial
+            )
+        )
     if carrier_system.profile.outdoor_unit_type not in (None, "", "none"):
         entities.append(
             OutdoorUnitLockoutSensor(
@@ -254,4 +260,38 @@ class OutdoorUnitLockoutSensor(CarrierBinarySensor):
         """Update lockout attrs from coordinator data."""
         outdoor_unit = self.carrier_system.status.outdoor_unit
         self._attr_is_on = None if outdoor_unit is None else outdoor_unit.lockout_active
+        self._attr_available = self._attr_is_on is not None
+
+
+class IndoorUnitLockoutSensor(CarrierBinarySensor):
+    """Problem sensor that is on while the indoor unit (furnace or fan coil) is locked out.
+
+    Carrier reports the flag as ``lockoutactive`` in the indoor unit's status, so
+    the sensor is unavailable while that is missing. Disabled by default, like
+    the outdoor unit lockout sensor.
+    """
+
+    _attr_translation_key = "indoor_unit_lockout"
+    _attr_device_class = BinarySensorDeviceClass.PROBLEM
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_entity_registry_enabled_default = False
+
+    def __init__(self, coordinator: CarrierDataUpdateCoordinator, system_serial: str) -> None:
+        """Initialize an indoor unit lockout sensor for one Carrier system.
+
+        Args:
+            coordinator: Coordinator that provides system state.
+            system_serial: Unique Carrier system serial number.
+        """
+        super().__init__(
+            "Indoor Unit Lockout",
+            coordinator,
+            system_serial,
+            unique_id_suffix="indoor_unit_lockout",
+        )
+
+    def _update_entity_attrs(self) -> None:
+        """Update lockout attrs from coordinator data."""
+        indoor_unit = self.carrier_system.status.indoor_unit
+        self._attr_is_on = None if indoor_unit is None else indoor_unit.lockout_active
         self._attr_available = self._attr_is_on is not None
