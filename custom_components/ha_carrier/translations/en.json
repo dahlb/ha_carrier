@@ -75,6 +75,9 @@
       "humidifier_running": {
         "name": "Humidifier Running"
       },
+      "indoor_unit_lockout": {
+        "name": "Indoor Unit Lockout"
+      },
       "outdoor_unit_lockout": {
         "name": "Outdoor Unit Lockout"
       }
