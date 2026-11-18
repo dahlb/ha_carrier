@@ -5,7 +5,7 @@
 | Name                                                    |    Stmts |     Miss |   Branch |   BrPart |   Cover |   Missing |
 |-------------------------------------------------------- | -------: | -------: | -------: | -------: | ------: | --------: |
 | custom\_components/ha\_carrier/\_\_init\_\_.py          |      160 |        2 |       32 |        2 |     98% |  194, 423 |
-| custom\_components/ha\_carrier/binary\_sensor.py        |       71 |        0 |        6 |        0 |    100% |           |
+| custom\_components/ha\_carrier/binary\_sensor.py        |       84 |        0 |        8 |        0 |    100% |           |
 | custom\_components/ha\_carrier/climate.py               |      293 |        0 |      104 |        0 |    100% |           |
 | custom\_components/ha\_carrier/config\_flow.py          |      119 |        1 |       36 |        2 |     98% |218, 270-\>299 |
 | custom\_components/ha\_carrier/const.py                 |       40 |        0 |        0 |        0 |    100% |           |
@@ -20,7 +20,7 @@
 | custom\_components/ha\_carrier/sensor.py                |      360 |        0 |       60 |        0 |    100% |           |
 | custom\_components/ha\_carrier/services.py              |       22 |        0 |        0 |        0 |    100% |           |
 | custom\_components/ha\_carrier/util.py                  |       73 |        0 |       34 |        0 |    100% |           |
-| **TOTAL**                                               | **2052** |    **6** |  **584** |   **14** | **99%** |           |
+| **TOTAL**                                               | **2065** |    **6** |  **586** |   **14** | **99%** |           |
 
 
 ## Setup coverage badge
