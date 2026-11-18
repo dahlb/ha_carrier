@@ -51,7 +51,7 @@ The integration adds a Home Assistant device per Carrier system, with entities f
 
 - Temperature
 - Humidity
-- Damper position (%, *diagnostic*)
+- Damper position (%, *diagnostic; disabled by default*)
 - Conditioning state as Carrier reports it (*diagnostic; disabled by default*)
 
 #### Per system:

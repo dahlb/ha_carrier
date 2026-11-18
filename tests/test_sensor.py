@@ -630,22 +630,28 @@ async def test_zone_damper_and_conditioning_sensors(
     hass: HomeAssistant,
     setup_integration: Callable[..., Any],
 ) -> None:
-    """Expose damper position enabled and the raw conditioning value disabled by default."""
+    """Register damper position and conditioning disabled, and report them once enabled."""
     entry = await setup_integration()
+    damper_id = entity_id_for_unique_id(hass, "sensor", "abc123_zone_1_damper_position")
+    conditioning_id = entity_id_for_unique_id(hass, "sensor", "abc123_zone_1_conditioning")
+    registry = er.async_get(hass)
+    for entity_id in (damper_id, conditioning_id):
+        registry_entry = registry.async_get(entity_id)
+        assert registry_entry is not None
+        assert registry_entry.disabled_by is er.RegistryEntryDisabler.INTEGRATION
+        assert registry_entry.entity_category is EntityCategory.DIAGNOSTIC
+        assert hass.states.get(entity_id) is None
 
-    damper = hass.states.get(
-        entity_id_for_unique_id(hass, "sensor", "abc123_zone_1_damper_position")
+    await _enable_and_reload(
+        hass,
+        entry,
+        [("sensor", "abc123_zone_1_damper_position"), ("sensor", "abc123_zone_1_conditioning")],
     )
+
+    damper = hass.states.get(damper_id)
     assert damper is not None
     assert damper.state == "50"
     assert damper.attributes["friendly_name"] == "Home Living Room Damper Position"
-    conditioning_id = entity_id_for_unique_id(hass, "sensor", "abc123_zone_1_conditioning")
-    registry_entry = er.async_get(hass).async_get(conditioning_id)
-    assert registry_entry is not None
-    assert registry_entry.disabled_by is er.RegistryEntryDisabler.INTEGRATION
-
-    await _enable_and_reload(hass, entry, [("sensor", "abc123_zone_1_conditioning")])
-
     conditioning = hass.states.get(conditioning_id)
     assert conditioning is not None
     assert conditioning.state == "idle"
