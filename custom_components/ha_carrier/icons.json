@@ -1,0 +1,63 @@
+{
+  "entity": {
+    "binary_sensor": {
+      "online": {
+        "default": "mdi:wifi-strength-outline",
+        "state": {
+          "on": "mdi:wifi-check"
+        }
+      },
+      "humidifier_running": {
+        "default": "mdi:air-humidifier-off",
+        "state": {
+          "on": "mdi:air-humidifier"
+        }
+      }
+    },
+    "select": {
+      "heat_source": {
+        "default": "mdi:heat-pump"
+      }
+    },
+    "sensor": {
+      "filter_remaining": {
+        "default": "mdi:air-filter"
+      },
+      "humidifier_remaining": {
+        "default": "mdi:air-filter"
+      },
+      "uv_lamp_remaining": {
+        "default": "mdi:lightbulb-fluorescent-tube-outline"
+      },
+      "airflow": {
+        "default": "mdi:fan"
+      },
+      "static_pressure": {
+        "default": "mdi:air-filter"
+      },
+      "odu_status": {
+        "default": "mdi:hvac"
+      },
+      "idu_status": {
+        "default": "mdi:hvac"
+      },
+      "odu_var": {
+        "default": "mdi:percent-box"
+      },
+      "idu_var": {
+        "default": "mdi:percent-box"
+      }
+    }
+  },
+  "services": {
+    "set_activity_setpoint": {
+      "service": "mdi:thermostat"
+    },
+    "get_schedule": {
+      "service": "mdi:calendar-clock"
+    },
+    "set_program_day": {
+      "service": "mdi:calendar-edit"
+    }
+  }
+}

@@ -44,20 +44,18 @@ HVAC_TO_MODE: dict[HVACMode, str] = {
 
 def build_entry_level_entities(
     coordinator: CarrierDataUpdateCoordinator,
+    system: EntryLevelSystem,
 ) -> list[EntryLevelThermostat]:
-    """Build a climate entity for each entry-level zone the coordinator tracks.
+    """Build a climate entity for each zone of one entry-level system.
 
     Args:
         coordinator: Coordinator that supplies Carrier entry-level data.
+        system: Entry-level system to build entities for.
 
     Returns:
         A list of entry-level thermostat entities to register.
     """
-    return [
-        EntryLevelThermostat(coordinator, system.serial, zone.index)
-        for system in coordinator.entry_level_systems
-        for zone in system.zones
-    ]
+    return [EntryLevelThermostat(coordinator, system.serial, zone.index) for zone in system.zones]
 
 
 class EntryLevelThermostat(CoordinatorEntity[CarrierDataUpdateCoordinator], ClimateEntity):

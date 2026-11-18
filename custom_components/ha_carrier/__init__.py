@@ -7,9 +7,9 @@ import logging
 from carrier_api import ApiConnectionGraphql, CarrierApiConnectionError
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
-from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers import config_validation as cv, device_registry as dr
 from homeassistant.helpers.typing import ConfigType
 
 from .const import (
@@ -286,9 +286,94 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntryCarrie
 
     await hass.config_entries.async_forward_entry_setups(config_entry, PLATFORMS)
 
+    @callback
+    def _async_remove_stale_devices_listener() -> None:
+        """Drop devices for systems that left the account after each refresh."""
+        _async_remove_stale_devices(hass, config_entry)
+
+    _async_remove_stale_devices(hass, config_entry)
+    config_entry.async_on_unload(
+        coordinator.async_add_listener(_async_remove_stale_devices_listener)
+    )
     config_entry.async_on_unload(config_entry.add_update_listener(async_update_options))
 
     return True
+
+
+def _current_serials(coordinator: CarrierDataUpdateCoordinator) -> set[str]:
+    """Return the serials of every system the Carrier account currently reports.
+
+    Args:
+        coordinator: Coordinator tracking the account's systems.
+
+    Returns:
+        set[str]: Infinity / Evolution and entry-level system serials.
+    """
+    return {system.profile.serial for system in coordinator.systems} | {
+        system.serial for system in coordinator.entry_level_systems
+    }
+
+
+def _device_serials(device: dr.DeviceEntry) -> set[str]:
+    """Return the Carrier serials a device registry entry is identified by.
+
+    Args:
+        device: Device registry entry.
+
+    Returns:
+        set[str]: Serials from the device's ``ha_carrier`` identifiers.
+    """
+    return {identifier for domain, identifier in device.identifiers if domain == DOMAIN}
+
+
+@callback
+def _async_remove_stale_devices(hass: HomeAssistant, config_entry: ConfigEntryCarrier) -> None:
+    """Remove devices whose Carrier system is no longer on the account.
+
+    The coordinator drops a system from ``systems`` after a full refresh that no
+    longer returns it. Its device, and with it its entities, are removed here.
+    Cleanup is skipped unless the latest entry-level load succeeded, because a
+    failed load leaves that list incomplete, and skipped entirely when the
+    account reports no systems at all, which is far likelier to be a Carrier
+    glitch than every thermostat being removed at once.
+
+    Args:
+        hass: Home Assistant instance.
+        config_entry: Carrier config entry whose devices are checked.
+    """
+    coordinator = config_entry.runtime_data
+    if not coordinator.entry_level_systems_loaded:
+        return
+    current_serials = _current_serials(coordinator)
+    if not current_serials:
+        return
+    device_registry = dr.async_get(hass)
+    for device in dr.async_entries_for_config_entry(device_registry, config_entry.entry_id):
+        serials = _device_serials(device)
+        if serials and not serials & current_serials:
+            _LOGGER.info(
+                "Removing Carrier device %s; its system is no longer on the account",
+                device.name,
+            )
+            device_registry.async_update_device(
+                device.id, remove_config_entry_id=config_entry.entry_id
+            )
+
+
+async def async_remove_config_entry_device(
+    hass: HomeAssistant, config_entry: ConfigEntryCarrier, device_entry: dr.DeviceEntry
+) -> bool:
+    """Let the user delete a device only once Carrier no longer reports it.
+
+    Args:
+        hass: Home Assistant instance.
+        config_entry: Carrier config entry the device belongs to.
+        device_entry: Device the user asked to delete.
+
+    Returns:
+        bool: True when none of the device's serials is a current system.
+    """
+    return not _device_serials(device_entry) & _current_serials(config_entry.runtime_data)
 
 
 async def async_update_options(hass: HomeAssistant, config_entry: ConfigEntryCarrier) -> None:

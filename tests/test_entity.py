@@ -21,6 +21,7 @@ from custom_components.ha_carrier.entity import CarrierZoneEntity
 from .conftest import (
     FakeCarrierApiConnection,
     build_carrier_system,
+    build_entry_level_system,
     entity_for_unique_id,
     entity_id_for_unique_id,
 )
@@ -76,7 +77,7 @@ async def test_every_named_entity_uses_a_defined_translation_key(
         ("binary_sensor", "abc123_zone_1_occupancy", "Home Living Room Occupancy"),
         ("sensor", "abc123_zone_1_temperature", "Home Living Room Temperature"),
         ("sensor", "abc123_gas_usage_year_to_date", "Home Gas Usage Year to Date"),
-        ("sensor", "abc123_websocket_last_updated", "Home Websocket Last Updated"),
+        ("sensor", "abc123_cooling_energy_yesterday", "Home Cooling Energy Yesterday"),
         ("sensor", "abc123_odu_var", "Home ODU Var"),
         ("select", "abc123_heat_source", "Home Heat Source"),
         ("climate", "abc123_zone_1_thermostat", "Home Living Room"),
@@ -192,3 +193,105 @@ async def test_zone_entity_unique_id_without_a_suffix(
     entity = CarrierZoneEntity("", entry.runtime_data, "ABC123", "1")
 
     assert entity.unique_id == "abc123_zone_1"
+
+
+async def _full_refresh(entry: Any) -> None:
+    """Run a full coordinator refresh, as the periodic reconcile would.
+
+    Args:
+        entry: Loaded Carrier config entry.
+    """
+    coordinator = entry.runtime_data
+    coordinator.data_flush = True
+    await coordinator.async_refresh()
+
+
+@pytest.mark.asyncio
+async def test_systems_added_after_setup_get_entities_without_a_reload(
+    hass: HomeAssistant,
+    carrier_api: FakeCarrierApiConnection,
+    setup_integration: Callable[..., Any],
+) -> None:
+    """Create every platform's entities for a system that joins the account later."""
+    entry = await setup_integration()
+    registry = er.async_get(hass)
+    assert registry.async_get_entity_id("climate", DOMAIN, "def456_zone_1_thermostat") is None
+
+    carrier_api.systems.append(build_carrier_system(serial="DEF456", name="Cabin"))
+    carrier_api.entry_level_systems.append(build_entry_level_system())
+    await _full_refresh(entry)
+    await hass.async_block_till_done()
+
+    for domain, unique_id in [
+        ("climate", "def456_zone_1_thermostat"),
+        ("sensor", "def456_outdoor_temperature"),
+        ("sensor", "def456_zone_1_temperature"),
+        ("binary_sensor", "def456_online"),
+        ("select", "def456_heat_source"),
+        ("climate", "el123_0_entry_level_thermostat"),
+    ]:
+        entity_id = entity_id_for_unique_id(hass, domain, unique_id)
+        assert hass.states.get(entity_id) is not None, unique_id
+    # The original system's entities are not created a second time.
+    assert len(er.async_entries_for_config_entry(registry, entry.entry_id)) == len(
+        {entity.unique_id for entity in er.async_entries_for_config_entry(registry, entry.entry_id)}
+    )
+
+
+@pytest.mark.asyncio
+async def test_websocket_updates_do_not_add_duplicate_entities(
+    hass: HomeAssistant,
+    setup_integration: Callable[..., Any],
+) -> None:
+    """Leave the entity list alone when an update brings no new system."""
+    entry = await setup_integration()
+    registry = er.async_get(hass)
+    before = len(er.async_entries_for_config_entry(registry, entry.entry_id))
+
+    entry.runtime_data.async_update_listeners()
+    await hass.async_block_till_done()
+
+    assert len(er.async_entries_for_config_entry(registry, entry.entry_id)) == before
+
+
+def test_icons_json_matches_translation_keys_and_services() -> None:
+    """Key every icon to a real entity translation key or service, and keep icons out of code."""
+    icons = json.loads((INTEGRATION_DIR / "icons.json").read_text(encoding="utf-8"))
+    services = yaml.safe_load((INTEGRATION_DIR / "services.yaml").read_text(encoding="utf-8"))
+
+    for domain, entity_icons in icons["entity"].items():
+        assert set(entity_icons) <= set(TRANSLATIONS["entity"][domain]), domain
+        for icon in entity_icons.values():
+            assert icon["default"].startswith("mdi:")
+    assert set(icons["services"]) == set(services)
+    for source in INTEGRATION_DIR.glob("*.py"):
+        assert "_attr_icon" not in source.read_text(encoding="utf-8"), source.name
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("domain", "unique_id"),
+    [
+        ("binary_sensor", "abc123_online"),
+        ("binary_sensor", "abc123_humidifier_running"),
+        ("sensor", "abc123_filter_remaining"),
+        ("sensor", "abc123_odu_var"),
+        ("select", "abc123_heat_source"),
+    ],
+)
+async def test_entities_get_their_icon_from_icon_translations(
+    hass: HomeAssistant,
+    setup_integration: Callable[..., Any],
+    domain: str,
+    unique_id: str,
+) -> None:
+    """Register the translation key HA uses to look up the entity's icon."""
+    await setup_integration()
+
+    entry = er.async_get(hass).async_get(entity_id_for_unique_id(hass, domain, unique_id))
+
+    assert entry is not None
+    assert entry.translation_key is not None
+    state = hass.states.get(entry.entity_id)
+    assert state is not None
+    assert "icon" not in state.attributes

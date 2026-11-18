@@ -19,7 +19,7 @@ from .const import (
     HEAT_SOURCE_SYSTEM_LABEL,
 )
 from .coordinator import CarrierDataUpdateCoordinator
-from .entity import CarrierEntity
+from .entity import CarrierEntity, async_add_entities_for_systems
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 
@@ -40,12 +40,15 @@ async def async_setup_entry(
         async_add_entities: Callback used to register entity instances.
     """
     coordinator = config_entry.runtime_data
-    entities: list[SelectEntity] = [
-        HeatSourceSelect(coordinator=coordinator, system_serial=system.profile.serial)
-        for system in coordinator.systems
-        if system.supports_heat()
-    ]
-    async_add_entities(entities)
+    async_add_entities_for_systems(
+        config_entry,
+        async_add_entities,
+        lambda system: (
+            [HeatSourceSelect(coordinator=coordinator, system_serial=system.profile.serial)]
+            if system.supports_heat()
+            else []
+        ),
+    )
 
 
 class CarrierSelect(CarrierEntity, SelectEntity):
@@ -93,7 +96,6 @@ class HeatSourceSelect(CarrierSelect):
     """Select entity that controls which unit provides primary heating."""
 
     _attr_translation_key = "heat_source"
-    _attr_icon = "mdi:heat-pump"
     _attr_options: list[str]
 
     def __init__(self, coordinator: CarrierDataUpdateCoordinator, system_serial: str) -> None:

@@ -18,8 +18,11 @@ Initially tested on **SYSTXCCWIC01-B** (firmware 4.31). Other Infinity / Evoluti
 ## Table of contents
 
 - [Features](#features)
+- [Use cases](#use-cases)
 - [Installation](#installation)
 - [Configuration](#configuration)
+- [Automation examples](#automation-examples)
+- [Known limitations](#known-limitations)
 - [Troubleshooting](#troubleshooting)
 - [Removal](#removal)
 - [Support](#support)
@@ -63,7 +66,7 @@ The integration adds a Home Assistant device per Carrier system, with entities f
 - Modulating furnace (IDU) output (%, on modulating furnaces)
 - Energy usage per source (heat pump, electric heat, gas, fan, cooling, reheat, loop pump): yesterday, last month, and year-to-date — wired up for Home Assistant's Energy dashboard
 - Gas / propane usage year-to-date *(when applicable)*
-- Last-update timestamps for full data refresh, websocket updates, and energy refresh
+- Last-update timestamps for full data refresh, websocket updates, and energy refresh *(diagnostic; disabled by default — enable them from the entity settings when troubleshooting)*
 
 ### Binary sensors
 
@@ -81,6 +84,16 @@ The integration adds a Home Assistant device per Carrier system, with entities f
 - Near real-time updates via Carrier's websocket push channel, with periodic polling as a fallback
 - Automatic re-authentication prompt if your Carrier password changes
 - Supports multiple Carrier systems on the same account
+- Thermostats added to your Carrier account later show up automatically (on the next full refresh) without reloading the integration; devices for thermostats removed from the account are removed from Home Assistant too
+
+## Use cases
+
+- **Presence-aware comfort** — switch zones to **Away** when everyone leaves and **Resume** the schedule when someone comes home, instead of heating or cooling an empty house.
+- **Schedule tweaks without holds** — nudge an activity's set points (for example, a cooler **Sleep** in summer) with `ha_carrier.set_activity_setpoint`, or rewrite a day's program with `ha_carrier.set_program_day`. The thermostat keeps running its own schedule, so it still works if Home Assistant is down.
+- **Maintenance reminders** — get notified when the filter, humidifier pad or UV lamp is nearly used up.
+- **Energy tracking** — add the energy sensors to Home Assistant's Energy dashboard to see what heating, cooling and the blower cost you.
+- **Alerts** — be told when the thermostat drops offline, or when a room gets too hot or cold while you are away.
+- **Dual-fuel control** — switch the **Heat Source** between the heat pump and gas furnace based on outdoor temperature or energy prices.
 
 ## Installation
 
@@ -129,6 +142,112 @@ After setup, click **Configure** on the integration to change:
 ### Re-authentication
 
 If you change your Carrier password, Home Assistant will display a **Re-authenticate** prompt next to the integration. Click it and enter your new password — no need to remove and re-add the integration.
+
+## Automation examples
+
+Entity IDs below are examples — yours are based on your system and zone names.
+
+**Set every zone to Away when everyone leaves, and resume the schedule on return:**
+
+```yaml
+automation:
+  - alias: "Carrier: away when house is empty"
+    triggers:
+      - trigger: state
+        entity_id: zone.home
+        to: "0"
+        for: "00:10:00"
+    actions:
+      - action: climate.set_preset_mode
+        target:
+          entity_id: climate.home_living_room
+        data:
+          preset_mode: away
+
+  - alias: "Carrier: resume schedule when someone is home"
+    triggers:
+      - trigger: numeric_state
+        entity_id: zone.home
+        above: 0
+    actions:
+      - action: climate.set_preset_mode
+        target:
+          entity_id: climate.home_living_room
+        data:
+          preset_mode: resume
+```
+
+**Make the Sleep activity cooler in summer, without creating a hold:**
+
+```yaml
+automation:
+  - alias: "Carrier: summer sleep set points"
+    triggers:
+      - trigger: time
+        at: "06:00:00"
+    conditions:
+      - condition: template
+        value_template: "{{ now().month in [6, 7, 8] }}"
+    actions:
+      - action: ha_carrier.set_activity_setpoint
+        target:
+          entity_id: climate.home_living_room
+        data:
+          activity: sleep
+          target_temp_low: 66
+          target_temp_high: 72
+```
+
+**Remind me to change the filter:**
+
+```yaml
+automation:
+  - alias: "Carrier: filter reminder"
+    triggers:
+      - trigger: numeric_state
+        entity_id: sensor.home_filter_remaining
+        below: 10
+    actions:
+      - action: notify.notify
+        data:
+          message: "The HVAC filter has {{ states('sensor.home_filter_remaining') }}% life left."
+```
+
+**Alert when the thermostat has been offline for 30 minutes:**
+
+```yaml
+automation:
+  - alias: "Carrier: thermostat offline"
+    triggers:
+      - trigger: state
+        entity_id: binary_sensor.home_online
+        to: "off"
+        for: "00:30:00"
+    actions:
+      - action: notify.notify
+        data:
+          message: "The Carrier thermostat has lost its connection to Carrier's cloud."
+```
+
+**Print a zone's schedule** (Developer tools → Actions, with *Return response*):
+
+```yaml
+action: ha_carrier.get_schedule
+target:
+  entity_id: climate.home_living_room
+```
+
+## Known limitations
+
+- **Cloud only.** Everything goes through Carrier's cloud: no internet or a Carrier outage means no data or control. For local control, see [Infinitude](https://github.com/MizterB/homeassistant-infinitude-beyond).
+- **A-model controls may not get live updates.** Carrier says its A-model controls (such as the `SYSTXCCITC01-A`) are obsolete, and they may not receive live updates. Their state then only changes on a full refresh; lower the **Full refresh interval** option (see [Options](#options)).
+- **Rate limits.** Carrier's API rate limits requests. The full refresh interval can't go below 5 minutes, commands are sent one at a time, and very frequent automations may still be refused for a while.
+- **Changes can briefly bounce back.** After a change, Carrier's cloud sometimes replays the old value. For five minutes after a write the integration keeps showing what you set; a full refresh is postponed until then.
+- **Humidity targets.** The target humidity is the heating humidifier target only, from 0% (off) to 45% in steps of 5%; other values are rounded to the nearest step.
+- **Energy data is not real time.** Energy sensors report yesterday, last month and year to date, refreshed every 30 minutes (or at the full refresh interval if lower). There is no live power reading.
+- **Smart Thermostats (entry-level) have fewer features.** They get a climate entity with Off, Cool, Heat and Heat/Cool and their set points, but no presets, fan modes, holds, schedule services or sensors.
+- **New and removed thermostats** are picked up on the next full refresh, not instantly.
+- **Outdoor temperature** is reported by Carrier in Fahrenheit regardless of the thermostat's unit setting; Home Assistant converts it for display.
 
 ## Troubleshooting
 

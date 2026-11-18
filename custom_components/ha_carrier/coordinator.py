@@ -146,6 +146,9 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator[list[dict[str, Any]]]):
         )
         self.systems: list[System] = []
         self.entry_level_systems: list[EntryLevelSystem] = []
+        # Whether the latest entry-level load succeeded. Stale-device cleanup
+        # only trusts entry_level_systems as the full list when this is True.
+        self.entry_level_systems_loaded = False
         self.websocket_data_updater: WebsocketDataUpdater | None = None
         self.websocket_task: asyncio.Task[None] | None = None
         self._websocket_initialized = False
@@ -661,14 +664,18 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator[list[dict[str, Any]]]):
 
         Entry-level data is independent of the Infinity systems and websocket
         path, so a failure here is logged and swallowed rather than failing the
-        whole refresh.
+        whole refresh. ``entry_level_systems_loaded`` records whether the list
+        is current, so stale-device cleanup never acts on a failed load.
         """
         try:
             self.entry_level_systems = await self.api_connection.load_entry_level_data()
         except asyncio.CancelledError, KeyboardInterrupt, SystemExit:
             raise
         except (CarrierApiError, *RECOVERABLE_REFRESH_EXCEPTIONS) as error:
+            self.entry_level_systems_loaded = False
             _LOGGER.debug("Carrier entry-level refresh failed (non-fatal): %s", error)
+        else:
+            self.entry_level_systems_loaded = True
 
     def entry_level_system(self, serial: str) -> EntryLevelSystem | None:
         """Return the tracked entry-level system matching a serial.

@@ -6,7 +6,7 @@ from collections.abc import Callable
 from typing import Any
 
 from carrier_api import TemperatureUnits
-from homeassistant.const import STATE_UNAVAILABLE
+from homeassistant.const import STATE_UNAVAILABLE, EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
 import pytest
@@ -451,3 +451,23 @@ async def test_base_sensor_requires_a_serial_and_defaults_to_unavailable(
         CarrierSensor("Test", coordinator, None)
 
     assert CarrierSensor("Test", coordinator, "ABC123").available is False
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("timestamp_type", ["all_data", "websocket", "energy"])
+async def test_last_updated_sensors_are_disabled_by_default(
+    hass: HomeAssistant,
+    setup_integration: Callable[..., Any],
+    timestamp_type: str,
+) -> None:
+    """Register the diagnostic last-updated sensors disabled until a user enables them."""
+    await setup_integration()
+
+    entry = er.async_get(hass).async_get(
+        entity_id_for_unique_id(hass, "sensor", f"abc123_{timestamp_type}_last_updated")
+    )
+
+    assert entry is not None
+    assert entry.disabled_by is er.RegistryEntryDisabler.INTEGRATION
+    assert entry.entity_category is EntityCategory.DIAGNOSTIC
+    assert hass.states.get(entry.entity_id) is None
