@@ -13,11 +13,9 @@ from homeassistant.helpers import entity_registry as er
 import pytest
 import yaml
 
-from custom_components.ha_carrier.carrier_data_update_coordinator import (
-    CarrierDataUpdateCoordinator,
-)
-from custom_components.ha_carrier.carrier_entity import CarrierZoneEntity
 from custom_components.ha_carrier.const import DOMAIN
+from custom_components.ha_carrier.coordinator import CarrierDataUpdateCoordinator
+from custom_components.ha_carrier.entity import CarrierZoneEntity
 
 from .conftest import build_carrier_system, entity_id_for_unique_id
 

@@ -14,10 +14,8 @@ import pytest
 from pytest_homeassistant.common import MockConfigEntry
 
 from custom_components.ha_carrier import _async_await_websocket_task, async_setup_entry
-from custom_components.ha_carrier.carrier_data_update_coordinator import (
-    CarrierDataUpdateCoordinator,
-)
 from custom_components.ha_carrier.const import DOMAIN
+from custom_components.ha_carrier.coordinator import CarrierDataUpdateCoordinator
 from custom_components.ha_carrier.exceptions import CarrierUnauthorizedError
 
 from .conftest import PASSWORD, USERNAME, FakeCarrierApiConnection

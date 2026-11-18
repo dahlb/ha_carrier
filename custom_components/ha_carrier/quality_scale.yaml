@@ -5,26 +5,18 @@
 rules:
   # Bronze
   action-setup:
-    status: todo
+    status: done
     comment: >-
-      Entity services are registered in the climate platform's async_setup_entry. Register
-      them in async_setup with service.async_register_platform_entity_service instead.
+      services.py registers the climate entity services from async_setup with
+      service.async_register_platform_entity_service.
   appropriate-polling:
     status: done
     comment: >-
       Websocket push for live updates; polls every 30 minutes for energy and does a full
       refresh at the configurable full refresh interval.
   brands: done
-  common-modules:
-    status: todo
-    comment: >-
-      Coordinator and base entity live in carrier_data_update_coordinator.py and
-      carrier_entity.py; the rule expects coordinator.py and entity.py.
-  config-flow:
-    status: todo
-    comment: >-
-      UI config flow exists; the user, reauth and reconfigure steps still need
-      data_description text for the username and password fields.
+  common-modules: done
+  config-flow: done
   config-flow-test-coverage: done
   dependency-transparency: done
   docs-actions: done
@@ -33,9 +25,7 @@ rules:
     comment: The integration provides no conditions.
   docs-high-level-description: done
   docs-installation-instructions: done
-  docs-removal-instructions:
-    status: todo
-    comment: README has no section on removing the integration.
+  docs-removal-instructions: done
   docs-triggers:
     status: exempt
     comment: The integration provides no triggers.
