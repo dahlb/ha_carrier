@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from functools import partial
 import logging
+import math
 from typing import Any
 
 from carrier_api import ActivityTypes, ConfigZoneActivity, FanModes, SystemModes, TemperatureUnits
@@ -35,6 +36,9 @@ from .const import (
     DEFAULT_INFINITE_HOLDS,
     DOMAIN,
     FAN_AUTO,
+    HUMIDITY_STEP,
+    MAX_HUMIDITY,
+    MIN_HUMIDITY,
     PROGRAM_READBACK_DELAY_S,
 )
 from .entry_level_climate import build_entry_level_entities
@@ -151,6 +155,20 @@ async def async_setup_entry(
         },
         "async_set_program_day",
     )
+
+
+def normalize_humidity_target(humidity: float) -> int:
+    """Return the Carrier-acceptable humidity target closest to a requested value.
+
+    Args:
+        humidity: Requested target humidity percentage.
+
+    Returns:
+        int: The value clamped to ``MIN_HUMIDITY``..``MAX_HUMIDITY`` and rounded
+            half up to the nearest multiple of ``HUMIDITY_STEP``.
+    """
+    clamped = min(max(humidity, MIN_HUMIDITY), MAX_HUMIDITY)
+    return math.floor(clamped / HUMIDITY_STEP + 0.5) * HUMIDITY_STEP
 
 
 class CarrierClimate(CarrierZoneEntity, ClimateEntity):
@@ -327,8 +345,8 @@ class Thermostat(CarrierClimate):
     """Climate entity that controls a single Carrier zone thermostat."""
 
     _enable_turn_on_off_backwards_compatibility = False
-    _attr_max_humidity = 45
-    _attr_min_humidity = 0
+    _attr_max_humidity = MAX_HUMIDITY
+    _attr_min_humidity = MIN_HUMIDITY
 
     def __init__(
         self,
@@ -372,18 +390,15 @@ class Thermostat(CarrierClimate):
     async def async_set_humidity(self, humidity: int) -> None:
         """Set and normalize a new target humidity value.
 
+        Carrier only accepts heating humidity targets between ``MIN_HUMIDITY``
+        and ``MAX_HUMIDITY`` in ``HUMIDITY_STEP`` increments, so the requested
+        value is clamped to that range and rounded to the nearest step.
+
         Args:
             humidity: Requested target humidity percentage.
         """
-        _LOGGER.debug("Setting target humidity to %s", humidity)
-        if humidity > 45:
-            humidity = 45
-            _LOGGER.debug("Setting target humidity to max heating of 45")
-        rounded_humidity = int(humidity / 5) * 5
-        _LOGGER.debug(
-            "Setting target humidity to api acceptable multiple of 5 %s",
-            rounded_humidity,
-        )
+        rounded_humidity = normalize_humidity_target(humidity)
+        _LOGGER.debug("Setting target humidity to %s (requested %s)", rounded_humidity, humidity)
         await self.coordinator.async_perform_api_call(
             "set humidity",
             partial(

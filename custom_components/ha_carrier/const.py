@@ -2,7 +2,7 @@
 
 from homeassistant.const import CONF_PASSWORD, CONF_UNIQUE_ID, CONF_USERNAME, Platform
 
-VERSION: str = "2.31.1"
+VERSION: str = "2.31.2"
 
 # Configuration Constants
 DOMAIN: str = "ha_carrier"
@@ -39,6 +39,12 @@ TO_REDACT_RAW: set[str] = {
 }
 TO_REDACT_DEVICE: set[str] = {"identifiers"}
 TO_REDACT_ENTITIES: set[str] = set()
+
+# Carrier accepts heating humidity targets from 0 (humidifier off) to 45 percent,
+# in steps of 5 percent; any other value is rejected by the API.
+MIN_HUMIDITY: int = 0
+MAX_HUMIDITY: int = 45
+HUMIDITY_STEP: int = 5
 
 HEAT_SOURCE_IDU_ONLY_LABEL = "gas heat only"
 HEAT_SOURCE_ODU_ONLY_LABEL = "heat pump only"

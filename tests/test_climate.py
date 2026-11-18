@@ -32,6 +32,7 @@ from homeassistant.util.unit_system import US_CUSTOMARY_SYSTEM
 import pytest
 from pytest_homeassistant.common import async_fire_time_changed
 
+from custom_components.ha_carrier.climate import normalize_humidity_target
 from custom_components.ha_carrier.const import FAN_AUTO, PROGRAM_READBACK_DELAY_S
 
 from .conftest import FakeCarrierApiConnection, build_carrier_system, entity_id_for_unique_id
@@ -520,3 +521,54 @@ async def test_set_activity_setpoint_edits_the_named_or_current_activity(
         },
     )
     assert "set_config_hold" not in [call[0] for call in writes]
+
+
+@pytest.mark.parametrize(
+    ("requested", "expected"),
+    [
+        (-5, 0),
+        (0, 0),
+        (2, 0),
+        (3, 5),
+        (42, 40),
+        (43, 45),
+        (45, 45),
+        (60, 45),
+        (37.5, 40),
+    ],
+)
+def test_normalize_humidity_target_clamps_and_rounds_to_nearest_step(
+    requested: float, expected: int
+) -> None:
+    """Clamp humidity to Carrier's range and round to the nearest 5 percent."""
+    assert normalize_humidity_target(requested) == expected
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("requested", "expected"), [(43, 45), (42, 40)])
+async def test_set_humidity_sends_nearest_carrier_step(
+    hass: HomeAssistant,
+    carrier_api: FakeCarrierApiConnection,
+    setup_integration: Callable[..., Any],
+    requested: int,
+    expected: int,
+) -> None:
+    """Send the nearest Carrier-accepted humidity target and show it locally."""
+    await setup_integration()
+    entity_id = entity_id_for_unique_id(hass, CLIMATE_DOMAIN, "abc123_zone_1_thermostat")
+
+    await hass.services.async_call(
+        CLIMATE_DOMAIN,
+        SERVICE_SET_HUMIDITY,
+        {ATTR_ENTITY_ID: entity_id, ATTR_HUMIDITY: requested},
+        blocking=True,
+    )
+    await hass.async_block_till_done()
+
+    humidity_calls = [call for call in carrier_api.calls if call[0] == "set_config_heat_humidity"]
+    assert humidity_calls[-1][1]["humidity_target"] == expected
+    state = hass.states.get(entity_id)
+    assert state is not None
+    assert state.attributes["humidity"] == expected
+    assert state.attributes["min_humidity"] == 0
+    assert state.attributes["max_humidity"] == 45
