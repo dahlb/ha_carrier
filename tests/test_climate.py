@@ -935,6 +935,7 @@ async def test_climate_no_longer_carries_sensor_readings_as_attributes(
         state.attributes
     )
 
+
 @pytest.mark.asyncio
 async def test_cancel_system_vacation_calls_system_mutation_once(
     hass: HomeAssistant,
