@@ -4,6 +4,7 @@
 [![GitHub Activity][commits-shield]][commits]
 [![License][license-shield]](LICENSE)
 [![hacs][hacsbadge]][hacs]
+[![Quality Scale][quality-scale-shield]][quality-scale]
 
 ![Project Maintenance][maintenance-shield]
 [![BuyMeCoffee][buymecoffeebadge]][buymecoffee]
@@ -304,4 +305,6 @@ Removing the integration does not change anything on your thermostat or in your 
 [releases]: https://github.com/dahlb/ha_carrier/releases
 [buymecoffee]: https://www.buymeacoffee.com/dahlb
 [buymecoffeebadge]: https://img.shields.io/badge/buy%20me%20a%20coffee-donate-yellow.svg?style=for-the-badge
+[quality-scale]: custom_components/ha_carrier/quality_scale.yaml
+[quality-scale-shield]: https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Fdahlb%2Fha_carrier%2Fmain%2Fcustom_components%2Fha_carrier%2Fmanifest.json&query=%24.quality_scale&label=Quality%20Scale&style=for-the-badge&logo=home-assistant&color=41BDF5
 [usage-shield]: https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fanalytics.home-assistant.io%2Fcustom_integrations.json&query=%24.ha_carrier.total&style=for-the-badge&logo=home-assistant&label=Integration%20Usage&color=41BDF5&cacheSeconds=15600

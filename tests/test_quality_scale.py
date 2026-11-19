@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib
+import json
 from pathlib import Path
 from typing import Any
 
@@ -13,11 +14,10 @@ QUALITY_SCALE_FILE = (
     Path(__file__).parent.parent / "custom_components" / "ha_carrier" / "quality_scale.yaml"
 )
 
-# Rule names from Home Assistant's script/hassfest/quality_scale.py. hassfest skips
-# this file for custom integrations, so keep this list in sync when HA adds rules.
-QUALITY_SCALE_RULES: frozenset[str] = frozenset(
-    {
-        # Bronze
+# Rule names from Home Assistant's script/hassfest/quality_scale.py, by tier. hassfest
+# skips this file for custom integrations, so keep these in sync when HA adds rules.
+QUALITY_SCALE_TIERS: dict[str, tuple[str, ...]] = {
+    "bronze": (
         "action-setup",
         "appropriate-polling",
         "brands",
@@ -38,7 +38,8 @@ QUALITY_SCALE_RULES: frozenset[str] = frozenset(
         "test-before-configure",
         "test-before-setup",
         "unique-config-entry",
-        # Silver
+    ),
+    "silver": (
         "action-exceptions",
         "config-entry-unloading",
         "docs-configuration-parameters",
@@ -49,7 +50,8 @@ QUALITY_SCALE_RULES: frozenset[str] = frozenset(
         "parallel-updates",
         "reauthentication-flow",
         "test-coverage",
-        # Gold
+    ),
+    "gold": (
         "devices",
         "diagnostics",
         "discovery",
@@ -71,12 +73,17 @@ QUALITY_SCALE_RULES: frozenset[str] = frozenset(
         "reconfiguration-flow",
         "repair-issues",
         "stale-devices",
-        # Platinum
+    ),
+    "platinum": (
         "async-dependency",
         "inject-websession",
         "strict-typing",
-    }
+    ),
+}
+QUALITY_SCALE_RULES: frozenset[str] = frozenset(
+    rule for rules in QUALITY_SCALE_TIERS.values() for rule in rules
 )
+MANIFEST_FILE = QUALITY_SCALE_FILE.with_name("manifest.json")
 
 
 def _load_rules() -> dict[str, Any]:
@@ -122,3 +129,35 @@ def test_every_platform_sets_parallel_updates(platform: str, expected: int) -> N
     module = importlib.import_module(f"custom_components.ha_carrier.{platform}")
 
     assert expected == module.PARALLEL_UPDATES
+
+
+def test_manifest_quality_scale_matches_the_self_assessment() -> None:
+    """Declare the highest tier whose rules, and every lower tier's, are all met.
+
+    The README's Quality Scale badge reads ``quality_scale`` from manifest.json,
+    so this keeps the badge honest: a rule going back to ``todo`` fails the test
+    until the manifest tier is lowered too.
+    """
+    rules = _load_rules()
+
+    def met(rule: str) -> bool:
+        """Return whether a rule is done or exempt.
+
+        Args:
+            rule: Quality scale rule name.
+
+        Returns:
+            bool: True when the rule's status is ``done`` or ``exempt``.
+        """
+        value = rules[rule]
+        status = value if isinstance(value, str) else value["status"]
+        return status in {"done", "exempt"}
+
+    earned = "no_score"
+    for tier, tier_rules in QUALITY_SCALE_TIERS.items():
+        if not all(met(rule) for rule in tier_rules):
+            break
+        earned = tier
+
+    manifest = json.loads(MANIFEST_FILE.read_text(encoding="utf-8"))
+    assert manifest["quality_scale"] == earned
