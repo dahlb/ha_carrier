@@ -144,7 +144,7 @@ UNIT_SENSORS: tuple[CarrierUnitSensorDescription, ...] = (
         entity_category=EntityCategory.DIAGNOSTIC,
         entity_registry_enabled_default=False,
         outdoor_only=True,
-        value_fn=_unit_value(_outdoor_unit, lambda unit: unit.blower_rpm),
+        value_fn=_unit_value(_outdoor_unit, lambda unit: unit.compressor_rpm),
     ),
     CarrierUnitSensorDescription(
         key="outdoor_coil_temperature",

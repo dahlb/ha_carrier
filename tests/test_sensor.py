@@ -475,8 +475,11 @@ async def test_last_updated_sensors_are_disabled_by_default(
 
 
 # Readings from carrier_api's diagnostic-device-info fixture.
+# The outdoor unit reports both ``blwrpm`` and ``comprpm``; the outdoor fan speed
+# sensor must follow the compressor reading, not repeat the blower speed.
 OUTDOOR_DIAGNOSTICS: dict[str, Any] = {
     "blower_rpm": 940,
+    "compressor_rpm": 0,
     "outdoor_coil_temperature": 76.0,
     "discharge_temperature": 140.0,
     "suction_temperature": 78.0,
@@ -555,7 +558,7 @@ async def test_outdoor_unit_diagnostic_sensors_are_disabled_until_enabled(
     )
 
     expected = {
-        "abc123_outdoor_fan_speed": ("940", "rpm"),
+        "abc123_outdoor_fan_speed": ("0", "rpm"),
         "abc123_outdoor_coil_temperature": ("76.0", temperature_unit),
         "abc123_discharge_temperature": ("140.0", temperature_unit),
         "abc123_suction_temperature": ("78.0", temperature_unit),
