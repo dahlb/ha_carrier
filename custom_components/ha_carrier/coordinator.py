@@ -726,7 +726,7 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator[list[dict[str, Any]]]):
         if self.websocket_data_updater is not None:
             try:
                 await self.websocket_data_updater.message_handler(message)
-            except JSONDecodeError as error:
+            except (ValueError, KeyError, TypeError, IndexError, AttributeError) as error:
                 # assuming partial message and flushing data
                 _LOGGER.debug(
                     "Failed to decode websocket message: %s",
