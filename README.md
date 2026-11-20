@@ -9,7 +9,7 @@
 | custom\_components/ha\_carrier/climate.py               |      293 |        0 |      104 |        0 |    100% |           |
 | custom\_components/ha\_carrier/config\_flow.py          |      119 |        1 |       36 |        2 |     98% |218, 270-\>299 |
 | custom\_components/ha\_carrier/const.py                 |       40 |        0 |        0 |        0 |    100% |           |
-| custom\_components/ha\_carrier/coordinator.py           |      264 |        1 |       84 |        0 |     99% |       630 |
+| custom\_components/ha\_carrier/coordinator.py           |      271 |        1 |       86 |        0 |     99% |       629 |
 | custom\_components/ha\_carrier/diagnostics.py           |       32 |        0 |        8 |        1 |     98% |   63-\>46 |
 | custom\_components/ha\_carrier/entity.py                |      114 |        1 |       38 |        1 |     99% |        66 |
 | custom\_components/ha\_carrier/entry\_level\_climate.py |      126 |        0 |       36 |        0 |    100% |           |
@@ -20,7 +20,7 @@
 | custom\_components/ha\_carrier/sensor.py                |      360 |        0 |       60 |        0 |    100% |           |
 | custom\_components/ha\_carrier/services.py              |       22 |        0 |        0 |        0 |    100% |           |
 | custom\_components/ha\_carrier/util.py                  |       73 |        0 |       34 |        0 |    100% |           |
-| **TOTAL**                                               | **2065** |    **6** |  **586** |   **14** | **99%** |           |
+| **TOTAL**                                               | **2072** |    **6** |  **588** |   **14** | **99%** |           |
 
 
 ## Setup coverage badge
