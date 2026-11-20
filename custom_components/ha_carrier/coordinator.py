@@ -42,6 +42,7 @@ from .util import (
     RECOVERABLE_REFRESH_EXCEPTIONS,
     RECOVERABLE_WRITE_COMMUNICATION_EXCEPTIONS,
     async_redact_data,
+    is_retryable_error,
     is_unauthorized_error,
 )
 
@@ -342,9 +343,13 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator[list[dict[str, Any]]]):
         `ResiliencyState` tracks 401 and transient failures across API calls.
         Unauthorized failures only become `ConfigEntryAuthFailed` after a fresh
         refresh attempt fails and crosses the shared threshold, so a later
-        successful refresh can still clear an old outage window. Non-escalated
-        refresh failures remain `UpdateFailed`, which lets Home Assistant retry
-        later.
+        successful refresh can still clear an old outage window. Unauthorized
+        and retryable failures that have not yet crossed their shared thresholds
+        return the last known data (once an initial refresh has succeeded), so
+        entities stay available through short Carrier blips while the coordinator
+        retries on a one-minute cadence. Escalated or untracked failures raise
+        `UpdateFailed`, which marks entities unavailable and lets Home Assistant
+        retry later.
 
         Returns:
             list[dict[str, Any]]: List of mappings representing tracked systems.
@@ -394,6 +399,15 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator[list[dict[str, Any]]]):
         except RECOVERABLE_REFRESH_EXCEPTIONS as error:
             self.data_flush = True
             self.update_interval = timedelta(minutes=1)
+            if self.data is not None and self._failure_within_threshold(error):
+                # Keep entities available on the last known data until the
+                # shared resiliency thresholds escalate the failure to an outage.
+                _LOGGER.debug(
+                    "Carrier %s failed below the outage threshold; keeping last known data",
+                    refresh_context,
+                    exc_info=error,
+                )
+                return [self.mapped_system_data(system) for system in self.systems]
             # DataUpdateCoordinator logs the first UpdateFailed as an error and
             # logs again once a refresh succeeds, so only debug-log each failure
             # here to avoid repeating the error every retry while Carrier is down.
@@ -409,6 +423,28 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator[list[dict[str, Any]]]):
             raise UpdateFailed(
                 f"Unexpected error during Carrier {refresh_context}: {error}"
             ) from error
+
+    def _failure_within_threshold(self, error: BaseException) -> bool:
+        """Return True when a refresh failure has not yet escalated to an outage.
+
+        Unauthorized responses and retryable transport/API failures are counted
+        in the shared `ResiliencyState`. Until those counters reach their
+        thresholds the failure is treated as a transient blip, so entities keep
+        their last known state instead of becoming unavailable. Any other
+        failure is not tracked by the resiliency counters and is never treated
+        as within threshold.
+
+        Args:
+            error: Exception raised by the refresh operation.
+
+        Returns:
+            bool: True when the failure is a tracked, non-escalated blip.
+        """
+        if is_unauthorized_error(error):
+            return self.resiliency.consecutive_unauthorized < self.resiliency.unauthorized_threshold
+        if is_retryable_error(error):
+            return self.resiliency.consecutive_transient < self.resiliency.transient_threshold
+        return False
 
     async def _async_full_refresh(self) -> None:
         """Load all Carrier systems through the normal retry path.

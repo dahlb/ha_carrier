@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable
 from datetime import timedelta
 from inspect import isawaitable
+from unittest.mock import AsyncMock, patch
 
 from carrier_api import CarrierApiConnectionError
 from freezegun.api import FrozenDateTimeFactory
@@ -37,6 +38,7 @@ from custom_components.ha_carrier.const import (
     DEFAULT_UPDATE_INTERVAL_MINUTES,
     DOMAIN,
     HEAT_SOURCE_ODU_ONLY_LABEL,
+    TRANSIENT_FAILURE_THRESHOLD,
 )
 
 from .conftest import (
@@ -213,15 +215,28 @@ async def test_refresh_failure_and_recovery_update_poll_interval_in_ha_workflow(
     carrier_api: FakeCarrierApiConnection,
     setup_integration: Callable[..., Awaitable[ConfigEntry]],
 ) -> None:
-    """Exercise HA coordinator refresh failure and recovery interval changes."""
+    """Exercise HA coordinator refresh failure and recovery interval changes.
+
+    Transient failures below the shared threshold keep entities available on
+    their last known data; once the threshold escalates, the refresh fails and
+    entities become unavailable until Carrier recovers.
+    """
     config_entry = await setup_integration()
     coordinator = config_entry.runtime_data
     coordinator.data_flush = True
     carrier_api.load_data_error = CarrierApiConnectionError("temporary")
 
-    await coordinator.async_refresh()
+    with patch("custom_components.ha_carrier.resiliency.asyncio.sleep", AsyncMock()):
+        await coordinator.async_refresh()
 
-    assert coordinator.last_exception is not None
+        assert coordinator.last_update_success is True
+        assert coordinator.update_interval == timedelta(minutes=1)
+        assert 0 < coordinator.resiliency.consecutive_transient < TRANSIENT_FAILURE_THRESHOLD
+
+        while coordinator.resiliency.consecutive_transient < TRANSIENT_FAILURE_THRESHOLD:
+            await coordinator.async_refresh()
+
+    assert coordinator.last_update_success is False
     assert isinstance(coordinator.last_exception, UpdateFailed)
     assert coordinator.update_interval == timedelta(minutes=1)
 
