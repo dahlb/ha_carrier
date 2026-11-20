@@ -13,6 +13,7 @@ import probatio
 
 from .const import DOMAIN
 
+SERVICE_CANCEL_SYSTEM_VACATION = "cancel_system_vacation"
 SERVICE_SET_ACTIVITY_SETPOINT = "set_activity_setpoint"
 SERVICE_GET_SCHEDULE = "get_schedule"
 SERVICE_SET_PROGRAM_DAY = "set_program_day"
@@ -73,6 +74,14 @@ def async_setup_services(hass: HomeAssistant) -> None:
     Args:
         hass: Home Assistant instance.
     """
+    service.async_register_platform_entity_service(
+        hass,
+        DOMAIN,
+        SERVICE_CANCEL_SYSTEM_VACATION,
+        entity_domain=CLIMATE_DOMAIN,
+        schema=None,
+        func="async_cancel_system_vacation",
+    )
     service.async_register_platform_entity_service(
         hass,
         DOMAIN,

@@ -432,6 +432,25 @@ class Thermostat(CarrierClimate):
             return self._config_zone.next_activity_time()
         return None
 
+    async def async_cancel_system_vacation(self) -> None:
+        """Cancel the Carrier system-wide Vacation period without changing zone setpoints."""
+        if self.carrier_system.config.raw.get("vacat") != "on":
+            return
+        await self.coordinator.async_perform_api_call(
+            "cancel system vacation",
+            partial(
+                self.coordinator.api_connection._update_infinity_config,  # noqa: SLF001
+                {
+                    "input": {
+                        "serial": self.carrier_system.profile.serial,
+                        "vacat": "off",
+                    },
+                },
+            ),
+        )
+        self.coordinator.data_flush = True
+        await self.coordinator.async_refresh()
+
     async def async_set_preset_mode(self, preset_mode: str) -> None:
         """Apply a preset activity or resume scheduled programming.
 
