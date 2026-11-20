@@ -15,6 +15,7 @@ from carrier_api import (
     CarrierApiConnectionError,
     CarrierApiGraphqlError,
 )
+from carrier_api.api_websocket_data_updater import WebsocketDataUpdater
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed, HomeAssistantError
 from homeassistant.helpers.update_coordinator import UpdateFailed
@@ -298,7 +299,8 @@ async def test_full_refresh_merges_new_changed_and_stale_systems(
     assert coordinator.systems[0] is existing
     assert coordinator.systems[0].profile.name == "Updated"
     assert [system.profile.serial for system in coordinator.systems] == ["ABC123", "NEW123"]
-    assert len(carrier_api.api_websocket.callbacks) == 2
+    assert carrier_api.api_websocket.callbacks == [coordinator.updated_callback]
+    assert coordinator.websocket_data_updater is not None
     assert coordinator.data_flush is False
 
 
@@ -548,6 +550,7 @@ async def test_begin_post_write_intercept_captures_written_target_only() -> None
 async def test_reasserts_reverted_mode_and_still_publishes() -> None:
     """A reverted system mode is restored, and the message is still published."""
     coordinator = CarrierDataUpdateCoordinator.__new__(CarrierDataUpdateCoordinator)
+    coordinator.websocket_data_updater = None
     system = build_carrier_system()
     coordinator.systems = [system]
     coordinator._intercept_guards = {}
@@ -574,6 +577,7 @@ async def test_reasserts_reverted_mode_and_still_publishes() -> None:
 async def test_system_level_write_reasserts_mode_without_zone() -> None:
     """A system-level write (zone_api_id=None) protects mode and records no zone."""
     coordinator = CarrierDataUpdateCoordinator.__new__(CarrierDataUpdateCoordinator)
+    coordinator.websocket_data_updater = None
     system = build_carrier_system()
     coordinator.systems = [system]
     coordinator._intercept_guards = {}
@@ -605,6 +609,7 @@ async def test_system_level_write_reasserts_mode_without_zone() -> None:
 async def test_reasserts_reverted_setpoint_and_still_publishes() -> None:
     """A reverted set point is restored to the written value; message still published."""
     coordinator = CarrierDataUpdateCoordinator.__new__(CarrierDataUpdateCoordinator)
+    coordinator.websocket_data_updater = None
     system = build_carrier_system()
     coordinator.systems = [system]
     coordinator._intercept_guards = {}
@@ -638,6 +643,7 @@ async def test_reasserts_reverted_setpoint_and_still_publishes() -> None:
 async def test_matching_state_is_not_rewritten() -> None:
     """When nothing reverted, re-assert leaves state as-is and still publishes."""
     coordinator = CarrierDataUpdateCoordinator.__new__(CarrierDataUpdateCoordinator)
+    coordinator.websocket_data_updater = None
     system = build_carrier_system()
     coordinator.systems = [system]
     coordinator._intercept_guards = {}
@@ -668,6 +674,7 @@ async def test_control_revert_does_not_drop_other_system_update() -> None:
     Assistant.
     """
     coordinator = CarrierDataUpdateCoordinator.__new__(CarrierDataUpdateCoordinator)
+    coordinator.websocket_data_updater = None
     system_a = build_carrier_system(serial="A", zone_id="1")
     system_b = build_carrier_system(serial="B", zone_id="2")
     coordinator.systems = [system_a, system_b]
@@ -704,6 +711,7 @@ async def test_legit_change_on_unwritten_system_survives() -> None:
     untouched instead of being reverted to the written system's stale snapshot.
     """
     coordinator = CarrierDataUpdateCoordinator.__new__(CarrierDataUpdateCoordinator)
+    coordinator.websocket_data_updater = None
     system_a = build_carrier_system(serial="A", zone_id="1")
     system_b = build_carrier_system(serial="B", zone_id="2")
     coordinator.systems = [system_a, system_b]
@@ -741,6 +749,7 @@ async def test_overlapping_windows_protect_each_written_target() -> None:
     write overwrite the first, silently abandoning the first target's revert guard.
     """
     coordinator = CarrierDataUpdateCoordinator.__new__(CarrierDataUpdateCoordinator)
+    coordinator.websocket_data_updater = None
     system_a = build_carrier_system(serial="A", zone_id="1")
     system_b = build_carrier_system(serial="B", zone_id="2")
     coordinator.systems = [system_a, system_b]
@@ -784,6 +793,7 @@ async def test_overlapping_windows_protect_each_written_target() -> None:
 async def test_updated_callback_notifies_when_not_in_window() -> None:
     """Outside a post-write window, updates publish normally without re-assert."""
     coordinator = CarrierDataUpdateCoordinator.__new__(CarrierDataUpdateCoordinator)
+    coordinator.websocket_data_updater = None
     coordinator.systems = [build_carrier_system()]
     coordinator._intercept_guards = {}
 
@@ -803,6 +813,7 @@ async def test_updated_callback_notifies_when_not_in_window() -> None:
 async def test_expired_guard_is_pruned_and_not_reasserted() -> None:
     """A guard past its expiry is dropped and no longer re-asserts a revert."""
     coordinator = CarrierDataUpdateCoordinator.__new__(CarrierDataUpdateCoordinator)
+    coordinator.websocket_data_updater = None
     system = build_carrier_system()
     coordinator.systems = [system]
     original_mode = system.config.mode
@@ -842,6 +853,7 @@ async def test_same_system_zone_guard_expiry_is_independent() -> None:
     per-system clock would let the sibling write extend the first zone's guard.
     """
     coordinator = CarrierDataUpdateCoordinator.__new__(CarrierDataUpdateCoordinator)
+    coordinator.websocket_data_updater = None
     system = build_carrier_system(serial="A", zone_id="1", second_zone_id="2")
     coordinator.systems = [system]
     coordinator._intercept_guards = {}
@@ -971,6 +983,7 @@ async def test_energy_refresh_escalates_after_threshold(
 async def test_updated_callback_records_timestamp_and_notifies_listeners() -> None:
     """Handle websocket callbacks by timestamping and notifying listeners."""
     coordinator = CarrierDataUpdateCoordinator.__new__(CarrierDataUpdateCoordinator)
+    coordinator.websocket_data_updater = None
     coordinator.systems = [build_carrier_system()]
     coordinator._intercept_guards = {}
     notified = False
@@ -996,6 +1009,7 @@ async def test_updated_callback_does_not_timestamp_messages_without_a_device(
 ) -> None:
     """Leave the websocket timestamp alone for keepalive replies and other non-device messages."""
     coordinator = CarrierDataUpdateCoordinator.__new__(CarrierDataUpdateCoordinator)
+    coordinator.websocket_data_updater = None
     coordinator.systems = [build_carrier_system()]
     coordinator._intercept_guards = {}
     coordinator.timestamp_websocket = None
@@ -1004,6 +1018,62 @@ async def test_updated_callback_does_not_timestamp_messages_without_a_device(
         await coordinator.updated_callback(message)
 
     assert coordinator.timestamp_websocket is None
+
+
+@pytest.mark.asyncio
+async def test_updated_callback_applies_message_with_websocket_data_updater() -> None:
+    """Hand each websocket message to the data updater before notifying listeners."""
+    coordinator = CarrierDataUpdateCoordinator.__new__(CarrierDataUpdateCoordinator)
+    coordinator.systems = [build_carrier_system()]
+    coordinator._intercept_guards = {}
+    coordinator.data_flush = False
+    handled: list[str] = []
+
+    async def fake_message_handler(message: str) -> None:
+        """Record the message handed to the data updater."""
+        handled.append(message)
+
+    coordinator.websocket_data_updater = SimpleNamespace(  # type: ignore[assignment]
+        message_handler=fake_message_handler
+    )
+
+    with patch.object(coordinator, "async_update_listeners", lambda: None):
+        await coordinator.updated_callback('{"deviceId": "ABC123"}')
+
+    assert handled == ['{"deviceId": "ABC123"}']
+    assert coordinator.data_flush is False
+
+
+@pytest.mark.asyncio
+async def test_updated_callback_flushes_data_on_partial_message() -> None:
+    """Request a full refresh when a websocket message is not valid JSON."""
+    coordinator = CarrierDataUpdateCoordinator.__new__(CarrierDataUpdateCoordinator)
+    coordinator.systems = [build_carrier_system()]
+    coordinator._intercept_guards = {}
+    coordinator.data_flush = False
+    coordinator.websocket_data_updater = WebsocketDataUpdater(systems=coordinator.systems)
+    refresh_requests = 0
+    notified = False
+
+    async def fake_request_refresh() -> None:
+        """Record the refresh request."""
+        nonlocal refresh_requests
+        refresh_requests += 1
+
+    def fake_update_listeners() -> None:
+        """Record listener notification."""
+        nonlocal notified
+        notified = True
+
+    with (
+        patch.object(coordinator, "async_request_refresh", fake_request_refresh),
+        patch.object(coordinator, "async_update_listeners", fake_update_listeners),
+    ):
+        await coordinator.updated_callback('{"deviceId": "ABC123", "payload": {')
+
+    assert coordinator.data_flush is True
+    assert refresh_requests == 1
+    assert notified is True
 
 
 def test_system_returns_matching_system_or_none() -> None:
@@ -1031,6 +1101,7 @@ def _bare_coordinator(
     coordinator.systems = [build_carrier_system()]
     coordinator.entry_level_systems = []
     coordinator._intercept_guards = {}
+    coordinator.websocket_data_updater = None
     coordinator.resiliency = ResiliencyState(
         unauthorized_threshold=UNAUTHORIZED_RETRY_THRESHOLD,
         transient_threshold=TRANSIENT_FAILURE_THRESHOLD,
