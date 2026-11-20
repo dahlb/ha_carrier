@@ -464,7 +464,6 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator[list[dict[str, Any]]]):
             api_websocket = self.api_connection.api_websocket
             if api_websocket is None:
                 raise RuntimeError("Carrier API websocket client is not initialized")
-            api_websocket.callback_add(self.websocket_data_updater.message_handler)
             api_websocket.callback_add(self.updated_callback)
             self._websocket_initialized = True
         if _LOGGER.isEnabledFor(logging.DEBUG):
@@ -724,6 +723,20 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator[list[dict[str, Any]]]):
         Returns:
             None: Listener state is refreshed in-place.
         """
+        if self.websocket_data_updater is not None:
+            try:
+                await self.websocket_data_updater.message_handler(message)
+            except JSONDecodeError as error:
+                # assuming partial message and flushing data
+                _LOGGER.debug(
+                    "Failed to decode websocket message: %s",
+                    error,
+                )
+                self.data_flush = True
+                await self.async_request_refresh()
+        else:
+            _LOGGER.debug("websocket update received before websocket_data_updater was initialized")
+
         if is_device_message(message):
             self.timestamp_websocket = datetime.now(UTC)
         _LOGGER.debug("websocket updated system")
