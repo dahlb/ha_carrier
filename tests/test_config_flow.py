@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Coroutine
+from collections.abc import Callable, Coroutine
+from datetime import timedelta
 import json
 from pathlib import Path
 from types import SimpleNamespace
@@ -629,3 +630,25 @@ async def test_reauth_of_a_legacy_entry_aborts_when_the_identity_is_already_conf
     assert result["type"] is FlowResultType.ABORT
     assert result["reason"] == "already_configured"
     assert legacy_entry.unique_id == USERNAME
+
+
+@pytest.mark.asyncio
+async def test_options_change_reloads_the_entry(
+    hass: HomeAssistant,
+    setup_integration: Callable[..., Any],
+) -> None:
+    """Reload the entry when options change, so a new coordinator uses them."""
+    config_entry = await setup_integration(options={CONF_INFINITE_HOLDS: True})
+    first_coordinator = config_entry.runtime_data
+
+    form = await hass.config_entries.options.async_init(config_entry.entry_id)
+    result = await hass.config_entries.options.async_configure(
+        form["flow_id"],
+        user_input={CONF_INFINITE_HOLDS: True, CONF_FULL_REFRESH_INTERVAL: 30},
+    )
+    await hass.async_block_till_done()
+
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert config_entry.state is ConfigEntryState.LOADED
+    assert config_entry.runtime_data is not first_coordinator
+    assert config_entry.runtime_data.full_refresh_interval == timedelta(minutes=30)

@@ -628,8 +628,9 @@ async def test_set_hvac_mode_rejects_an_unknown_mode(
     await setup_integration()
     entity = entity_for_unique_id(hass, CLIMATE_DOMAIN, ZONE_1)
 
-    with pytest.raises(ValueError, match="unsupported mode"):
+    with pytest.raises(ServiceValidationError) as exc_info:
         await entity.async_set_hvac_mode("dry")
+    assert exc_info.value.translation_key == "unsupported_hvac_mode"
 
 
 @pytest.mark.asyncio

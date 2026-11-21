@@ -644,6 +644,23 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator[list[dict[str, Any]]]):
                 translation_domain=DOMAIN, translation_key="request_rejected"
             ) from error
 
+    async def async_request_full_refresh(self, *, immediate: bool = False) -> None:
+        """Mark the cached data dirty and refresh it with a full read.
+
+        A plain coordinator refresh is the light energy-only refresh, so callers
+        that need fresh system status (a resumed schedule, a program write, a
+        websocket failure) use this instead of setting ``data_flush`` themselves.
+
+        Args:
+            immediate: True to refresh now and wait for it; False to go through
+                the request-refresh debouncer, which coalesces bursts of requests.
+        """
+        self.data_flush = True
+        if immediate:
+            await self.async_refresh()
+        else:
+            await self.async_request_refresh()
+
     def system(self, system_serial: str) -> System | None:
         """Return the tracked system matching a Carrier serial.
 
@@ -732,8 +749,7 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator[list[dict[str, Any]]]):
                     "Failed to decode websocket message: %s",
                     error,
                 )
-                self.data_flush = True
-                await self.async_request_refresh()
+                await self.async_request_full_refresh()
         else:
             _LOGGER.debug("websocket update received before websocket_data_updater was initialized")
 

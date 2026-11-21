@@ -11,6 +11,8 @@ import pytest
 
 from custom_components.ha_carrier.diagnostics import async_get_config_entry_diagnostics
 
+from .conftest import FakeCarrierApiConnection, build_entry_level_system
+
 
 @pytest.mark.asyncio
 async def test_diagnostics_redacts_config_entry_and_includes_device_entities(
@@ -37,3 +39,37 @@ async def test_diagnostics_redacts_config_entry_and_includes_device_entities(
         == "home"
     )
     assert diagnostics["ABC123"]["device"]["entities"]
+
+
+@pytest.mark.asyncio
+async def test_diagnostics_include_coordinator_state_and_entry_level_systems(
+    hass: HomeAssistant,
+    carrier_api: FakeCarrierApiConnection,
+    setup_integration: Callable[..., Any],
+) -> None:
+    """Report coordinator health and redacted entry-level payloads."""
+    carrier_api.entry_level_systems = [build_entry_level_system()]
+    config_entry = await setup_integration()
+
+    diagnostics = await async_get_config_entry_diagnostics(hass, config_entry)
+
+    coordinator = diagnostics["coordinator"]
+    assert coordinator["last_update_success"] is True
+    assert coordinator["last_exception"] is None
+    assert coordinator["data_flush"] is False
+    assert coordinator["websocket_task_running"] is True
+    assert coordinator["timestamp_all_data"] is not None
+    assert coordinator["update_interval_seconds"] > 0
+    assert coordinator["full_refresh_interval_seconds"] > 0
+    assert coordinator["resiliency"] == {
+        "consecutive_unauthorized": 0,
+        "consecutive_transient": 0,
+    }
+
+    entry_level = diagnostics["entry_level_systems"]
+    assert entry_level["loaded"] is True
+    [system] = entry_level["systems"]
+    assert system["serial"] == "**REDACTED**"
+    assert system["location_id"] == "**REDACTED**"
+    assert system["connection"]["deviceId"] == "**REDACTED**"
+    assert system["model"] == "TSTATCCEEF-01"

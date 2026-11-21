@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import datetime, timedelta
 import logging
 
 from carrier_api import EnergyPeriod, EnergyUsageMetric, StatusUnit, System, TemperatureUnits
@@ -26,6 +27,7 @@ from homeassistant.const import (
 )
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.util import dt as dt_util
 
 from . import ConfigEntryCarrier
 from .coordinator import CarrierDataUpdateCoordinator
@@ -37,6 +39,31 @@ _LOGGER: logging.Logger = logging.getLogger(__name__)
 # Read-only platform: the coordinator fetches data centrally, so entity updates
 # never call Carrier and need no limit.
 PARALLEL_UPDATES = 0
+
+
+def start_of_yesterday() -> datetime:
+    """Return local midnight at the start of yesterday.
+
+    Carrier's ``day1`` energy period is the previous whole day, so its total
+    resets when that day rolls over.
+
+    Returns:
+        datetime: Timezone-aware start of the previous local day.
+    """
+    return dt_util.start_of_local_day(dt_util.now().date() - timedelta(days=1))
+
+
+def start_of_last_month() -> datetime:
+    """Return local midnight on the first day of the previous month.
+
+    Carrier's ``month1`` energy period is the previous whole month, so its
+    total resets when that month rolls over.
+
+    Returns:
+        datetime: Timezone-aware start of the previous local month.
+    """
+    first_of_this_month = dt_util.now().date().replace(day=1)
+    return dt_util.start_of_local_day((first_of_this_month - timedelta(days=1)).replace(day=1))
 
 
 def _outdoor_unit(system: System) -> StatusUnit | None:
@@ -669,6 +696,9 @@ class DailyEnergyMeasurementSensor(CarrierSensor):
         """Update daily energy attrs from coordinator data."""
         value = self.carrier_system.energy.value_for_period_metric(EnergyPeriod.DAY_1, self.metric)
         self._attr_native_value = value
+        # A TOTAL sensor without last_reset makes every day-to-day drop count as
+        # negative consumption in long-term statistics.
+        self._attr_last_reset = start_of_yesterday()
         self._attr_available = value is not None
 
 
@@ -709,6 +739,7 @@ class MonthlyEnergyMeasurementSensor(CarrierSensor):
             EnergyPeriod.MONTH_1, self.metric
         )
         self._attr_native_value = value
+        self._attr_last_reset = start_of_last_month()
         self._attr_available = value is not None
 
 
