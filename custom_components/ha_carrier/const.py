@@ -37,6 +37,8 @@ TO_REDACT_RAW: set[str] = {
     "href",
     "weatherPostalCode",
 }
+# Entry-level (Smart Thermostat) payloads also carry location and device ids.
+TO_REDACT_ENTRY_LEVEL: set[str] = {*TO_REDACT_RAW, "location_id", "deviceId"}
 TO_REDACT_DEVICE: set[str] = {"identifiers"}
 TO_REDACT_ENTITIES: set[str] = set()
 

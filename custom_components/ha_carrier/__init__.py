@@ -1,7 +1,9 @@
 """Initialize and manage the Home Assistant Carrier integration lifecycle."""
 
 import asyncio
+import contextlib
 from datetime import timedelta
+import functools
 import logging
 
 from carrier_api import CarrierApiConnectionError
@@ -86,6 +88,11 @@ async def _async_wait_for_coordinator_recovery(
     leaves login attempts and reauth escalation to the coordinator's own
     polling.
 
+    The coordinator notifies its listeners when a refresh succeeds after a
+    failure, so recovery wakes this wait at once. It does not notify them when
+    a failing refresh escalates to reauthentication, so the wait also rechecks
+    every ``WEBSOCKET_AUTH_RECOVERY_POLL_SECONDS``.
+
     Args:
         coordinator: Coordinator whose refresh results gate reconnection.
 
@@ -93,32 +100,52 @@ async def _async_wait_for_coordinator_recovery(
         bool: True once a refresh succeeds; False when the coordinator has
             escalated to reauthentication.
     """
-    while not coordinator.last_update_success:
-        if isinstance(coordinator.last_exception, ConfigEntryAuthFailed):
-            return False
-        await asyncio.sleep(WEBSOCKET_AUTH_RECOVERY_POLL_SECONDS)
+    refreshed = asyncio.Event()
+
+    @callback
+    def _async_refreshed() -> None:
+        """Wake the wait when the coordinator publishes a refresh."""
+        refreshed.set()
+
+    remove_listener = coordinator.async_add_listener(_async_refreshed)
+    try:
+        while not coordinator.last_update_success:
+            if isinstance(coordinator.last_exception, ConfigEntryAuthFailed):
+                return False
+            refreshed.clear()
+            with contextlib.suppress(TimeoutError):
+                async with asyncio.timeout(WEBSOCKET_AUTH_RECOVERY_POLL_SECONDS):
+                    await refreshed.wait()
+    finally:
+        remove_listener()
     return True
 
 
-async def _async_await_websocket_task(websocket_task: asyncio.Task[None]) -> None:
-    """Await websocket task shutdown after cancellation.
+@callback
+def _async_websocket_task_done(
+    coordinator: CarrierDataUpdateCoordinator, websocket_task: asyncio.Task[None]
+) -> None:
+    """Forget a finished websocket task and log how it failed, if it did.
+
+    The task is created with ``ConfigEntry.async_create_background_task``, so
+    Home Assistant cancels it and waits for it when the entry unloads, and when
+    setup fails after it was started. This callback reports an unexpected
+    failure as soon as it happens instead of leaving it unretrieved.
 
     Args:
-        websocket_task: Background websocket listener task to await.
-
-    Returns:
-        None: The task is fully drained before unload continues.
+        coordinator: Coordinator that tracks the websocket task.
+        websocket_task: The websocket task that just finished.
     """
-    try:
-        await websocket_task
-    except asyncio.CancelledError:
-        pass
-    except WEBSOCKET_RECOVERABLE_EXCEPTIONS:
-        _LOGGER.exception("websocket task raised during cancellation")
-    except WEBSOCKET_DATA_UPDATE_EXCEPTIONS:
-        _LOGGER.exception("websocket task data update failed before cancellation")
-    except RuntimeError:
-        _LOGGER.exception("websocket task raised RuntimeError during cancellation")
+    if coordinator.websocket_task is websocket_task:
+        coordinator.websocket_task = None
+    if websocket_task.cancelled():
+        return
+    if (error := websocket_task.exception()) is not None:
+        _LOGGER.error(
+            "Carrier websocket task stopped unexpectedly: %s",
+            type(error).__name__,
+            exc_info=error,
+        )
 
 
 async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntryCarrier) -> bool:
@@ -194,8 +221,7 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntryCarrie
                         raise RuntimeError("Carrier API websocket client is not initialized")
                     await api_websocket.listener()
                     _LOGGER.debug("websocket task ending")
-                    coordinator.data_flush = True
-                    await coordinator.async_request_refresh()
+                    await coordinator.async_request_full_refresh()
                 except asyncio.CancelledError:
                     _LOGGER.debug("websocket task cancelled")
                     raise
@@ -208,8 +234,7 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntryCarrie
                         delay,
                         attempt + 1,
                     )
-                    coordinator.data_flush = True
-                    await coordinator.async_request_refresh()
+                    await coordinator.async_request_full_refresh()
                     await asyncio.sleep(delay)
                     attempt += 1
                     if is_unauthorized_error(
@@ -233,31 +258,20 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntryCarrie
                         attempt + 1,
                         exc_info=error,
                     )
-                    coordinator.data_flush = True
-                    await coordinator.async_request_refresh()
+                    await coordinator.async_request_full_refresh()
                     await asyncio.sleep(delay)
                     attempt += 1
                 else:
                     attempt = 0
                     await asyncio.sleep(compute_backoff_delay(WEBSOCKET_RETRY_POLICY, attempt))
 
-        websocket_task = hass.async_create_background_task(
+        websocket_task = config_entry.async_create_background_task(
+            hass,
             ws_updates(),
             f"{DOMAIN}_ws_{config_entry.entry_id}",
         )
         coordinator.websocket_task = websocket_task
-
-        def cancel_websocket_task() -> None:
-            """Request websocket listener shutdown during entry unload.
-
-            ConfigEntry.async_on_unload expects a synchronous callback.
-            Only cancel the task here; the coordinator keeps the task reference
-            and async_unload_entry awaits it so websocket cleanup actually
-            finishes before teardown completes.
-            """
-            websocket_task.cancel()
-
-        config_entry.async_on_unload(cancel_websocket_task)
+        websocket_task.add_done_callback(functools.partial(_async_websocket_task_done, coordinator))
     # Home Assistant logs a not-ready setup (and each background retry) and
     # starts reauthentication itself, so these paths only debug-log the cause to
     # avoid repeating a stack trace on every setup retry while Carrier is down.
@@ -296,7 +310,6 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntryCarrie
     config_entry.async_on_unload(
         coordinator.async_add_listener(_async_remove_stale_devices_listener)
     )
-    config_entry.async_on_unload(config_entry.add_update_listener(async_update_options))
 
     return True
 
@@ -377,19 +390,6 @@ async def async_remove_config_entry_device(
     return not _device_serials(device_entry) & _current_serials(config_entry.runtime_data)
 
 
-async def async_update_options(hass: HomeAssistant, config_entry: ConfigEntryCarrier) -> None:
-    """Reload the integration when options are changed.
-
-    Args:
-        hass: Home Assistant instance.
-        config_entry: Updated configuration entry.
-
-    Returns:
-        None: This coroutine schedules and awaits the entry reload.
-    """
-    await hass.config_entries.async_reload(config_entry.entry_id)
-
-
 async def async_migrate_entry(hass: HomeAssistant, config_entry: ConfigEntryCarrier) -> bool:
     """Migrate Carrier config entries between config flow versions.
 
@@ -434,11 +434,6 @@ async def async_unload_entry(hass: HomeAssistant, config_entry: ConfigEntryCarri
         bool: True when all platforms were unloaded cleanly.
     """
     _LOGGER.debug("unload entry")
-    websocket_task = config_entry.runtime_data.websocket_task
-
-    if websocket_task is not None:
-        websocket_task.cancel()
-        await _async_await_websocket_task(websocket_task)
-        config_entry.runtime_data.websocket_task = None
-
+    # The websocket task is a config entry background task, so Home Assistant
+    # cancels it and waits for it once this returns.
     return await hass.config_entries.async_unload_platforms(config_entry, PLATFORMS)

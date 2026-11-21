@@ -1314,3 +1314,36 @@ def test_mapped_system_data_rejects_non_mapping_payloads() -> None:
 
     with pytest.raises(TypeError, match="non-mapping payload"):
         CarrierDataUpdateCoordinator.mapped_system_data(system)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("immediate", "expected_call"),
+    [(True, "async_refresh"), (False, "async_request_refresh")],
+)
+async def test_request_full_refresh_marks_data_dirty_and_refreshes(
+    hass: HomeAssistant,
+    immediate: bool,
+    expected_call: str,
+) -> None:
+    """Flag a full read, then refresh now or through the debouncer."""
+    coordinator = CarrierDataUpdateCoordinator(hass, FakeCarrierApiConnection())
+    coordinator.data_flush = False
+    calls: list[str] = []
+
+    async def _record_refresh() -> None:
+        """Record a direct refresh."""
+        calls.append("async_refresh")
+
+    async def _record_request_refresh() -> None:
+        """Record a debounced refresh request."""
+        calls.append("async_request_refresh")
+
+    with (
+        patch.object(coordinator, "async_refresh", _record_refresh),
+        patch.object(coordinator, "async_request_refresh", _record_request_refresh),
+    ):
+        await coordinator.async_request_full_refresh(immediate=immediate)
+
+    assert coordinator.data_flush is True
+    assert calls == [expected_call]

@@ -182,6 +182,11 @@ def async_redact_data(data: Any, to_redact: Iterable[Any]) -> Any:
 def _iter_exception_chain(error: BaseException) -> Iterable[BaseException]:
     """Yield the exception followed by its __cause__ and __context__ chains.
 
+    A ``__context__`` is followed only when it is not suppressed, matching how
+    Python itself reports the chain. ``raise ... from ...`` suppresses the
+    context, so an error that was handled before an unrelated one was raised
+    (for example an earlier 401) does not change how the new error is classified.
+
     Args:
         error: Exception to walk.
 
@@ -196,7 +201,7 @@ def _iter_exception_chain(error: BaseException) -> Iterable[BaseException]:
             continue
         seen.add(id(current))
         yield current
-        if current.__context__ is not None:
+        if current.__context__ is not None and not current.__suppress_context__:
             stack.append(current.__context__)
         if current.__cause__ is not None:
             stack.append(current.__cause__)

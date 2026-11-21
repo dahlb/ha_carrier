@@ -18,7 +18,7 @@ import pytest
 from pytest_homeassistant.common import MockConfigEntry
 
 from custom_components.ha_carrier import (
-    _async_await_websocket_task,
+    _async_websocket_task_done,
     async_migrate_entry,
     async_remove_config_entry_device,
     async_setup_entry,
@@ -123,6 +123,7 @@ async def test_websocket_task_stops_after_coordinator_escalates_to_reauth(
     carrier_api: FakeCarrierApiConnection,
     monkeypatch: pytest.MonkeyPatch,
     setup_integration: Callable[..., Any],
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
     """Stop reconnecting, and so retrying the password, once reauth is required."""
     monkeypatch.setattr("custom_components.ha_carrier.compute_backoff_delay", lambda *_: 0)
@@ -136,18 +137,20 @@ async def test_websocket_task_stops_after_coordinator_escalates_to_reauth(
 
     monkeypatch.setattr(CarrierDataUpdateCoordinator, "async_request_refresh", _refresh_escalates)
 
-    config_entry = await setup_integration()
-    websocket_task = config_entry.runtime_data.websocket_task
-    assert websocket_task is not None
+    with caplog.at_level(logging.ERROR, logger="custom_components.ha_carrier"):
+        config_entry = await setup_integration()
+        coordinator = config_entry.runtime_data
 
-    for _ in range(10):
-        await hass.async_block_till_done()
-        if websocket_task.done():
-            break
-        await asyncio.sleep(0)
+        for _ in range(10):
+            await hass.async_block_till_done()
+            if coordinator.websocket_task is None:
+                break
+            await asyncio.sleep(0)
 
-    assert websocket_task.done()
-    assert websocket_task.exception() is None
+    # The task ended on its own (it clears its reference when done) without an
+    # unexpected failure.
+    assert coordinator.websocket_task is None
+    assert "stopped unexpectedly" not in caplog.text
     assert carrier_api.api_websocket.listener_calls == 1
 
 
@@ -194,59 +197,97 @@ async def test_websocket_task_waits_for_coordinator_recovery_after_auth_error(
 
 
 @pytest.mark.asyncio
-async def test_unload_ignores_websocket_task_data_update_failure(
+async def test_websocket_task_wakes_on_coordinator_recovery_without_polling(
     hass: HomeAssistant,
+    carrier_api: FakeCarrierApiConnection,
+    monkeypatch: pytest.MonkeyPatch,
     setup_integration: Callable[..., Any],
 ) -> None:
-    """Unload cleanly when the websocket task already failed on bad update data."""
+    """Reconnect as soon as the coordinator publishes a successful refresh."""
+    monkeypatch.setattr("custom_components.ha_carrier.compute_backoff_delay", lambda *_: 0)
+    # A poll this long would never fire during the test, so only the coordinator
+    # listener can wake the wait.
+    monkeypatch.setattr("custom_components.ha_carrier.WEBSOCKET_AUTH_RECOVERY_POLL_SECONDS", 3600)
+    carrier_api.api_websocket.listener_errors.append(CarrierApiAuthError("rejected"))
+
+    async def _refresh_fails(self: CarrierDataUpdateCoordinator) -> None:
+        """Simulate a coordinator refresh that failed below the reauth threshold."""
+        self.last_update_success = False
+        self.last_exception = None
+
+    monkeypatch.setattr(CarrierDataUpdateCoordinator, "async_request_refresh", _refresh_fails)
+
     config_entry = await setup_integration()
     coordinator = config_entry.runtime_data
+    for _ in range(10):
+        await hass.async_block_till_done()
+        await asyncio.sleep(0)
+    assert carrier_api.api_websocket.listener_calls == 1
 
-    async def fail_with_bad_websocket_data() -> None:
-        """Raise the same exception family as malformed Carrier websocket payloads."""
-        raise KeyError("id")
+    coordinator.last_update_success = True
+    coordinator.async_update_listeners()
+    for _ in range(10):
+        await hass.async_block_till_done()
+        if carrier_api.api_websocket.listener_calls >= 2:
+            break
+        await asyncio.sleep(0)
 
-    failed_task: asyncio.Task[None] = hass.async_create_task(
-        fail_with_bad_websocket_data(),
-        name="failed_carrier_websocket",
-    )
-    coordinator.websocket_task = failed_task
-    await hass.async_block_till_done()
-
-    assert failed_task.done()
-    assert await hass.config_entries.async_unload(config_entry.entry_id)
-    await hass.async_block_till_done()
-
-    assert config_entry.state is ConfigEntryState.NOT_LOADED
-    assert coordinator.websocket_task is None
+    assert carrier_api.api_websocket.listener_calls == 2
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize(
-    "task_error",
-    [
-        CarrierApiConnectionError("offline"),
-        CarrierApiAuthError("unauthorized"),
-        RuntimeError("websocket missing"),
-    ],
-)
-async def test_await_websocket_task_suppresses_expected_failures(
+async def test_websocket_task_failure_is_logged_and_forgotten(
     hass: HomeAssistant,
-    task_error: Exception,
+    setup_integration: Callable[..., Any],
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
-    """Drain failed websocket tasks for expected recoverable failure families."""
+    """Log an unexpected websocket task failure once and clear the task reference."""
+    config_entry = await setup_integration()
+    coordinator = config_entry.runtime_data
 
     async def fail_websocket_task() -> None:
-        """Raise the configured websocket task failure."""
-        raise task_error
+        """Raise an error the websocket loop does not handle."""
+        raise RuntimeError("websocket missing")
 
     failed_task: asyncio.Task[None] = hass.async_create_task(
-        fail_websocket_task(),
-        name="failed_carrier_websocket",
+        fail_websocket_task(), name="failed_carrier_websocket"
     )
     await hass.async_block_till_done()
+    coordinator.websocket_task = failed_task
 
-    await _async_await_websocket_task(failed_task)
+    with caplog.at_level(logging.ERROR, logger="custom_components.ha_carrier"):
+        _async_websocket_task_done(coordinator, failed_task)
+
+    assert coordinator.websocket_task is None
+    assert "Carrier websocket task stopped unexpectedly: RuntimeError" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_websocket_task_done_ignores_cancellation_and_other_tasks(
+    hass: HomeAssistant,
+    setup_integration: Callable[..., Any],
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A cancelled task logs nothing and never clears a newer task reference."""
+    config_entry = await setup_integration()
+    coordinator = config_entry.runtime_data
+    current_task = coordinator.websocket_task
+
+    async def wait_forever() -> None:
+        """Wait until cancelled."""
+        await asyncio.Event().wait()
+
+    old_task: asyncio.Task[None] = hass.async_create_task(wait_forever(), name="old_websocket")
+    await asyncio.sleep(0)
+    old_task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await old_task
+
+    with caplog.at_level(logging.DEBUG, logger="custom_components.ha_carrier"):
+        _async_websocket_task_done(coordinator, old_task)
+
+    assert coordinator.websocket_task is current_task
+    assert "stopped unexpectedly" not in caplog.text
 
 
 @pytest.mark.asyncio

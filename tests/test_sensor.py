@@ -3,17 +3,24 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from datetime import date, datetime
 from typing import Any
 
 from carrier_api import TemperatureUnits
+from freezegun.api import FrozenDateTimeFactory
 from homeassistant.const import STATE_UNAVAILABLE, EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
+from homeassistant.util import dt as dt_util
 from homeassistant.util.unit_system import METRIC_SYSTEM, US_CUSTOMARY_SYSTEM
 import pytest
 
 from custom_components.ha_carrier.const import DOMAIN
-from custom_components.ha_carrier.sensor import CarrierSensor
+from custom_components.ha_carrier.sensor import (
+    CarrierSensor,
+    start_of_last_month,
+    start_of_yesterday,
+)
 
 from .conftest import FakeCarrierApiConnection, build_carrier_system, entity_id_for_unique_id
 
@@ -658,3 +665,52 @@ async def test_zone_damper_and_conditioning_sensors(
     conditioning = hass.states.get(conditioning_id)
     assert conditioning is not None
     assert conditioning.state == "idle"
+
+
+@pytest.mark.parametrize(
+    ("now", "expected_yesterday", "expected_last_month"),
+    [
+        ((2026, 3, 15, 12, 0), date(2026, 3, 14), date(2026, 2, 1)),
+        ((2026, 3, 1, 0, 30), date(2026, 2, 28), date(2026, 2, 1)),
+        ((2026, 1, 1, 8, 0), date(2025, 12, 31), date(2025, 12, 1)),
+    ],
+)
+def test_energy_period_starts_follow_local_calendar(
+    hass: HomeAssistant,
+    freezer: FrozenDateTimeFactory,
+    now: tuple[int, int, int, int, int],
+    expected_yesterday: date,
+    expected_last_month: date,
+) -> None:
+    """Start yesterday and last month at local midnight, across month and year ends."""
+    freezer.move_to(datetime(*now, tzinfo=dt_util.get_default_time_zone()))
+
+    assert start_of_yesterday() == dt_util.start_of_local_day(expected_yesterday)
+    assert start_of_last_month() == dt_util.start_of_local_day(expected_last_month)
+
+
+@pytest.mark.asyncio
+async def test_period_energy_sensors_report_last_reset(
+    hass: HomeAssistant,
+    carrier_api: FakeCarrierApiConnection,
+    setup_integration: Callable[..., Any],
+    freezer: FrozenDateTimeFactory,
+) -> None:
+    """Give the yesterday and last-month totals a last_reset at their period start."""
+    freezer.move_to(datetime(2026, 3, 15, 12, 0, tzinfo=dt_util.get_default_time_zone()))
+    carrier_api.systems = [build_carrier_system()]
+
+    await setup_integration()
+
+    expected_last_resets = {
+        "abc123_cooling_energy_yesterday": date(2026, 3, 14),
+        "abc123_cooling_energy_last_month": date(2026, 2, 1),
+    }
+    for unique_id, period_start in expected_last_resets.items():
+        state = hass.states.get(entity_id_for_unique_id(hass, "sensor", unique_id))
+
+        assert state is not None
+        assert state.attributes["state_class"] == "total"
+        assert state.attributes["last_reset"] == (
+            dt_util.start_of_local_day(period_start).isoformat()
+        )

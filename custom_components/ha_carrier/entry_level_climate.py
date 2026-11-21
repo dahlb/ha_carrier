@@ -14,7 +14,7 @@ from homeassistant.components.climate import (
 )
 from homeassistant.components.climate.const import ATTR_TARGET_TEMP_HIGH, ATTR_TARGET_TEMP_LOW
 from homeassistant.const import ATTR_TEMPERATURE, PRECISION_WHOLE, UnitOfTemperature
-from homeassistant.exceptions import HomeAssistantError
+from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util import slugify
@@ -225,11 +225,15 @@ class EntryLevelThermostat(CoordinatorEntity[CarrierDataUpdateCoordinator], Clim
             hvac_mode: Requested Home Assistant HVAC mode.
 
         Raises:
-            ValueError: Raised when the mode is unsupported.
+            ServiceValidationError: Raised when the mode is unsupported.
         """
         mode = HVAC_TO_MODE.get(hvac_mode)
         if mode is None:
-            raise ValueError(f"unsupported mode: {hvac_mode}")
+            raise ServiceValidationError(
+                translation_domain=DOMAIN,
+                translation_key="unsupported_hvac_mode",
+                translation_placeholders={"hvac_mode": str(hvac_mode)},
+            )
         await self.coordinator.async_perform_api_call(
             "set entry-level mode",
             partial(

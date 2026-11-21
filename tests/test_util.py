@@ -55,16 +55,54 @@ def test_integration_imports_supported_carrier_api_exception_names(module_path: 
         (is_transient_transport_error, CarrierApiWebsocketError("temporary")),
     ],
 )
-def test_exception_classifiers_inspect_context_when_cause_exists(
+def test_exception_classifiers_inspect_unsuppressed_context(
     classifier: Callable[[BaseException], bool],
     nested_error: BaseException,
 ) -> None:
-    """Find classified errors on the context branch of an exception graph."""
+    """Find classified errors on an implicitly chained context."""
     error = RuntimeError("root")
-    error.__cause__ = ValueError("non-matching cause")
     error.__context__ = nested_error
 
     assert classifier(error) is True
+
+
+@pytest.mark.parametrize(
+    ("classifier", "nested_error"),
+    [
+        (is_unauthorized_error, CarrierApiAuthError("unauthorized")),
+        (is_transient_transport_error, CarrierApiConnectionError("temporary")),
+        (is_transient_transport_error, CarrierApiTokenRefreshError("temporary")),
+        (is_transient_transport_error, CarrierApiWebsocketError("temporary")),
+    ],
+)
+def test_exception_classifiers_ignore_context_suppressed_by_explicit_cause(
+    classifier: Callable[[BaseException], bool],
+    nested_error: BaseException,
+) -> None:
+    """Ignore an earlier, already handled error once ``raise ... from`` replaced it."""
+    error = RuntimeError("root")
+    error.__context__ = nested_error
+    # Setting __cause__ suppresses the context, exactly like ``raise ... from``.
+    error.__cause__ = ValueError("non-matching cause")
+
+    assert error.__suppress_context__ is True
+    assert classifier(error) is False
+
+
+def test_exception_classifiers_ignore_context_suppressed_by_from_none() -> None:
+    """``raise ... from None`` hides a handled 401 from classification."""
+
+    def _raise_unrelated_after_handled_401() -> None:
+        """Handle a 401, then raise an unrelated error with its context hidden."""
+        try:
+            raise CarrierApiAuthError("unauthorized")
+        except CarrierApiAuthError:
+            raise RuntimeError("unrelated") from None
+
+    with pytest.raises(RuntimeError) as exc_info:
+        _raise_unrelated_after_handled_401()
+
+    assert is_unauthorized_error(exc_info.value) is False
 
 
 def test_graphql_errors_are_not_classified_as_transient_transport() -> None:
@@ -131,3 +169,13 @@ def test_async_redact_data_passes_scalars_and_top_level_lists_through() -> None:
     """Return scalars unchanged and redact inside a top-level list."""
     assert async_redact_data("serial", {"serial"}) == "serial"
     assert async_redact_data([{"serial": "ABC"}, 1], {"serial"}) == [{"serial": REDACTED}, 1]
+
+
+def test_exception_classifiers_stop_on_a_cyclic_context_chain() -> None:
+    """Visit each exception once when contexts point back at each other."""
+    first = RuntimeError("first")
+    second = ValueError("second")
+    first.__context__ = second
+    second.__context__ = first
+
+    assert is_unauthorized_error(first) is False
