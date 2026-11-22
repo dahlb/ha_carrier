@@ -58,7 +58,7 @@ class CarrierSelect(CarrierEntity, SelectEntity):
         self,
         entity_name: str,
         coordinator: CarrierDataUpdateCoordinator,
-        system_serial: str | None = None,
+        system_serial: str,
         unique_id_suffix: str | None = None,
     ) -> None:
         """Initialize a Carrier select entity.
@@ -68,12 +68,7 @@ class CarrierSelect(CarrierEntity, SelectEntity):
             coordinator: Coordinator that provides Carrier data.
             system_serial: Carrier system serial for this entity.
             unique_id_suffix: Optional stable suffix used for the entity unique ID.
-
-        Raises:
-            ValueError: Raised when no Carrier system serial is provided.
         """
-        if system_serial is None:
-            raise ValueError("Carrier select system serial is required")
         super().__init__(
             entity_name=entity_name,
             coordinator=coordinator,

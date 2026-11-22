@@ -104,14 +104,11 @@ async def test_heat_source_select_rejects_an_unknown_option(
 
 
 @pytest.mark.asyncio
-async def test_base_select_requires_a_serial_and_defaults_to_unavailable(
+async def test_base_select_defaults_to_unavailable(
     hass: HomeAssistant,
     setup_integration: Callable[..., Any],
 ) -> None:
-    """Reject a missing serial and stay unavailable until a subclass reads data."""
+    """Stay unavailable until a subclass reads data."""
     entry = await setup_integration()
-
-    with pytest.raises(ValueError, match="serial is required"):
-        CarrierSelect("Test", entry.runtime_data, None)
 
     assert CarrierSelect("Test", entry.runtime_data, "ABC123").available is False
