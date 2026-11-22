@@ -16,11 +16,11 @@
 | custom\_components/ha\_carrier/exceptions.py            |        2 |        0 |        0 |        0 |    100% |           |
 | custom\_components/ha\_carrier/migrate.py               |      221 |        1 |      108 |        8 |     97% |221, 270-\>279, 344-\>351, 415-\>418, 420-\>422, 422-\>425, 437-\>452, 463-\>452 |
 | custom\_components/ha\_carrier/resiliency.py            |      102 |        0 |       30 |        0 |    100% |           |
-| custom\_components/ha\_carrier/select.py                |       51 |        0 |        8 |        0 |    100% |           |
+| custom\_components/ha\_carrier/select.py                |       49 |        0 |        6 |        0 |    100% |           |
 | custom\_components/ha\_carrier/sensor.py                |      369 |        0 |       60 |        0 |    100% |           |
 | custom\_components/ha\_carrier/services.py              |       22 |        0 |        0 |        0 |    100% |           |
 | custom\_components/ha\_carrier/util.py                  |       73 |        0 |       34 |        0 |    100% |           |
-| **TOTAL**                                               | **2097** |    **6** |  **600** |   **14** | **99%** |           |
+| **TOTAL**                                               | **2095** |    **6** |  **598** |   **14** | **99%** |           |
 
 
 ## Setup coverage badge
