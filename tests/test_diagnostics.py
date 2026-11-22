@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+import json
 from typing import Any
 
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
@@ -26,19 +27,19 @@ async def test_diagnostics_redacts_config_entry_and_includes_device_entities(
 
     assert diagnostics["entry"]["data"][CONF_USERNAME] == "**REDACTED**"
     assert diagnostics["entry"]["data"][CONF_PASSWORD] == "**REDACTED**"
-    assert diagnostics["ABC123"]["mapped_data"]["serial"] == "**REDACTED**"
-    assert diagnostics["ABC123"]["mapped_data"]["supported_hvac_capabilities"] == {
+    assert diagnostics["system_1"]["mapped_data"]["serial"] == "**REDACTED**"
+    assert diagnostics["system_1"]["mapped_data"]["supported_hvac_capabilities"] == {
         "cool": True,
         "fan": True,
         "heat": True,
     }
     assert (
-        diagnostics["ABC123"]["mapped_data"]["config"]["zones"][0]["current_activity"][
+        diagnostics["system_1"]["mapped_data"]["config"]["zones"][0]["current_activity"][
             "from_status"
         ]["type"]
         == "home"
     )
-    assert diagnostics["ABC123"]["device"]["entities"]
+    assert diagnostics["system_1"]["device"]["entities"]
 
 
 @pytest.mark.asyncio
@@ -73,3 +74,25 @@ async def test_diagnostics_include_coordinator_state_and_entry_level_systems(
     assert system["location_id"] == "**REDACTED**"
     assert system["connection"]["deviceId"] == "**REDACTED**"
     assert system["model"] == "TSTATCCEEF-01"
+
+
+@pytest.mark.asyncio
+async def test_diagnostics_never_contain_a_system_serial(
+    hass: HomeAssistant,
+    carrier_api: FakeCarrierApiConnection,
+    setup_integration: Callable[..., Any],
+) -> None:
+    """Keep every system serial out of the diagnostics, including keys and unique IDs."""
+    carrier_api.entry_level_systems = [build_entry_level_system()]
+    config_entry = await setup_integration()
+
+    diagnostics = await async_get_config_entry_diagnostics(hass, config_entry)
+
+    assert "ABC123" not in diagnostics
+    assert "system_1" in diagnostics
+    entities = diagnostics["system_1"]["device"]["entities"]
+    assert entities
+    assert all(entity["unique_id"] == "**REDACTED**" for entity in entities.values())
+    text = json.dumps(diagnostics, default=str).lower()
+    assert "abc123" not in text
+    assert "el123" not in text
