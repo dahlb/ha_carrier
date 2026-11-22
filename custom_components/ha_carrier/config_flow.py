@@ -6,7 +6,12 @@ import logging
 from typing import Any
 
 from carrier_api import CarrierApiError
-from homeassistant.config_entries import ConfigEntry, ConfigFlow, ConfigFlowResult, OptionsFlow
+from homeassistant.config_entries import (
+    ConfigEntry,
+    ConfigFlow,
+    ConfigFlowResult,
+    OptionsFlowWithReload,
+)
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME, UnitOfTime
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import selector
@@ -320,8 +325,12 @@ class CarrierConfigFlow(ConfigFlow, domain=DOMAIN):
         return CarrierOptionsFlow(config_entry)
 
 
-class CarrierOptionsFlow(OptionsFlow):
-    """Handle options updates for an existing Carrier config entry."""
+class CarrierOptionsFlow(OptionsFlowWithReload):
+    """Handle options updates for an existing Carrier config entry.
+
+    Home Assistant reloads the entry when the saved options change, so the
+    integration needs no update listener of its own.
+    """
 
     def __init__(self, config_entry: ConfigEntry) -> None:
         """Build the options schema presented to the user.

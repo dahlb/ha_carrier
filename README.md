@@ -267,7 +267,7 @@ If something isn't working as expected:
 3. Restart Home Assistant so initialization is captured with debug logs.
 4. Reproduce the issue.
 5. Click **Disable debug logging** — Home Assistant will download a log file.
-6. From the three-dot menu next to your Carrier device, click **Download diagnostics**.
+6. From the three-dot menu next to your Carrier device, click **Download diagnostics**. The file includes each system's Carrier data (Smart Thermostats too) and the integration's refresh and websocket health.
 7. [Open an issue](https://github.com/dahlb/ha_carrier/issues) and attach **both** the log file and the diagnostics file. Both files have personal information (serial numbers, account ID) automatically redacted.
 
 ### Common issues

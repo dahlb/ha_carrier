@@ -14,7 +14,7 @@ from homeassistant.components.climate.const import (
 )
 from homeassistant.const import ATTR_ENTITY_ID, ATTR_TEMPERATURE
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import HomeAssistantError
+from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.util.unit_system import US_CUSTOMARY_SYSTEM
 import pytest
 
@@ -225,5 +225,6 @@ async def test_entry_level_turn_on_off_and_reject_unknown_modes(
     await entity.async_set_hvac_mode(HVACMode.HEAT)
     assert carrier_api.calls[-1][1]["mode"] == "heat"
 
-    with pytest.raises(ValueError, match="unsupported mode"):
+    with pytest.raises(ServiceValidationError) as exc_info:
         await entity.async_set_hvac_mode(HVACMode.DRY)
+    assert exc_info.value.translation_key == "unsupported_hvac_mode"

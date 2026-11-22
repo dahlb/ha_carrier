@@ -216,6 +216,9 @@
     },
     "unsupported_heat_source": {
       "message": "Unsupported heat source option: {option}"
+    },
+    "unsupported_hvac_mode": {
+      "message": "Unsupported HVAC mode: {hvac_mode}"
     }
   },
   "services": {

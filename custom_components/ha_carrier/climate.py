@@ -389,7 +389,7 @@ class Thermostat(CarrierClimate):
             hvac_mode: Requested Home Assistant HVAC mode.
 
         Raises:
-            ValueError: Raised when the provided mode is unsupported.
+            ServiceValidationError: Raised when the mode is unsupported.
         """
         _LOGGER.debug("set_hvac_mode; hvac_mode: %s", hvac_mode)
         match hvac_mode.strip().lower():
@@ -404,7 +404,11 @@ class Thermostat(CarrierClimate):
             case HVACMode.FAN_ONLY:
                 mode = SystemModes.FAN_ONLY
             case _:
-                raise ValueError(f"unsupported mode: {hvac_mode}")
+                raise ServiceValidationError(
+                    translation_domain=DOMAIN,
+                    translation_key="unsupported_hvac_mode",
+                    translation_placeholders={"hvac_mode": str(hvac_mode)},
+                )
         await self.coordinator.async_perform_api_call(
             "set hvac mode",
             partial(
@@ -448,8 +452,7 @@ class Thermostat(CarrierClimate):
                     zone_id=self._required_zone_api_id,
                 ),
             )
-            self.coordinator.data_flush = True
-            await self.coordinator.async_refresh()
+            await self.coordinator.async_request_full_refresh(immediate=True)
             return
 
         activity_type = ActivityTypes(preset_mode.strip().lower())
@@ -748,8 +751,7 @@ class Thermostat(CarrierClimate):
         # A plain refresh after a write is the light energy refresh; force a
         # full read now, and once more after PROGRAM_READBACK_DELAY_S, because
         # the cloud returns the old day for a while after the write.
-        self.coordinator.data_flush = True
-        await self.coordinator.async_refresh()
+        await self.coordinator.async_request_full_refresh(immediate=True)
         if self._cancel_program_readback is not None:
             self._cancel_program_readback()
         self._cancel_program_readback = async_call_later(
@@ -759,8 +761,7 @@ class Thermostat(CarrierClimate):
     async def _async_read_program_again(self, _now: Any) -> None:
         """Read the program in full once the cloud shows a program write."""
         self._cancel_program_readback = None
-        self.coordinator.data_flush = True
-        await self.coordinator.async_refresh()
+        await self.coordinator.async_request_full_refresh(immediate=True)
 
     async def async_will_remove_from_hass(self) -> None:
         """Cancel a pending program read-back with the entity."""
