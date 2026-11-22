@@ -2,6 +2,7 @@
 
 import asyncio
 from collections.abc import Awaitable, Callable, Mapping
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 import functools
 from json import JSONDecodeError, loads
@@ -9,7 +10,16 @@ import logging
 import math
 from typing import Any, NoReturn
 
-from carrier_api import ApiConnectionGraphql, CarrierApiError, Energy, EntryLevelSystem, System
+from carrier_api import (
+    ActivityTypes,
+    ApiConnectionGraphql,
+    CarrierApiError,
+    ConfigZone,
+    Energy,
+    EntryLevelSystem,
+    StatusZone,
+    System,
+)
 from carrier_api.api_websocket_data_updater import WebsocketDataUpdater, unwrap_envelope
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed, HomeAssistantError
@@ -94,6 +104,38 @@ def poll_interval_for(full_refresh_interval: timedelta) -> timedelta:
     return full_refresh_interval / polls_per_full_refresh
 
 
+@dataclass(frozen=True, slots=True)
+class ModeGuard:
+    """Post-write guard for a system's mode.
+
+    Attributes:
+        expires_at: When the guard stops re-asserting the mode.
+        mode: Carrier system mode the write left the system in.
+    """
+
+    expires_at: datetime
+    mode: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class ZoneGuard:
+    """Post-write guard for one zone's activity and set points.
+
+    Attributes:
+        expires_at: When the guard stops re-asserting the zone.
+        zone_api_id: Zone the guard protects.
+        activity_type: Activity the write left the zone in.
+        heat_set_point: Heat set point the write left the zone at.
+        cool_set_point: Cool set point the write left the zone at.
+    """
+
+    expires_at: datetime
+    zone_api_id: str
+    activity_type: ActivityTypes
+    heat_set_point: float
+    cool_set_point: float
+
+
 def is_device_message(message: str) -> bool:
     """Return True when a websocket message is addressed to a Carrier device.
 
@@ -117,8 +159,22 @@ def is_device_message(message: str) -> bool:
     return body.get("deviceId") is not None or body.get("serial") is not None
 
 
-class CarrierDataUpdateCoordinator(DataUpdateCoordinator[list[dict[str, Any]]]):
-    """Maintain Carrier data and shared API resiliency state for one account."""
+type SystemSnapshots = list[dict[str, Any]]
+"""Serialized copies of every tracked system (``System.as_dict()``), in order."""
+
+
+class CarrierDataUpdateCoordinator(DataUpdateCoordinator[SystemSnapshots]):
+    """Maintain Carrier data and shared API resiliency state for one account.
+
+    Entities read live state from ``systems`` and ``entry_level_systems``,
+    which refreshes and websocket messages update in place. ``data`` holds
+    serialized snapshots of ``systems`` that nothing reads field by field.
+    It serves two purposes: with ``always_update=False``, Home Assistant
+    compares each refresh's snapshots with the previous ones and notifies
+    listeners only when they differ; and ``data is None`` means no refresh
+    has succeeded yet, so there is no last known state to fall back on.
+    Websocket messages notify listeners directly and leave ``data`` alone.
+    """
 
     full_refresh_interval: timedelta = DEFAULT_FULL_REFRESH_INTERVAL
     poll_interval: timedelta = poll_interval_for(DEFAULT_FULL_REFRESH_INTERVAL)
@@ -157,7 +213,9 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator[list[dict[str, Any]]]):
         self.timestamp_all_data: datetime | None = None
         self.timestamp_websocket: datetime | None = None
         self.timestamp_energy: datetime | None = None
-        self._intercept_guards: dict[tuple[str, str | None], dict[str, Any]] = {}
+        # Keyed by (system serial, zone id); a None zone id holds the system's
+        # ModeGuard and a zone id holds that zone's ZoneGuard.
+        self._intercept_guards: dict[tuple[str, str | None], ModeGuard | ZoneGuard] = {}
 
         super().__init__(
             hass,
@@ -236,43 +294,50 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator[list[dict[str, Any]]]):
         if system is None:
             return
         expires_at = datetime.now(UTC) + POST_WRITE_INTERCEPT_WINDOW
-        self._intercept_guards[(system_serial, None)] = {
-            "expires_at": expires_at,
-            "mode": system.config.mode,
-        }
+        self._intercept_guards[(system_serial, None)] = ModeGuard(
+            expires_at=expires_at, mode=system.config.mode
+        )
         if zone_api_id is not None:
-            zone_state = self._capture_zone_state(system, zone_api_id)
-            if zone_state is not None:
-                self._intercept_guards[(system_serial, zone_api_id)] = {
-                    "expires_at": expires_at,
-                    **zone_state,
-                }
+            zone_guard = self._capture_zone_guard(system, zone_api_id, expires_at)
+            if zone_guard is not None:
+                self._intercept_guards[(system_serial, zone_api_id)] = zone_guard
 
-    def _capture_zone_state(self, system: System, zone_api_id: str) -> dict[str, Any] | None:
-        """Return the intended activity type and resolved set points for one zone.
+    def _capture_zone_guard(
+        self, system: System, zone_api_id: str, expires_at: datetime
+    ) -> ZoneGuard | None:
+        """Return a guard holding one zone's intended activity type and set points.
 
         Resolves the set point the same way the climate entity reads it back
         (``config_zone.current_status_activity(status_zone) or status_zone``) so a
         later re-assert compares like with like. Volatile status (temperature,
         humidity, conditioning, blower) is deliberately excluded so a normal reading
         update is never mistaken for a reverted write.
+
+        Args:
+            system: System the zone belongs to.
+            zone_api_id: Zone to capture.
+            expires_at: When the guard expires.
+
+        Returns:
+            ZoneGuard | None: The guard, or None when the zone is unknown.
         """
-        status_zone, config_zone = self._zone_pair(system, zone_api_id)
-        if status_zone is None or config_zone is None:
+        zones = self._zone_pair(system, zone_api_id)
+        if zones is None:
             return None
+        status_zone, config_zone = zones
         source = config_zone.current_status_activity(status_zone) or status_zone
-        return {
-            "activity_type": status_zone.current_status_activity_type,
-            "heat_set_point": source.heat_set_point,
-            "cool_set_point": source.cool_set_point,
-        }
+        return ZoneGuard(
+            expires_at=expires_at,
+            zone_api_id=zone_api_id,
+            activity_type=status_zone.current_status_activity_type,
+            heat_set_point=source.heat_set_point,
+            cool_set_point=source.cool_set_point,
+        )
 
     def _prune_intercept_guards(self) -> None:
         """Drop post-write guards whose own protection period has elapsed."""
         now = datetime.now(UTC)
-        expired = [
-            key for key, guard in self._intercept_guards.items() if now >= guard["expires_at"]
-        ]
+        expired = [key for key, guard in self._intercept_guards.items() if now >= guard.expires_at]
         for key in expired:
             del self._intercept_guards[key]
 
@@ -281,8 +346,17 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator[list[dict[str, Any]]]):
         self._prune_intercept_guards()
         return bool(self._intercept_guards)
 
-    def _zone_pair(self, system: System, zone_api_id: str) -> tuple[Any, Any] | tuple[None, None]:
-        """Return the (status_zone, config_zone) pair for a zone id, or (None, None)."""
+    def _zone_pair(self, system: System, zone_api_id: str) -> tuple[StatusZone, ConfigZone] | None:
+        """Return the status and config zones for a zone id.
+
+        Args:
+            system: System the zone belongs to.
+            zone_api_id: Zone to look up.
+
+        Returns:
+            tuple[StatusZone, ConfigZone] | None: Both zones, or None when either
+                is missing.
+        """
         status_zone = next(
             (zone for zone in system.status.zones if zone.api_id == zone_api_id), None
         )
@@ -290,7 +364,7 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator[list[dict[str, Any]]]):
             (zone for zone in system.config.zones if zone.api_id == zone_api_id), None
         )
         if status_zone is None or config_zone is None:
-            return None, None
+            return None
         return status_zone, config_zone
 
     def _reassert_control(self) -> None:
@@ -305,37 +379,43 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator[list[dict[str, Any]]]):
         guard expires that target is trusted again.
         """
         self._prune_intercept_guards()
-        for (system_serial, zone_api_id), guard in self._intercept_guards.items():
+        for (system_serial, _zone_api_id), guard in self._intercept_guards.items():
             system = self.system(system_serial)
             if system is None:
                 continue
-            if zone_api_id is None:
-                if system.config.mode != guard["mode"]:
-                    system.config.mode = guard["mode"]
+            if isinstance(guard, ModeGuard):
+                if system.config.mode != guard.mode:
+                    system.config.mode = guard.mode
             else:
-                self._reassert_zone(system, zone_api_id, guard)
+                self._reassert_zone(system, guard)
 
-    def _reassert_zone(self, system: System, zone_api_id: str, zone_state: dict[str, Any]) -> None:
-        """Restore one written zone's reverted activity type and set points."""
-        status_zone, config_zone = self._zone_pair(system, zone_api_id)
-        if status_zone is None or config_zone is None:
+    def _reassert_zone(self, system: System, guard: ZoneGuard) -> None:
+        """Restore one written zone's reverted activity type and set points.
+
+        Args:
+            system: System the zone belongs to.
+            guard: The zone and its intended post-write activity type and set points.
+        """
+        zones = self._zone_pair(system, guard.zone_api_id)
+        if zones is None:
             return
+        status_zone, config_zone = zones
         source = config_zone.current_status_activity(status_zone) or status_zone
         if (
-            source.heat_set_point == zone_state["heat_set_point"]
-            and source.cool_set_point == zone_state["cool_set_point"]
-            and status_zone.current_status_activity_type == zone_state["activity_type"]
+            source.heat_set_point == guard.heat_set_point
+            and source.cool_set_point == guard.cool_set_point
+            and status_zone.current_status_activity_type == guard.activity_type
         ):
             return
-        status_zone.current_status_activity_type = zone_state["activity_type"]
-        status_zone.heat_set_point = zone_state["heat_set_point"]
-        status_zone.cool_set_point = zone_state["cool_set_point"]
-        reasserted = config_zone.find_activity(zone_state["activity_type"])
+        status_zone.current_status_activity_type = guard.activity_type
+        status_zone.heat_set_point = guard.heat_set_point
+        status_zone.cool_set_point = guard.cool_set_point
+        reasserted = config_zone.find_activity(guard.activity_type)
         if reasserted is not None:
-            reasserted.heat_set_point = zone_state["heat_set_point"]
-            reasserted.cool_set_point = zone_state["cool_set_point"]
+            reasserted.heat_set_point = guard.heat_set_point
+            reasserted.cool_set_point = guard.cool_set_point
 
-    async def _async_update_data(self) -> list[dict[str, Any]]:
+    async def _async_update_data(self) -> SystemSnapshots:
         """Fetch Carrier data and translate escalated failures for Home Assistant.
 
         Performs either a full system refresh or a lighter energy-only refresh,
@@ -352,7 +432,7 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator[list[dict[str, Any]]]):
         retry later.
 
         Returns:
-            list[dict[str, Any]]: List of mappings representing tracked systems.
+            SystemSnapshots: Serialized snapshots of the tracked systems.
 
         Raises:
             ConfigEntryAuthFailed: Raised when 401 responses cross the
@@ -383,7 +463,7 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator[list[dict[str, Any]]]):
 
         try:
             await refresh_operation()
-            return [self.mapped_system_data(system) for system in self.systems]
+            return self._system_snapshots()
         except CarrierUnauthorizedError as error:
             self.data_flush = True
             self.update_interval = timedelta(minutes=1)
@@ -407,7 +487,7 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator[list[dict[str, Any]]]):
                     refresh_context,
                     exc_info=error,
                 )
-                return [self.mapped_system_data(system) for system in self.systems]
+                return self._system_snapshots()
             # DataUpdateCoordinator logs the first UpdateFailed as an error and
             # logs again once a refresh succeeds, so only debug-log each failure
             # here to avoid repeating the error every retry while Carrier is down.
@@ -743,6 +823,14 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator[list[dict[str, Any]]]):
             if system.serial == serial:
                 return system
         return None
+
+    def _system_snapshots(self) -> SystemSnapshots:
+        """Serialize every tracked system for the coordinator's ``data``.
+
+        Returns:
+            SystemSnapshots: One mapping per system, in ``systems`` order.
+        """
+        return [self.mapped_system_data(system) for system in self.systems]
 
     @staticmethod
     def mapped_system_data(system: System) -> dict[str, Any]:
