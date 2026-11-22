@@ -390,12 +390,6 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator[list[dict[str, Any]]]):
             raise ConfigEntryAuthFailed(
                 "Carrier API rejected credentials; reauthentication required."
             ) from error
-        except (
-            asyncio.CancelledError,
-            KeyboardInterrupt,
-            SystemExit,
-        ):
-            raise
         except RECOVERABLE_REFRESH_EXCEPTIONS as error:
             self.data_flush = True
             self.update_interval = timedelta(minutes=1)
@@ -663,12 +657,6 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator[list[dict[str, Any]]]):
         except CarrierUnauthorizedError as error:
             await self._async_handle_failed_write(operation_name, error)
             raise AssertionError("unreachable after failed write handling") from error
-        except (
-            asyncio.CancelledError,
-            KeyboardInterrupt,
-            SystemExit,
-        ):
-            raise
         except RECOVERABLE_WRITE_COMMUNICATION_EXCEPTIONS as error:
             await self._async_reconcile_failed_write(operation_name, error)
             raise HomeAssistantError(
@@ -721,8 +709,6 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator[list[dict[str, Any]]]):
         """
         try:
             self.entry_level_systems = await self.api_connection.load_entry_level_data()
-        except asyncio.CancelledError, KeyboardInterrupt, SystemExit:
-            raise
         except RECOVERABLE_REFRESH_EXCEPTIONS as error:
             # Includes CarrierApiError, so any Carrier-side failure is non-fatal.
             self.entry_level_systems_loaded = False
