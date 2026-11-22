@@ -284,12 +284,6 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntryCarrie
     except CarrierApiConnectionError as error:
         _LOGGER.debug("Carrier connection error during setup", exc_info=error)
         raise ConfigEntryNotReady(error) from error
-    except (
-        asyncio.CancelledError,
-        KeyboardInterrupt,
-        SystemExit,
-    ):
-        raise
     except ConfigEntryNotReady as err:
         if is_unauthorized_error(err):
             _LOGGER.debug(
