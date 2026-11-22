@@ -13,6 +13,7 @@ from carrier_api import (
     ActivityTypes,
     CarrierApiAuthError,
     CarrierApiConnectionError,
+    CarrierApiError,
     CarrierApiGraphqlError,
 )
 from carrier_api.api_websocket_data_updater import WebsocketDataUpdater
@@ -256,10 +257,13 @@ async def test_update_data_translates_unauthorized_refresh_to_reauth() -> None:
 
 @pytest.mark.asyncio
 async def test_update_data_keeps_plain_unauthorized_server_error_retryable() -> None:
-    """Keep non-escalated unauthorized transport errors on HA retry cadence."""
+    """Fail the first refresh on a non-escalated 401 and keep HA retry cadence."""
     coordinator = CarrierDataUpdateCoordinator.__new__(CarrierDataUpdateCoordinator)
     coordinator.data_flush = True
     coordinator.update_interval = None
+    coordinator.data = None
+    coordinator.resiliency = ResiliencyState(unauthorized_threshold=3, transient_threshold=5)
+    coordinator.resiliency.consecutive_unauthorized = 1
 
     async def fake_full_refresh() -> None:
         """Raise a 401 transport response before resiliency escalation."""
@@ -273,6 +277,75 @@ async def test_update_data_keeps_plain_unauthorized_server_error_retryable() -> 
 
     assert coordinator.data_flush is True
     assert coordinator.update_interval is not None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("error", "consecutive_unauthorized", "consecutive_transient"),
+    [
+        (CarrierApiAuthError("unauthorized"), 1, 0),
+        (CarrierApiConnectionError("gateway timeout"), 0, 4),
+    ],
+)
+async def test_update_data_keeps_last_data_below_outage_threshold(
+    error: BaseException,
+    consecutive_unauthorized: int,
+    consecutive_transient: int,
+) -> None:
+    """Keep entities available on last known data until failures escalate."""
+    coordinator = CarrierDataUpdateCoordinator.__new__(CarrierDataUpdateCoordinator)
+    system = build_carrier_system()
+    coordinator.systems = [system]
+    coordinator.data = [CarrierDataUpdateCoordinator.mapped_system_data(system)]
+    coordinator.data_flush = True
+    coordinator.update_interval = None
+    coordinator.resiliency = ResiliencyState(unauthorized_threshold=3, transient_threshold=5)
+    coordinator.resiliency.consecutive_unauthorized = consecutive_unauthorized
+    coordinator.resiliency.consecutive_transient = consecutive_transient
+
+    async def fake_full_refresh() -> None:
+        """Raise a refresh failure that has not crossed its threshold."""
+        raise error
+
+    with patch.object(coordinator, "_async_full_refresh", fake_full_refresh):
+        result = await coordinator._async_update_data()
+
+    assert result == [CarrierDataUpdateCoordinator.mapped_system_data(system)]
+    assert coordinator.data_flush is True
+    assert coordinator.update_interval == timedelta(minutes=1)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("error", "consecutive_transient"),
+    [
+        (CarrierApiConnectionError("gateway timeout"), 5),
+        (CarrierApiError("unexpected payload"), 0),
+    ],
+)
+async def test_update_data_raises_once_failure_escalates_or_is_untracked(
+    error: BaseException,
+    consecutive_transient: int,
+) -> None:
+    """Surface escalated transient failures and untracked errors as UpdateFailed."""
+    coordinator = CarrierDataUpdateCoordinator.__new__(CarrierDataUpdateCoordinator)
+    system = build_carrier_system()
+    coordinator.systems = [system]
+    coordinator.data = [CarrierDataUpdateCoordinator.mapped_system_data(system)]
+    coordinator.data_flush = True
+    coordinator.update_interval = None
+    coordinator.resiliency = ResiliencyState(unauthorized_threshold=3, transient_threshold=5)
+    coordinator.resiliency.consecutive_transient = consecutive_transient
+
+    async def fake_full_refresh() -> None:
+        """Raise an escalated or untracked refresh failure."""
+        raise error
+
+    with (
+        patch.object(coordinator, "_async_full_refresh", fake_full_refresh),
+        pytest.raises(UpdateFailed, match="Unexpected error"),
+    ):
+        await coordinator._async_update_data()
 
 
 @pytest.mark.asyncio
