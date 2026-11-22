@@ -10,6 +10,7 @@ from typing import Any
 from carrier_api import (
     CarrierApiAuthError,
     CarrierApiConnectionError,
+    CarrierApiError,
     CarrierApiGraphqlError,
     CarrierApiTokenRefreshError,
     CarrierApiWebsocketError,
@@ -17,7 +18,9 @@ from carrier_api import (
 import pytest
 
 from custom_components.ha_carrier.util import (
+    RECOVERABLE_REFRESH_EXCEPTIONS,
     REDACTED,
+    TRANSIENT_TRANSPORT_EXCEPTIONS,
     async_get_carrier_identity_id,
     async_redact_data,
     is_retryable_error,
@@ -179,3 +182,22 @@ def test_exception_classifiers_stop_on_a_cyclic_context_chain() -> None:
     second.__context__ = first
 
     assert is_unauthorized_error(first) is False
+
+
+@pytest.mark.parametrize(
+    ("error_type", "transport"),
+    [
+        (CarrierApiAuthError, False),
+        (CarrierApiGraphqlError, False),
+        (CarrierApiConnectionError, True),
+        (CarrierApiTokenRefreshError, True),
+        (CarrierApiWebsocketError, True),
+    ],
+)
+def test_exception_tuples_cover_the_carrier_api_hierarchy(
+    error_type: type[CarrierApiError], transport: bool
+) -> None:
+    """Pin the carrier_api hierarchy the collapsed exception tuples rely on."""
+    assert issubclass(error_type, CarrierApiError)
+    assert issubclass(error_type, RECOVERABLE_REFRESH_EXCEPTIONS)
+    assert issubclass(error_type, TRANSIENT_TRANSPORT_EXCEPTIONS) is transport

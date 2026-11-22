@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 import logging
 from types import SimpleNamespace
@@ -29,7 +30,12 @@ from custom_components.ha_carrier.const import (
     TRANSIENT_FAILURE_THRESHOLD,
     UNAUTHORIZED_RETRY_THRESHOLD,
 )
-from custom_components.ha_carrier.coordinator import CarrierDataUpdateCoordinator, poll_interval_for
+from custom_components.ha_carrier.coordinator import (
+    CarrierDataUpdateCoordinator,
+    ModeGuard,
+    ZoneGuard,
+    poll_interval_for,
+)
 from custom_components.ha_carrier.exceptions import CarrierUnauthorizedError
 from custom_components.ha_carrier.resiliency import ResiliencyState
 
@@ -555,10 +561,10 @@ async def test_update_data_defers_scheduled_full_refresh_during_post_write_windo
         minutes=DEFAULT_FULL_REFRESH_INTERVAL_MINUTES + 1
     )
     coordinator._intercept_guards = {
-        ("ABC123", None): {
-            "expires_at": datetime.now(UTC) + timedelta(minutes=2),
-            "mode": "cool",
-        }
+        ("ABC123", None): ModeGuard(
+            expires_at=datetime.now(UTC) + timedelta(minutes=2),
+            mode="cool",
+        )
     }
     calls: list[str] = []
 
@@ -610,13 +616,15 @@ async def test_begin_post_write_intercept_captures_written_target_only() -> None
     coordinator.begin_post_write_intercept(system.profile.serial, status_zone.api_id)
 
     mode_guard = coordinator._intercept_guards[(system.profile.serial, None)]
-    assert mode_guard["expires_at"] > datetime.now(UTC)
-    assert mode_guard["mode"] == system.config.mode
+    assert isinstance(mode_guard, ModeGuard)
+    assert mode_guard.expires_at > datetime.now(UTC)
+    assert mode_guard.mode == system.config.mode
     zone_guard = coordinator._intercept_guards[(system.profile.serial, status_zone.api_id)]
-    assert zone_guard["expires_at"] > datetime.now(UTC)
-    assert zone_guard["activity_type"] == status_zone.current_status_activity_type
-    assert zone_guard["cool_set_point"] == resolved.cool_set_point
-    assert zone_guard["heat_set_point"] == resolved.heat_set_point
+    assert isinstance(zone_guard, ZoneGuard)
+    assert zone_guard.expires_at > datetime.now(UTC)
+    assert zone_guard.activity_type == status_zone.current_status_activity_type
+    assert zone_guard.cool_set_point == resolved.cool_set_point
+    assert zone_guard.heat_set_point == resolved.heat_set_point
 
 
 @pytest.mark.asyncio
@@ -891,10 +899,10 @@ async def test_expired_guard_is_pruned_and_not_reasserted() -> None:
     coordinator.systems = [system]
     original_mode = system.config.mode
     coordinator._intercept_guards = {
-        (system.profile.serial, None): {
-            "expires_at": datetime.now(UTC) - timedelta(seconds=1),
-            "mode": original_mode,
-        }
+        (system.profile.serial, None): ModeGuard(
+            expires_at=datetime.now(UTC) - timedelta(seconds=1),
+            mode=original_mode,
+        )
     }
 
     # Stale replay reverts the mode after the guard has already expired.
@@ -942,8 +950,9 @@ async def test_same_system_zone_guard_expiry_is_independent() -> None:
     coordinator.begin_post_write_intercept("A", "1")
     coordinator.begin_post_write_intercept("A", "2")
     # Zone 1's own five minutes have elapsed while zone 2's guard is still live.
-    coordinator._intercept_guards[("A", "1")]["expires_at"] = datetime.now(UTC) - timedelta(
-        seconds=1
+    coordinator._intercept_guards[("A", "1")] = replace(
+        coordinator._intercept_guards[("A", "1")],
+        expires_at=datetime.now(UTC) - timedelta(seconds=1),
     )
 
     # One websocket message: zone 1 gets a legitimate NEW value; zone 2 is stale-reverted.
@@ -985,10 +994,10 @@ async def test_full_refresh_ends_post_write_window(
     )
     coordinator._websocket_initialized = True
     coordinator._intercept_guards = {
-        ("ABC123", None): {
-            "expires_at": datetime.now(UTC) + timedelta(minutes=1),
-            "mode": "cool",
-        }
+        ("ABC123", None): ModeGuard(
+            expires_at=datetime.now(UTC) + timedelta(minutes=1),
+            mode="cool",
+        )
     }
 
     await coordinator._async_full_refresh()
@@ -1215,13 +1224,15 @@ def test_reassert_restores_status_when_the_activity_has_no_config_entry() -> Non
     coordinator = _bare_coordinator()
     coordinator.begin_post_write_intercept("ABC123", "1")
     guard = coordinator._intercept_guards[("ABC123", "1")]
-    guard["activity_type"] = ActivityTypes.WAKE
+    assert isinstance(guard, ZoneGuard)
+    guard = replace(guard, activity_type=ActivityTypes.WAKE)
+    coordinator._intercept_guards[("ABC123", "1")] = guard
     status_zone = coordinator.systems[0].status.zones[0]
 
     coordinator._reassert_control()
 
     assert status_zone.current_status_activity_type == ActivityTypes.WAKE
-    assert status_zone.heat_set_point == guard["heat_set_point"]
+    assert status_zone.heat_set_point == guard.heat_set_point
 
 
 @pytest.mark.asyncio
