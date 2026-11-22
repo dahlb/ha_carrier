@@ -40,7 +40,8 @@ TO_REDACT_RAW: set[str] = {
 # Entry-level (Smart Thermostat) payloads also carry location and device ids.
 TO_REDACT_ENTRY_LEVEL: set[str] = {*TO_REDACT_RAW, "location_id", "deviceId"}
 TO_REDACT_DEVICE: set[str] = {"identifiers"}
-TO_REDACT_ENTITIES: set[str] = set()
+# Entity unique IDs are built from the system serial.
+TO_REDACT_ENTITIES: set[str] = {"unique_id", "previous_unique_id"}
 
 # Carrier accepts heating humidity targets from 0 (humidifier off) to 45 percent,
 # in steps of 5 percent; any other value is rejected by the API.

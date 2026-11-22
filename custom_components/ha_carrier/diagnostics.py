@@ -77,16 +77,16 @@ async def async_get_config_entry_diagnostics(
 
     The diagnostics include config entry data, coordinator health, mapped
     system snapshots, raw Carrier payloads, entry-level (Smart Thermostat)
-    payloads, and Home Assistant device/entity state linked to each Carrier
-    serial.
+    payloads, and Home Assistant device/entity state for each Carrier system.
+    No section key or value contains a system serial.
 
     Args:
         hass: Home Assistant instance.
         config_entry: Config entry for which diagnostics were requested.
 
     Returns:
-        dict[str, dict[str, Any]]: Redacted diagnostics keyed by section name
-        and system serial.
+        dict[str, dict[str, Any]]: Redacted diagnostics keyed by section name,
+        with one ``system_<n>`` section per system in coordinator order.
     """
     updater = config_entry.runtime_data
     data = {
@@ -100,7 +100,8 @@ async def async_get_config_entry_diagnostics(
             ],
         },
     }
-    for carrier_system in updater.systems:
+    # Systems are keyed by position, not serial, so the serial stays redacted.
+    for index, carrier_system in enumerate(updater.systems, start=1):
         system_data = {
             "mapped_data": async_redact_data(
                 updater.mapped_system_data(carrier_system), TO_REDACT_MAPPED
@@ -110,7 +111,7 @@ async def async_get_config_entry_diagnostics(
             "config_raw": async_redact_data(carrier_system.config.raw, TO_REDACT_RAW),
             "energy_raw": async_redact_data(carrier_system.energy.raw, TO_REDACT_RAW),
         }
-        data[carrier_system.profile.serial] = system_data
+        data[f"system_{index}"] = system_data
 
         device_registry = dr.async_get(hass)
         entity_registry = er.async_get(hass)
