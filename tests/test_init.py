@@ -423,10 +423,10 @@ async def test_refresh_outage_logs_once_and_recovery_logs_once(
     caplog.clear()
 
     for _ in range(3):
-        coordinator.data_flush = True
+        coordinator._data_flush = True
         await coordinator.async_refresh()
     carrier_api.load_data_error = None
-    coordinator.data_flush = True
+    coordinator._data_flush = True
     await coordinator.async_refresh()
 
     errors = [
@@ -517,7 +517,7 @@ async def _full_refresh(config_entry: Any) -> None:
         config_entry: Loaded Carrier config entry.
     """
     coordinator = config_entry.runtime_data
-    coordinator.data_flush = True
+    coordinator._data_flush = True
     await coordinator.async_refresh()
 
 

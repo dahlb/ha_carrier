@@ -202,7 +202,7 @@ async def _full_refresh(entry: Any) -> None:
         entry: Loaded Carrier config entry.
     """
     coordinator = entry.runtime_data
-    coordinator.data_flush = True
+    coordinator._data_flush = True
     await coordinator.async_refresh()
 
 

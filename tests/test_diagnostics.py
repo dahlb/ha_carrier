@@ -57,7 +57,6 @@ async def test_diagnostics_include_coordinator_state_and_entry_level_systems(
     coordinator = diagnostics["coordinator"]
     assert coordinator["last_update_success"] is True
     assert coordinator["last_exception"] is None
-    assert coordinator["data_flush"] is False
     assert coordinator["websocket_task_running"] is True
     assert coordinator["timestamp_all_data"] is not None
     assert coordinator["update_interval_seconds"] > 0

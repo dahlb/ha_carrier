@@ -58,7 +58,6 @@ def _coordinator_diagnostics(coordinator: CarrierDataUpdateCoordinator) -> dict[
             else None
         ),
         "full_refresh_interval_seconds": coordinator.full_refresh_interval.total_seconds(),
-        "data_flush": coordinator.data_flush,
         "timestamp_all_data": _isoformat(coordinator.timestamp_all_data),
         "timestamp_websocket": _isoformat(coordinator.timestamp_websocket),
         "timestamp_energy": _isoformat(coordinator.timestamp_energy),
