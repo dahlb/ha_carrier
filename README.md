@@ -10,7 +10,7 @@
 | custom\_components/ha\_carrier/config\_flow.py          |      119 |        1 |       36 |        2 |     98% |223, 275-\>304 |
 | custom\_components/ha\_carrier/const.py                 |       42 |        0 |        0 |        0 |    100% |           |
 | custom\_components/ha\_carrier/coordinator.py           |      289 |        1 |       94 |        0 |     99% |       739 |
-| custom\_components/ha\_carrier/diagnostics.py           |       40 |        0 |        8 |        1 |     98% | 121-\>104 |
+| custom\_components/ha\_carrier/diagnostics.py           |       40 |        0 |        8 |        1 |     98% | 120-\>103 |
 | custom\_components/ha\_carrier/entity.py                |      114 |        1 |       38 |        1 |     99% |        66 |
 | custom\_components/ha\_carrier/entry\_level\_climate.py |      126 |        0 |       36 |        0 |    100% |           |
 | custom\_components/ha\_carrier/exceptions.py            |        2 |        0 |        0 |        0 |    100% |           |
