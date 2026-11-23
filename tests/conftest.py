@@ -86,6 +86,7 @@ class FakeCarrierApiConnection:
         self.api_websocket = FakeCarrierWebsocket()
         self.calls: list[tuple[str, dict[str, Any]]] = []
         self.load_data_error: BaseException | None = None
+        self.set_system_vacation_error: BaseException | None = None
         self.cleanup_calls = 0
         self.client_session: Any = None
 
@@ -142,6 +143,25 @@ class FakeCarrierApiConnection:
                 {"system_serial": system_serial, "humidity_target": humidity_target},
             )
         )
+
+    async def set_system_vacation(self, *, system_serial: str, enabled: bool) -> dict[str, Any]:
+        """Record a system Vacation write or raise a configured error.
+
+        Like the cloud right after the write, the cached system still shows
+        the old Vacation state.
+
+        Returns:
+            dict[str, Any]: Carrier GraphQL-shaped mutation response.
+
+        Raises:
+            BaseException: The configured ``set_system_vacation_error``.
+        """
+        self.calls.append(
+            ("set_system_vacation", {"system_serial": system_serial, "enabled": enabled})
+        )
+        if self.set_system_vacation_error is not None:
+            raise self.set_system_vacation_error
+        return {"updateInfinityConfig": {"etag": "new-etag"}}
 
     async def resume_schedule(self, *, system_serial: str, zone_id: str) -> None:
         """Record a resume-schedule write."""

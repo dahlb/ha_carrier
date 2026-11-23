@@ -265,6 +265,10 @@
           "description": "Etag to send. Omit to send the day's etag from the latest refresh."
         }
       }
+    },
+    "cancel_system_vacation": {
+      "name": "Cancel system vacation",
+      "description": "End Vacation for the whole Carrier system the targeted zone belongs to. The resume preset only clears a zone's hold and can return to Vacation; this turns the system's Vacation off. Vacation dates, set points, holds and schedules are not changed, and nothing is sent when Vacation is already off. Carrier's cloud can take a few minutes to show the change."
     }
   }
 }

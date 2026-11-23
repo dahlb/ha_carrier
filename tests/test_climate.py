@@ -6,7 +6,7 @@ from collections.abc import Callable
 from datetime import timedelta
 from typing import Any
 
-from carrier_api import ActivityTypes, FanModes, SystemModes, TemperatureUnits
+from carrier_api import ActivityTypes, CarrierApiError, FanModes, SystemModes, TemperatureUnits
 from freezegun.api import FrozenDateTimeFactory
 from homeassistant.components.climate import (
     ATTR_HVAC_MODE,
@@ -34,7 +34,11 @@ import pytest
 from pytest_homeassistant.common import async_fire_time_changed
 
 from custom_components.ha_carrier.climate import normalize_humidity_target
-from custom_components.ha_carrier.const import FAN_AUTO, PROGRAM_READBACK_DELAY_S
+from custom_components.ha_carrier.const import (
+    FAN_AUTO,
+    PROGRAM_READBACK_DELAY_S,
+    VACATION_READBACK_DELAY_S,
+)
 
 from .conftest import (
     FakeCarrierApiConnection,
@@ -935,3 +939,133 @@ async def test_climate_no_longer_carries_sensor_readings_as_attributes(
     assert {"status_mode", "hold_activity", "hold_until", "next_activity_time"} <= set(
         state.attributes
     )
+
+
+async def _cancel_system_vacation(hass: HomeAssistant, entity_ids: list[str]) -> None:
+    """Call cancel_system_vacation for the given climate entities.
+
+    Args:
+        hass: Home Assistant instance.
+        entity_ids: Climate entities to target.
+    """
+    await hass.services.async_call(
+        "ha_carrier",
+        "cancel_system_vacation",
+        {ATTR_ENTITY_ID: entity_ids},
+        blocking=True,
+    )
+
+
+@pytest.mark.asyncio
+async def test_cancel_system_vacation_turns_system_vacation_off_only(
+    hass: HomeAssistant,
+    carrier_api: FakeCarrierApiConnection,
+    setup_integration: Callable[..., Any],
+) -> None:
+    """Send only the system Vacation write, then read the system in full."""
+    carrier_api.systems[0].config.vacation_enabled = True
+    await setup_integration()
+    entity_id = entity_id_for_unique_id(hass, CLIMATE_DOMAIN, ZONE_1)
+    before = hass.states.get(entity_id)
+    assert before is not None
+    carrier_api.calls.clear()
+
+    await _cancel_system_vacation(hass, [entity_id])
+
+    calls = [name for name, _ in carrier_api.calls]
+    assert [data for name, data in carrier_api.calls if name == "set_system_vacation"] == [
+        {"system_serial": "ABC123", "enabled": False}
+    ]
+    assert set(calls) == {"set_system_vacation", "load_data", "load_entry_level_data"}
+    assert calls.index("set_system_vacation") < calls.index("load_data")
+    assert carrier_api.systems[0].config.vacation_enabled is False
+    after = hass.states.get(entity_id)
+    assert after is not None
+    for attr in (ATTR_TARGET_TEMP_LOW, ATTR_TARGET_TEMP_HIGH, "preset_mode", "fan_mode"):
+        assert after.attributes.get(attr) == before.attributes.get(attr)
+
+
+@pytest.mark.asyncio
+async def test_cancel_system_vacation_sends_nothing_when_vacation_is_off(
+    hass: HomeAssistant,
+    carrier_api: FakeCarrierApiConnection,
+    setup_integration: Callable[..., Any],
+) -> None:
+    """Skip the cloud write when the latest refresh shows Vacation off."""
+    carrier_api.systems[0].config.vacation_enabled = False
+    await setup_integration()
+    carrier_api.calls.clear()
+
+    await _cancel_system_vacation(hass, [entity_id_for_unique_id(hass, CLIMATE_DOMAIN, ZONE_1)])
+
+    assert carrier_api.calls == []
+
+
+@pytest.mark.asyncio
+async def test_cancel_system_vacation_writes_once_for_every_zone_of_the_system(
+    hass: HomeAssistant,
+    carrier_api: FakeCarrierApiConnection,
+    setup_integration: Callable[..., Any],
+) -> None:
+    """Treat Vacation as system-wide: targeting both zones writes it once."""
+    carrier_api.systems = [build_carrier_system(second_zone_id="2")]
+    carrier_api.systems[0].config.vacation_enabled = True
+    await setup_integration()
+    entity_ids = [
+        entity_id_for_unique_id(hass, CLIMATE_DOMAIN, ZONE_1),
+        entity_id_for_unique_id(hass, CLIMATE_DOMAIN, "abc123_zone_2_thermostat"),
+    ]
+
+    await _cancel_system_vacation(hass, entity_ids)
+
+    assert len([name for name, _ in carrier_api.calls if name == "set_system_vacation"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_cancel_system_vacation_reads_again_once_the_cloud_shows_it(
+    hass: HomeAssistant,
+    carrier_api: FakeCarrierApiConnection,
+    setup_integration: Callable[..., Any],
+    freezer: FrozenDateTimeFactory,
+) -> None:
+    """Read in full again after the cloud has had time to drop Vacation.
+
+    Live, reads right after the write still showed Vacation on; within about
+    five minutes it showed off.
+    """
+    carrier_api.systems[0].config.vacation_enabled = True
+    await setup_integration()
+    await _cancel_system_vacation(hass, [entity_id_for_unique_id(hass, CLIMATE_DOMAIN, ZONE_1)])
+    reads_after_write = len([c for c in carrier_api.calls if c[0] == "load_data"])
+
+    freezer.tick(timedelta(seconds=VACATION_READBACK_DELAY_S - 1))
+    async_fire_time_changed(hass)
+    await hass.async_block_till_done()
+    assert len([c for c in carrier_api.calls if c[0] == "load_data"]) == reads_after_write
+
+    freezer.tick(timedelta(seconds=2))
+    async_fire_time_changed(hass)
+    await hass.async_block_till_done()
+    assert len([c for c in carrier_api.calls if c[0] == "load_data"]) == reads_after_write + 1
+
+
+@pytest.mark.asyncio
+async def test_cancel_system_vacation_reports_a_refused_write_and_can_retry(
+    hass: HomeAssistant,
+    carrier_api: FakeCarrierApiConnection,
+    setup_integration: Callable[..., Any],
+) -> None:
+    """Raise on a refused write, keep Vacation on, and send again on retry."""
+    carrier_api.systems[0].config.vacation_enabled = True
+    carrier_api.set_system_vacation_error = CarrierApiError("rejected")
+    await setup_integration()
+    entity_id = entity_id_for_unique_id(hass, CLIMATE_DOMAIN, ZONE_1)
+
+    with pytest.raises(HomeAssistantError):
+        await _cancel_system_vacation(hass, [entity_id])
+    assert carrier_api.systems[0].config.vacation_enabled is True
+
+    carrier_api.set_system_vacation_error = None
+    await _cancel_system_vacation(hass, [entity_id])
+
+    assert carrier_api.systems[0].config.vacation_enabled is False

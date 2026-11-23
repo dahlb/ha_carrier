@@ -45,6 +45,7 @@ The integration adds a Home Assistant device per Carrier system, with entities f
   - `ha_carrier.set_activity_setpoint` edits an activity's set points without a hold (the current activity, or the one named by `activity`)
   - `ha_carrier.get_schedule` returns the zone's program and each activity's set points
   - `ha_carrier.set_program_day` replaces one day of the zone's program
+- `ha_carrier.cancel_system_vacation` turns off the system's Vacation; the **Resume** preset only clears a zone's hold and can drop back into Vacation
 
 ### Sensors
 
@@ -182,6 +183,31 @@ automation:
       - action: climate.set_preset_mode
         target:
           entity_id: climate.home_living_room
+        data:
+          preset_mode: resume
+```
+
+**End Vacation and resume the schedule on return:**
+
+Vacation is system-wide, so cancel it once for any zone of the system, then resume each zone. Carrier's cloud can take a few minutes to take the change, so wait before resuming.
+
+```yaml
+automation:
+  - alias: "Carrier: end vacation when someone is home"
+    triggers:
+      - trigger: numeric_state
+        entity_id: zone.home
+        above: 0
+    actions:
+      - action: ha_carrier.cancel_system_vacation
+        target:
+          entity_id: climate.home_living_room
+      - delay: "00:05:00"
+      - action: climate.set_preset_mode
+        target:
+          entity_id:
+            - climate.home_living_room
+            - climate.home_bedroom
         data:
           preset_mode: resume
 ```

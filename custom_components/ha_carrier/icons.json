@@ -100,6 +100,9 @@
     },
     "set_program_day": {
       "service": "mdi:calendar-edit"
+    },
+    "cancel_system_vacation": {
+      "service": "mdi:airplane-off"
     }
   }
 }
