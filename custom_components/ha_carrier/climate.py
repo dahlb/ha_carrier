@@ -43,6 +43,7 @@ from .const import (
     MAX_HUMIDITY,
     MIN_HUMIDITY,
     PROGRAM_READBACK_DELAY_S,
+    VACATION_READBACK_DELAY_S,
 )
 from .coordinator import CarrierDataUpdateCoordinator
 from .entity import CarrierZoneEntity, async_add_entities_for_systems
@@ -170,7 +171,7 @@ class CarrierClimate(CarrierZoneEntity, ClimateEntity):
             zone_api_id=zone_api_id,
             unique_id_suffix=unique_id_suffix,
         )
-        self._cancel_program_readback: CALLBACK_TYPE | None = None
+        self._cancel_readback: CALLBACK_TYPE | None = None
         self._sync_entity_attrs()
 
     def _current_activity(self) -> ConfigZoneActivity | None:
@@ -752,20 +753,61 @@ class Thermostat(CarrierClimate):
         # full read now, and once more after PROGRAM_READBACK_DELAY_S, because
         # the cloud returns the old day for a while after the write.
         await self.coordinator.async_request_full_refresh(immediate=True)
-        if self._cancel_program_readback is not None:
-            self._cancel_program_readback()
-        self._cancel_program_readback = async_call_later(
-            self.hass, PROGRAM_READBACK_DELAY_S, self._async_read_program_again
-        )
+        self._schedule_readback(PROGRAM_READBACK_DELAY_S)
 
-    async def _async_read_program_again(self, _now: Any) -> None:
-        """Read the program in full once the cloud shows a program write."""
-        self._cancel_program_readback = None
+    async def async_cancel_system_vacation(self) -> None:
+        """End the Carrier system's Vacation without touching zone settings.
+
+        Vacation is a system-wide flag, so this ends it for every zone of the
+        system; ``resume`` only clears a zone's hold and can land back in
+        Vacation. Vacation dates, set points, holds and schedules are left as
+        they are. Nothing is sent when the latest refresh shows Vacation off.
+
+        Raises:
+            HomeAssistantError: When the Carrier refuses the write or cannot be
+                reached.
+        """
+        if not self.carrier_system.config.vacation_enabled:
+            _LOGGER.debug("cancel_system_vacation; vacation already off, nothing sent")
+            return
+        await self.coordinator.async_perform_api_call(
+            "cancel system vacation",
+            partial(
+                self.coordinator.api_connection.set_system_vacation,
+                system_serial=self.carrier_system.profile.serial,
+                enabled=False,
+            ),
+        )
+        self.carrier_system.config.vacation_enabled = False
+        # The cloud keeps reporting Vacation on for a few minutes after the
+        # write, so read now for the zones' activities and once more later.
+        await self.coordinator.async_request_full_refresh(immediate=True)
+        self._schedule_readback(VACATION_READBACK_DELAY_S)
+
+    def _schedule_readback(self, delay: float) -> None:
+        """Schedule one full read once the cloud shows a write.
+
+        A pending read-back is replaced, so only the latest one runs.
+
+        Args:
+            delay: Seconds to wait before the read.
+        """
+        if self._cancel_readback is not None:
+            self._cancel_readback()
+        self._cancel_readback = async_call_later(self.hass, delay, self._async_read_again)
+
+    async def _async_read_again(self, _now: Any) -> None:
+        """Read in full once the cloud shows a write.
+
+        Args:
+            _now: Time the read-back fired, unused.
+        """
+        self._cancel_readback = None
         await self.coordinator.async_request_full_refresh(immediate=True)
 
     async def async_will_remove_from_hass(self) -> None:
-        """Cancel a pending program read-back with the entity."""
-        if self._cancel_program_readback is not None:
-            self._cancel_program_readback()
-            self._cancel_program_readback = None
+        """Cancel a pending read-back with the entity."""
+        if self._cancel_readback is not None:
+            self._cancel_readback()
+            self._cancel_readback = None
         await super().async_will_remove_from_hass()

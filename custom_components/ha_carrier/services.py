@@ -16,6 +16,7 @@ from .const import DOMAIN
 SERVICE_SET_ACTIVITY_SETPOINT = "set_activity_setpoint"
 SERVICE_GET_SCHEDULE = "get_schedule"
 SERVICE_SET_PROGRAM_DAY = "set_program_day"
+SERVICE_CANCEL_SYSTEM_VACATION = "cancel_system_vacation"
 
 SETPOINT_ACTIVITIES = [
     ActivityTypes.HOME.value,
@@ -97,4 +98,12 @@ def async_setup_services(hass: HomeAssistant) -> None:
         entity_domain=CLIMATE_DOMAIN,
         schema=SET_PROGRAM_DAY_SCHEMA,
         func="async_set_program_day",
+    )
+    service.async_register_platform_entity_service(
+        hass,
+        DOMAIN,
+        SERVICE_CANCEL_SYSTEM_VACATION,
+        entity_domain=CLIMATE_DOMAIN,
+        schema=None,
+        func="async_cancel_system_vacation",
     )

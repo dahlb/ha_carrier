@@ -94,3 +94,6 @@ ERROR_UNKNOWN: str = "unknown"
 # A program write shows in a full read only after the Carrier cloud has taken it (live:
 # the old day right after the write, the new one ~40 s later), so read again after this.
 PROGRAM_READBACK_DELAY_S = 45
+# Cancelling system Vacation takes minutes to show in a full read (live: still on right
+# after the write, off within ~5 minutes), so read again after this.
+VACATION_READBACK_DELAY_S = 300
