@@ -114,7 +114,7 @@ async def test_update_attempts_refresh_when_previous_auth_count_is_escalated() -
         transient_threshold=TRANSIENT_FAILURE_THRESHOLD,
         consecutive_unauthorized=UNAUTHORIZED_RETRY_THRESHOLD,
     )
-    coordinator.data_flush = True
+    coordinator._data_flush = True
     coordinator.systems = [build_carrier_system()]
     full_refresh_called = False
 
@@ -123,7 +123,7 @@ async def test_update_attempts_refresh_when_previous_auth_count_is_escalated() -
         nonlocal full_refresh_called
         full_refresh_called = True
         self.resiliency.reset()
-        self.data_flush = False
+        self._data_flush = False
 
     with (
         patch.object(CarrierDataUpdateCoordinator, "_async_full_refresh", fake_full_refresh),
@@ -149,7 +149,7 @@ async def test_successful_write_reconciliation_clears_escalated_auth_state() -> 
         transient_threshold=TRANSIENT_FAILURE_THRESHOLD,
         consecutive_unauthorized=UNAUTHORIZED_RETRY_THRESHOLD,
     )
-    coordinator.data_flush = False
+    coordinator._data_flush = False
     coordinator.update_interval = None
 
     async def fake_refresh(self: CarrierDataUpdateCoordinator) -> None:
@@ -245,7 +245,7 @@ async def test_carrier_api_write_rejection_reconciles_and_raises_ha_error() -> N
 async def test_update_data_translates_unauthorized_refresh_to_reauth() -> None:
     """Escalate a fresh unauthorized refresh failure to HA reauthentication."""
     coordinator = CarrierDataUpdateCoordinator.__new__(CarrierDataUpdateCoordinator)
-    coordinator.data_flush = True
+    coordinator._data_flush = True
 
     async def fake_full_refresh() -> None:
         """Raise an escalated Carrier auth failure."""
@@ -258,14 +258,14 @@ async def test_update_data_translates_unauthorized_refresh_to_reauth() -> None:
         await coordinator._async_update_data()
 
     assert exc_info.type.__name__ == "ConfigEntryAuthFailed"
-    assert coordinator.data_flush is True
+    assert coordinator._data_flush is True
 
 
 @pytest.mark.asyncio
 async def test_update_data_keeps_plain_unauthorized_server_error_retryable() -> None:
     """Fail the first refresh on a non-escalated 401 and keep HA retry cadence."""
     coordinator = CarrierDataUpdateCoordinator.__new__(CarrierDataUpdateCoordinator)
-    coordinator.data_flush = True
+    coordinator._data_flush = True
     coordinator.update_interval = None
     coordinator.data = None
     coordinator.resiliency = ResiliencyState(unauthorized_threshold=3, transient_threshold=5)
@@ -281,7 +281,7 @@ async def test_update_data_keeps_plain_unauthorized_server_error_retryable() -> 
     ):
         await coordinator._async_update_data()
 
-    assert coordinator.data_flush is True
+    assert coordinator._data_flush is True
     assert coordinator.update_interval is not None
 
 
@@ -303,7 +303,7 @@ async def test_update_data_keeps_last_data_below_outage_threshold(
     system = build_carrier_system()
     coordinator.systems = [system]
     coordinator.data = [CarrierDataUpdateCoordinator.mapped_system_data(system)]
-    coordinator.data_flush = True
+    coordinator._data_flush = True
     coordinator.update_interval = None
     coordinator.resiliency = ResiliencyState(unauthorized_threshold=3, transient_threshold=5)
     coordinator.resiliency.consecutive_unauthorized = consecutive_unauthorized
@@ -317,7 +317,7 @@ async def test_update_data_keeps_last_data_below_outage_threshold(
         result = await coordinator._async_update_data()
 
     assert result == [CarrierDataUpdateCoordinator.mapped_system_data(system)]
-    assert coordinator.data_flush is True
+    assert coordinator._data_flush is True
     assert coordinator.update_interval == timedelta(minutes=1)
 
 
@@ -338,7 +338,7 @@ async def test_update_data_raises_once_failure_escalates_or_is_untracked(
     system = build_carrier_system()
     coordinator.systems = [system]
     coordinator.data = [CarrierDataUpdateCoordinator.mapped_system_data(system)]
-    coordinator.data_flush = True
+    coordinator._data_flush = True
     coordinator.update_interval = None
     coordinator.resiliency = ResiliencyState(unauthorized_threshold=3, transient_threshold=5)
     coordinator.resiliency.consecutive_transient = consecutive_transient
@@ -380,7 +380,7 @@ async def test_full_refresh_merges_new_changed_and_stale_systems(
     assert [system.profile.serial for system in coordinator.systems] == ["ABC123", "NEW123"]
     assert carrier_api.api_websocket.callbacks == [coordinator.updated_callback]
     assert coordinator.websocket_data_updater is not None
-    assert coordinator.data_flush is False
+    assert coordinator._data_flush is False
 
 
 @pytest.mark.asyncio
@@ -418,7 +418,7 @@ async def test_energy_refresh_records_one_unauthorized_per_cycle(
 async def test_update_data_forces_full_refresh_when_reconcile_interval_elapsed() -> None:
     """Force a full reconcile when websocket-maintained data is overdue for a full fetch."""
     coordinator = CarrierDataUpdateCoordinator.__new__(CarrierDataUpdateCoordinator)
-    coordinator.data_flush = False
+    coordinator._data_flush = False
     coordinator._intercept_guards = {}
     coordinator.systems = [build_carrier_system()]
     coordinator.timestamp_all_data = datetime.now(UTC) - timedelta(
@@ -431,7 +431,7 @@ async def test_update_data_forces_full_refresh_when_reconcile_interval_elapsed()
         """Record that the periodic poll performed a full reconcile."""
         nonlocal full_refresh_called
         full_refresh_called = True
-        self.data_flush = False
+        self._data_flush = False
 
     async def fake_energy_refresh(self: CarrierDataUpdateCoordinator) -> None:
         """Record that the periodic poll performed only an energy refresh."""
@@ -457,7 +457,7 @@ async def test_update_data_forces_full_refresh_when_reconcile_interval_elapsed()
 async def test_update_data_stays_energy_only_before_reconcile_interval() -> None:
     """Keep the periodic poll energy-only until the full-reconcile interval elapses."""
     coordinator = CarrierDataUpdateCoordinator.__new__(CarrierDataUpdateCoordinator)
-    coordinator.data_flush = False
+    coordinator._data_flush = False
     coordinator.systems = [build_carrier_system()]
     coordinator.timestamp_all_data = datetime.now(UTC) - timedelta(
         minutes=DEFAULT_FULL_REFRESH_INTERVAL_MINUTES - DEFAULT_UPDATE_INTERVAL_MINUTES
@@ -555,7 +555,7 @@ def test_full_reconcile_due_keeps_the_default_cadence() -> None:
 async def test_update_data_defers_scheduled_full_refresh_during_post_write_window() -> None:
     """Keep a due full refresh from ending a live post-write guard."""
     coordinator = CarrierDataUpdateCoordinator.__new__(CarrierDataUpdateCoordinator)
-    coordinator.data_flush = False
+    coordinator._data_flush = False
     coordinator.systems = [build_carrier_system()]
     coordinator.timestamp_all_data = datetime.now(UTC) - timedelta(
         minutes=DEFAULT_FULL_REFRESH_INTERVAL_MINUTES + 1
@@ -1108,7 +1108,7 @@ async def test_updated_callback_applies_message_with_websocket_data_updater() ->
     coordinator = CarrierDataUpdateCoordinator.__new__(CarrierDataUpdateCoordinator)
     coordinator.systems = [build_carrier_system()]
     coordinator._intercept_guards = {}
-    coordinator.data_flush = False
+    coordinator._data_flush = False
     handled: list[str] = []
 
     async def fake_message_handler(message: str) -> None:
@@ -1123,7 +1123,7 @@ async def test_updated_callback_applies_message_with_websocket_data_updater() ->
         await coordinator.updated_callback('{"deviceId": "ABC123"}')
 
     assert handled == ['{"deviceId": "ABC123"}']
-    assert coordinator.data_flush is False
+    assert coordinator._data_flush is False
 
 
 @pytest.mark.asyncio
@@ -1132,7 +1132,7 @@ async def test_updated_callback_flushes_data_on_partial_message() -> None:
     coordinator = CarrierDataUpdateCoordinator.__new__(CarrierDataUpdateCoordinator)
     coordinator.systems = [build_carrier_system()]
     coordinator._intercept_guards = {}
-    coordinator.data_flush = False
+    coordinator._data_flush = False
     coordinator.websocket_data_updater = WebsocketDataUpdater(systems=coordinator.systems)
     refresh_requests = 0
     notified = False
@@ -1153,7 +1153,7 @@ async def test_updated_callback_flushes_data_on_partial_message() -> None:
     ):
         await coordinator.updated_callback('{"deviceId": "ABC123", "payload": {')
 
-    assert coordinator.data_flush is True
+    assert coordinator._data_flush is True
     assert refresh_requests == 1
     assert notified is True
 
@@ -1240,7 +1240,7 @@ def test_reassert_restores_status_when_the_activity_has_no_config_entry() -> Non
 async def test_update_data_and_writes_propagate_cancellation(error: BaseException) -> None:
     """Never swallow cancellation or interpreter shutdown."""
     coordinator = _bare_coordinator()
-    coordinator.data_flush = True
+    coordinator._data_flush = True
 
     async def raise_error() -> None:
         """Raise the parametrized error."""
@@ -1344,7 +1344,7 @@ async def test_reconcile_failed_write_swallows_refresh_failures(
 ) -> None:
     """Only force a full read for transport or auth failures, and never raise."""
     coordinator = _bare_coordinator()
-    coordinator.data_flush = False
+    coordinator._data_flush = False
 
     async def failing_refresh() -> None:
         """Fail the reconciliation refresh."""
@@ -1353,7 +1353,7 @@ async def test_reconcile_failed_write_swallows_refresh_failures(
     with patch.object(coordinator, "async_refresh", failing_refresh):
         await coordinator._async_reconcile_failed_write("set mode", error)
 
-    assert coordinator.data_flush is expect_flush
+    assert coordinator._data_flush is expect_flush
 
 
 @pytest.mark.asyncio
@@ -1412,7 +1412,7 @@ async def test_request_full_refresh_marks_data_dirty_and_refreshes(
 ) -> None:
     """Flag a full read, then refresh now or through the debouncer."""
     coordinator = CarrierDataUpdateCoordinator(hass, FakeCarrierApiConnection())
-    coordinator.data_flush = False
+    coordinator._data_flush = False
     calls: list[str] = []
 
     async def _record_refresh() -> None:
@@ -1429,5 +1429,5 @@ async def test_request_full_refresh_marks_data_dirty_and_refreshes(
     ):
         await coordinator.async_request_full_refresh(immediate=immediate)
 
-    assert coordinator.data_flush is True
+    assert coordinator._data_flush is True
     assert calls == [expected_call]

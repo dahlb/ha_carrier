@@ -195,7 +195,7 @@ async def test_failed_refresh_recovers_to_the_configured_poll_interval(
     """Return to the configured poll interval, not the default, after a failed refresh."""
     config_entry = await setup_integration(options={CONF_FULL_REFRESH_INTERVAL: 10})
     coordinator = config_entry.runtime_data
-    coordinator.data_flush = True
+    coordinator._data_flush = True
     carrier_api.load_data_error = CarrierApiConnectionError("temporary")
 
     await coordinator.async_refresh()
@@ -223,7 +223,7 @@ async def test_refresh_failure_and_recovery_update_poll_interval_in_ha_workflow(
     """
     config_entry = await setup_integration()
     coordinator = config_entry.runtime_data
-    coordinator.data_flush = True
+    coordinator._data_flush = True
     carrier_api.load_data_error = CarrierApiConnectionError("temporary")
 
     with patch("custom_components.ha_carrier.resiliency.asyncio.sleep", AsyncMock()):

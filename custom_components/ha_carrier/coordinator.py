@@ -209,7 +209,7 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator[SystemSnapshots]):
         self.websocket_data_updater: WebsocketDataUpdater | None = None
         self.websocket_task: asyncio.Task[None] | None = None
         self._websocket_initialized = False
-        self.data_flush = True
+        self._data_flush = True
         self.timestamp_all_data: datetime | None = None
         self.timestamp_websocket: datetime | None = None
         self.timestamp_energy: datetime | None = None
@@ -440,7 +440,7 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator[SystemSnapshots]):
             UpdateFailed: Raised when transient failures escalate or refresh
                 cannot complete successfully for other reasons.
         """
-        if not self.data_flush and self._full_reconcile_due():
+        if not self._data_flush and self._full_reconcile_due():
             if self._in_post_write_intercept():
                 # A full read ends every post-write guard, which would leave a
                 # later stale websocket replay of the pre-write values free to
@@ -452,9 +452,9 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator[SystemSnapshots]):
                     "forcing full refresh: last full refresh was >= %s ago",
                     self.full_refresh_interval,
                 )
-                self.data_flush = True
+                self._data_flush = True
 
-        if self.data_flush:
+        if self._data_flush:
             refresh_context = "full data refresh"
             refresh_operation = self._async_full_refresh
         else:
@@ -465,13 +465,13 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator[SystemSnapshots]):
             await refresh_operation()
             return self._system_snapshots()
         except CarrierUnauthorizedError as error:
-            self.data_flush = True
+            self._data_flush = True
             self.update_interval = timedelta(minutes=1)
             raise ConfigEntryAuthFailed(
                 "Carrier API rejected credentials; reauthentication required."
             ) from error
         except RECOVERABLE_REFRESH_EXCEPTIONS as error:
-            self.data_flush = True
+            self._data_flush = True
             self.update_interval = timedelta(minutes=1)
             if self.data is not None and self._failure_within_threshold(error):
                 # Keep entities available on the last known data until the
@@ -584,7 +584,7 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator[SystemSnapshots]):
                 )
         self.timestamp_all_data = datetime.now(UTC)
         self.timestamp_energy = self.timestamp_all_data
-        self.data_flush = False
+        self._data_flush = False
         self.update_interval = self.poll_interval
         # A full read is authoritative; end every post-write guard so re-assert
         # cannot fight freshly-read truth.
@@ -688,7 +688,7 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator[SystemSnapshots]):
             is_unauthorized_error(error)
             or isinstance(error, RECOVERABLE_WRITE_COMMUNICATION_EXCEPTIONS)
         ):
-            self.data_flush = True
+            self._data_flush = True
 
         try:
             # Refresh may repair local state after a server-side partial write.
@@ -753,13 +753,13 @@ class CarrierDataUpdateCoordinator(DataUpdateCoordinator[SystemSnapshots]):
 
         A plain coordinator refresh is the light energy-only refresh, so callers
         that need fresh system status (a resumed schedule, a program write, a
-        websocket failure) use this instead of setting ``data_flush`` themselves.
+        websocket failure) use this instead of setting ``_data_flush`` themselves.
 
         Args:
             immediate: True to refresh now and wait for it; False to go through
                 the request-refresh debouncer, which coalesces bursts of requests.
         """
-        self.data_flush = True
+        self._data_flush = True
         if immediate:
             await self.async_refresh()
         else:
